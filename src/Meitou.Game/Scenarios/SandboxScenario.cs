@@ -340,6 +340,7 @@ sealed class SandboxScenario(GameHost host)
     internal void FollowCamera()
     {
         if (host.Player.Follow is not { } id || host.Session.Camera.IsFree) return;
+        if (host.OracleHoldsCamera) return;
         var characters = host.Session.CurrentSnapshot.Characters;
         if (characters.FirstOrDefault(c => c.Id == id) is not { } followed)
         {
@@ -348,8 +349,12 @@ sealed class SandboxScenario(GameHost host)
         }
 
         var tracked = host.Tracked(followed);
-        host.Session.Camera.MovePivot(new Vector2(tracked.Position.X, tracked.Position.Z));
-        var target = host.DrawnPosition(tracked) + new Vector3(0, KenshiCamera.TrackHeight, 0);
+
+        // The oracle's restored follow keeps the captured offset from the character (zero without the oracle).
+        var offset = host.OracleFollowOffset;
+        if (!host.OracleRestoreFollowPose(tracked.Position + offset))
+            host.Session.Camera.MovePivot(new Vector2(tracked.Position.X + offset.X, tracked.Position.Z + offset.Z));
+        var target = host.DrawnPosition(tracked) + new Vector3(0, KenshiCamera.TrackHeight, 0) + offset;
         host.Camera.Target = host.Config.FollowCameraOffset ? Offset(target, tracked.Id) : target;
     }
 

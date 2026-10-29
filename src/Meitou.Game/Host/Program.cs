@@ -89,6 +89,11 @@ static class Program
     /// </summary>
     static int? CheckScreenshotOptions(GameOptions game, WorldOptions world)
     {
+        if (game.Oracle && world.Screenshot is not null)
+        {
+            Console.Error.WriteLine("--oracle needs the interactive frame loop; drop --screenshot.");
+            return 2;
+        }
         if (game.UiShowcase && world.Screenshot is null)
         {
             Console.Error.WriteLine("--ui-showcase needs --screenshot <path>.");

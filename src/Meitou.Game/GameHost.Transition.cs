@@ -188,6 +188,7 @@ sealed partial class GameHost
         }
         catch (Exception e)
         {
+            OracleLoadFailed(e.Message);
             ActiveSceneLoad = null;
             SkyArrival = null;
             PresentationHour = null;
@@ -370,9 +371,8 @@ sealed partial class GameHost
     {
         _sentFocus = false;
         SendFocus();
-        Session.World.GameHours = Session.Clock.TotalHours;
-        Session.World.Daytime = Session.Clock.IsDaytime;
-        Session.World.RunTick();
+        // Oracle loading prepares the population without an unclocked simulation tick; every other run takes the first tick here.
+        OracleHostPolicy.PrepareLoadedWorld(Session, Session.Camera.Current.Target, GameOptions.Oracle);
         IndexedFor = null;
         PreviousById.Clear();
         Player.Reset();

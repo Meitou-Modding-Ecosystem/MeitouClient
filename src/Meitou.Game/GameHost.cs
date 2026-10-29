@@ -520,6 +520,7 @@ sealed partial class GameHost(
         CreateFeatures();
         try
         {
+            StartOracle();
 #if MEITOU_METAL
             if (GameOptions.Renderer == "metal") return Metal();
 #endif
@@ -533,6 +534,7 @@ sealed partial class GameHost(
         }
         finally
         {
+            DisposeOracle();
             Sound.DisposeAudio();
             TitleScreen.DisposeTitleScene();
             Session?.Dispose();
@@ -1021,6 +1023,7 @@ sealed partial class GameHost(
         AwaitLoading(navmesh);
         SettleNewWorld();
         Saves.FinishLoadNotice(summary);
+        OracleFinishedLoad(folder);
     }
 
     #endregion

@@ -1447,7 +1447,7 @@ sealed class GameLoop(GameHost host)
             host.Session.Input.Consume();
         }
         // Edge scrolling (the game's default): the pointer at the edge of the window pans the camera, unless something else has the pointer.
-        host.Session.Camera.Settings.EdgeScroll = host.Config.EdgeScroll != false;
+        host.Session.Camera.Settings.EdgeScroll = host.OracleEdgeScroll(host.Config.EdgeScroll != false);
         bool edgeOff = host.Covered || host.TitleScreen.TitleVisible || _panel?.Visible == true || host.AgentChannel.InterfaceHidden
             || _cinemaHolds || _cinema.EditorVisible;
         host.Session.Camera.Strategy.EdgePointer = edgeOff ? null : _window is null ? null : WindowPointer.InWindow(_window);
@@ -1466,6 +1466,7 @@ sealed class GameLoop(GameHost host)
         host.NewGame.HandleNewGame();
         host.NewGame.HandleMainMenu();
         host.StepSceneLoad();
+        host.ServiceOracle();
         host.AnimSeconds += frameDt;
         host.AnimClock = true;
         host.UpdateNav();

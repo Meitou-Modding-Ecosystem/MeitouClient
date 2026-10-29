@@ -97,6 +97,8 @@ sealed class GameSaves(GameHost host)
     /// </summary>
     void Autosave(double realDt)
     {
+        // Process-local isolation: the oracle run writes no autosave and persists no other gameplay or config setting.
+        if (host.GameOptions.Oracle) return;
         if (_autosaveDue)
         {
             _autosaveDue = false;
@@ -314,7 +316,7 @@ sealed class GameSaves(GameHost host)
     /// Starts loading a save under the loading screen (GameHost.Transition.cs): the files are read on a worker, the new world is made, the navmesh
     /// round the player waits.
     /// </summary>
-    void BeginQuickLoad(string? source = null)
+    internal void BeginQuickLoad(string? source = null)
     {
         if (!SavesAvailable(out string reason))
         {
@@ -352,6 +354,7 @@ sealed class GameSaves(GameHost host)
                 FinishLoadNotice(summary);
                 PauseAfterLoad();
                 SaveInUse = folder;
+                host.OracleFinishedLoad(folder);
                 return null;
             }));
     }
@@ -463,6 +466,7 @@ sealed class GameSaves(GameHost host)
         PreparedSystems? prepared = null)
     {
         var watch = Stopwatch.StartNew();
+        host.ApplyOracleSeed(read.Result);
         LoadedSave? loaded = null;
         var (built, nextData, nextDifficulty) = prepared ?? PrepareSystems(read, interactive);
         try

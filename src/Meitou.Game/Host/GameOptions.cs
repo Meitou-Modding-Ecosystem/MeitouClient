@@ -200,6 +200,18 @@ sealed class GameOptions
     /// </summary>
     public string? ShotOut;
     /// <summary>
+    /// <c>--oracle</c>: the opt-in loopback oracle (docs/oracle.md); ordinary runs create no listener and no oracle output.
+    /// </summary>
+    public bool Oracle;
+    /// <summary>
+    /// <c>--oracle-port &lt;n&gt;</c>: the oracle's 127.0.0.1 listening port.
+    /// </summary>
+    public int OraclePort = 47801;
+    /// <summary>
+    /// <c>--oracle-output &lt;dir&gt;</c>: where the oracle writes new snapshot files (default <c>oracle-dumps</c>).
+    /// </summary>
+    public string? OracleOutput;
+    /// <summary>
     /// <c>--play-bench &lt;dir&gt;</c>: the interactive game driven by a script, every frame measured, the results written there (PlayBench).
     /// </summary>
     public string? PlayBench;
@@ -298,6 +310,9 @@ sealed class GameOptions
           --screenshot-out <png>     where --screenshot-after saves (default <control-dir>/shot.png, else ./meitou-shot.png)
           --load <save folder>       start in a save, Meitou's or the original game's (%LOCALAPPDATA%\kenshi\save\<name>), loaded as the game menu's Load does; works with --screenshot
           --continue                 start in the newest save of Meitou's and the original game's save folders, as --load would
+          --oracle                   enable the loopback state/scenario adapter (interactive saves only; autosave disabled for this run)
+          --oracle-port <n>          oracle TCP port (default 47801; needs --oracle)
+          --oracle-output <dir>      new snapshot files here (default oracle-dumps; needs --oracle)
           --renderer <vulkan|metal>  the renderer for the whole frame: vulkan (the default) or metal (macOS: the scene, HUD and faithful panels, the port's current slice)
           --yaw/--pitch/--distance   start view: heading, pitch above the horizon and boom (Kenshi: 30 degrees, boom 150; clamped to 10..2000)
           world options as meitou-viewer --world: --at, --zone, --town, --radius, --time, --screenshot, --size, --no-foliage, ...
@@ -322,7 +337,7 @@ sealed class GameOptions
             string a = args[i];
             if (ParseScreenOption(g, a, args, ref i) || ParseStartOption(g, a, args, ref i) || ParseRunOption(g, a, args, ref i)
                 || ParseAgentOption(g, a, args, ref i) || ParseSandboxOption(g, a, args, ref i) || ParseBattleOption(g, a, args, ref i)
-                || ParseSceneOption(g, a, args, ref i))
+                || ParseSceneOption(g, a, args, ref i) || global::Meitou.Game.Oracle.OracleOptions.Parse(g, a, args, ref i))
                 continue;
 
             switch (a)
@@ -345,6 +360,7 @@ sealed class GameOptions
             g.UiMode = Data.Ui.UiMode.Faithful;
             g.MeitouMainMenu = false;
         }
+        global::Meitou.Game.Oracle.OracleOptions.Validate(g, args);
         return (g, rest.ToArray());
     }
 

@@ -20,6 +20,9 @@ Authority: `src/Meitou.Game/Host/GameOptions.cs` (`Split`, `Usage`), `src/Meitou
 | `--data-check` | | | Print every game data and level file problem of the load order (missing mod, changed record type...) and exit: 0 none, 1 some. |
 | `--load <folder>` | save folder | none | Start in a save, Meitou's or the original game's. With `--screenshot` too. |
 | `--continue` | | off | Start in the newest save of the folders the game lists saves from (`SaveModList.Roots`), as `--load` would; no check that its mods are the enabled ones. Excludes `--load`; exit 1 without a save. |
+| `--oracle` | | off | Local branch: enable the loopback KenshiOracle adapter in the interactive saved-world loop; disables autosaves. [Contract and limits](oracle.md). |
+| `--oracle-port <n>` | 1..65535 | 47801 | With `--oracle`: IPv4 127.0.0.1 listening port. |
+| `--oracle-output <dir>` | folder | `oracle-dumps` | With `--oracle`: new snapshot files beneath this folder, relative to the working directory. |
 | `--seed <n>` | integer | 0 | World seed. A new game from the menu keeps it once given. |
 | `--no-population` | | off | No residents or movement. |
 | `--move-to <x> <z>` | two numbers | none | With `--new-game`: select the squad and walk it there (pictures). |

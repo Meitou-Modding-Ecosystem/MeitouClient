@@ -1193,6 +1193,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
                 host.SettleNewWorld();
                 _hud.FollowSelected();
                 host.Saves.FinishLoadNotice(summary);
+                host.OracleFinishedLoad(host.GameOptions.Load ?? "");
                 host.ApplyCamera(host.Session.Camera.Current);
             }
             catch (GameHost.SceneLoadFailed e)
@@ -2598,7 +2599,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
     void AdvanceSession(double dt)
     {
         // Edge scrolling only while the world owns the pointer (the interface is visible and not dragging a panel).
-        host.Session.Camera.Settings.EdgeScroll = host.Config.EdgeScroll != false;
+        host.Session.Camera.Settings.EdgeScroll = host.OracleEdgeScroll(host.Config.EdgeScroll != false);
         host.Session.Camera.Strategy.EdgePointer = host.Covered || _hud is not null && host.TitleScreen.TitleVisible || _settings?.Visible == true ||
             _hud is { UiVisible: false } or { UiCapturesPointer: true } ? null : WindowPointer.InWindow(_window);
         host.UpdateCameraLeash(_tourHolds || _tour.Active);
@@ -2614,6 +2615,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             host.NewGame.HandleMainMenu();
         }
         host.StepSceneLoad();
+        host.ServiceOracle();
         host.AdvanceSkyArrival(dt);
         _bench.Lap(2);
     }
