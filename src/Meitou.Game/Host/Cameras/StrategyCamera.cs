@@ -136,6 +136,26 @@ public sealed class StrategyCamera
     }
 
     /// <summary>
+    /// Restores a captured pivot including its current height and clears pending turn/tilt smoothing. The next normal update still applies ground clearance.
+    /// </summary>
+    public void RestorePose(Vector3 pivot, float yaw, float pitch, float distance)
+    {
+        if (!float.IsFinite(pivot.X) || !float.IsFinite(pivot.Y) || !float.IsFinite(pivot.Z) || !float.IsFinite(yaw)
+            || !float.IsFinite(pitch) || MathF.Abs(pitch) >= MathF.PI / 2 || !float.IsFinite(distance)
+            || distance < KenshiCamera.MinDistance || distance > KenshiCamera.MaxDistance)
+            throw new ArgumentOutOfRangeException(nameof(pivot), "a finite camera pose within the boom and pitch limits is required");
+        PivotXz = new Vector2(pivot.X, pivot.Z);
+        _pivotY = _heightGoal = pivot.Y;
+        _heightSpeed = 0;
+        Yaw = Interp.WrapAngle(yaw);
+        Pitch = pitch;
+        Distance = distance;
+        _yawInput.Clear();
+        _pitchInput.Clear();
+        State = Compute();
+    }
+
+    /// <summary>
     /// One zoom step of <paramref name="notches"/> wheel notches (positive zooms in).
     /// </summary>
     public void Zoom(float notches)
@@ -379,6 +399,15 @@ public sealed class StrategyCamera
         /// The ring's newest sample.
         /// </summary>
         int _newest;
+
+        /// <summary>
+        /// Forgets the kept frames, so the next average starts from rest.
+        /// </summary>
+        public void Clear()
+        {
+            Array.Clear(_samples);
+            _newest = 0;
+        }
 
         /// <summary>
         /// Adds the input of a sample spanning <paramref name="span"/> frames (1 or more) and returns the weighted average.

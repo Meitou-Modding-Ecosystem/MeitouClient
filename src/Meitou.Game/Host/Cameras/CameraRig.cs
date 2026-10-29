@@ -103,6 +103,22 @@ public sealed class CameraRig
     }
 
     /// <summary>
+    /// Restores a captured camera pose as a cut, including strategy pivot height. Free flight starts at rest and retains its existing ground clearance rule.
+    /// </summary>
+    public void RestorePose(Vector3 target, float yaw, float pitch, float distance, bool free)
+    {
+        // The strategy method validates before either camera is changed and removes old turn/tilt input history.
+        Strategy.RestorePose(target, yaw, pitch, distance);
+        if (free)
+        {
+            var eye = CameraState.EyeFor(target, yaw, pitch, distance);
+            Free.Enter(new CameraState(eye, Vector3.Normalize(target - eye), Vector3.UnitY, target, yaw, pitch, distance, true));
+        }
+        IsFree = free;
+        _states.Snap(free ? Free.State : Strategy.State);
+    }
+
+    /// <summary>
     /// Cuts to the free camera at <paramref name="from"/>'s eye looking the same way (a host's camera handed back, e.g. after the
     /// cinematic camera flew it: only the free camera can stand at any eye); with <paramref name="strategy"/> it then leaves free flight
     /// as <c>;</c> does (the pivot where the view meets the ground).
