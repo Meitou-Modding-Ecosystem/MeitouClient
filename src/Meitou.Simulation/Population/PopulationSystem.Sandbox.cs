@@ -172,4 +172,44 @@ public sealed partial class PopulationSystem
             yaw: yaw);
         return squad.Members;
     }
+
+    /// <summary>An oracle scene-setup squad planned by <see cref="PlanOracleTemplateSquad"/>; nothing exists in the world until <see cref="SpawnOracleTemplateSquad"/>.</summary>
+    public sealed class OracleTemplateSquad
+    {
+        internal BuiltSquad? Built { get; init; }
+        /// <summary>The members' character records in plan order (empty when the plan has none).</summary>
+        public IReadOnlyList<string> RecordIds { get; init; } = [];
+        /// <summary>The plan names a unique character; such a plan is never spawned (idle spawns skip the unique gate).</summary>
+        public bool NamesUniqueCharacter { get; init; }
+    }
+
+    /// <summary>
+    /// Oracle scene setup: plans one squad of the SQUAD_TEMPLATE <paramref name="templateId"/> as the population builds one (<see cref="SquadFactory.Plan"/>, member counts and
+    /// looks rolled from the world seed and <paramref name="key"/>), but of <paramref name="faction"/>, at <paramref name="at"/>; only its first <paramref name="maxCount"/> members;
+    /// slave squads of the plan are not made. Pure (any phase): the host checks the plan before it changes anything.
+    /// </summary>
+    public OracleTemplateSquad PlanOracleTemplateSquad(World world, string templateId, Vector2 at, int faction, int maxCount, ulong key)
+    {
+        if (_data.Db.Find(templateId) is not { } record || !SquadFactory.IsTemplate(record)) throw new ArgumentException("not a SQUAD_TEMPLATE record", nameof(templateId));
+        if ((uint)faction >= (uint)_data.Factions.Count) throw new ArgumentOutOfRangeException(nameof(faction));
+        if (BuildOne(SquadTemplate.From(record), faction, _data.Factions[faction], key, world.Seed, at) is not { } built) return new();
+        var members = built.Members.Take(Math.Max(0, maxCount)).ToList();
+        if (members.Count == 0) return new();
+        return new()
+        {
+            Built = built with { Faction = faction, Members = members },
+            RecordIds = [.. members.Select(m => m.Plan.RecordId)],
+            NamesUniqueCharacter = members.Any(m => UniqueCharacters.IsUnique(_data.Db.Find(m.Plan.RecordId))),
+        };
+    }
+
+    /// <summary>
+    /// Oracle scene setup: spawns a <see cref="PlanOracleTemplateSquad"/> plan standing idle outside any town, on the ground. Refuses a plan with a unique character. In the serial
+    /// Inputs phase. Returns the members in order (empty when the plan has none).
+    /// </summary>
+    public IReadOnlyList<CharacterId> SpawnOracleTemplateSquad(World world, OracleTemplateSquad plan)
+    {
+        if (plan.NamesUniqueCharacter) throw new InvalidOperationException("the plan names a unique character");
+        return plan.Built is { } built ? SpawnSquad(world, built, null, 100, idle: true).Members : [];
+    }
 }

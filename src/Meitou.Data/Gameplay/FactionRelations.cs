@@ -202,6 +202,25 @@ public sealed class FactionRelations
     /// outside this table).
     /// </summary>
     public void Set(int a, int b, float value) => _relation[a * Count + b] = value;
+    /// <summary>
+    /// Oracle scene setup: sets <paramref name="a"/>'s relation towards <paramref name="b"/> to <paramref name="value"/>, clamped to [-100, 100]. Unlike
+    /// <see cref="Set"/> a change asked of the player's row goes to the other side's table, as in <see cref="Add"/>, and a change counts in <see cref="Changes"/> so the hostility
+    /// cache and the state hash see it. The war flag is left alone. Returns the stored cell (after the swap) and the value before and after.
+    /// </summary>
+    public (int A, int B, float Before, float After) Assign(int a, int b, float value)
+    {
+        if (!float.IsFinite(value)) throw new ArgumentOutOfRangeException(nameof(value));
+        if (a == PlayerFaction && a >= 0) (a, b) = (b, a);
+        if (a == b || !Contains(a) || !Contains(b)) throw new ArgumentException("a relation needs two different factions of this table");
+        float before = Get(a, b), after = Math.Clamp(value, -100, 100);
+        if (after != before)
+        {
+            _relation[a * Count + b] = after;
+            Changes++;
+        }
+        return (a, b, before, after);
+    }
+
 
     /// <summary>
     /// A to B: B is another faction and the relation is at or below <see cref="HostileThreshold"/>.
