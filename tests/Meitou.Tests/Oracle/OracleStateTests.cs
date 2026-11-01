@@ -67,7 +67,7 @@ public class OracleStateTests
         Assert.Equal("saved", state["squads"]![0]!["identity_origin"]!.GetValue<string>());
         Assert.Equal("hand:34:7:8:0:9", row["squad_id"]!.GetValue<string>());
         Assert.Equal(-13, row["health"]![0]!["current"]!.GetValue<double>());
-        Assert.Null(row["health"]![0]!["maximum"]);
+        Assert.Equal(100, row["health"]![0]!["maximum"]!.GetValue<double>());
         Assert.Null(row["in_combat"]); Assert.Null(row["current_town_id"]); Assert.Null(row["town_assignment"]); Assert.Null(row["order"]);
         Assert.True(projection.TryResolveCharacter(row["id"]!.GetValue<string>(), out var resolved)); Assert.Equal(id, resolved);
         Assert.Equal(row["id"]!.GetValue<string>(), projection.CharacterIdentity(id));
@@ -76,6 +76,43 @@ public class OracleStateTests
         // Recruitment can clear the mutable save link without changing an established identity.
         cold.Save = null;
         Assert.Equal("saved", projection.Capture(session, Data())["characters"]![0]!["identity_origin"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Health_maximum_is_calculated_max_hp_null_when_worn_away_and_capture_keeps_the_state_hash()
+    {
+        using var session = Session();
+        static HealthPart Part(string id, Action<HealthPart>? set = null)
+        {
+            var part = new HealthPart(new BodyPartTemplate { StringId = id }, 1, 100);
+            set?.Invoke(part);
+            return part;
+        }
+        var medical = new MedicalState([
+            Part("fixture-a-plain"),
+            Part("fixture-b-scaled", p => { p.HpMultiplier = 1.5f; p.BodyScale = 1.25f; }),
+            Part("fixture-c-worn", p => p.Wear = 30),
+            Part("fixture-d-stump", p => p.Limb = LimbState.Stump),
+            Part("fixture-e-worn-away", p => p.Wear = 130),
+            Part("fixture-f-nonfinite", p => p.BaseHp = float.NaN),
+            Part("fixture-g-infinite", p => p.BaseHp = float.PositiveInfinity),
+            Part("fixture-h-above-cap", p => p.BaseHp = 2e9f),
+        ]);
+        session.World.Characters.Spawn(new CharacterHot(), new CharacterCold { Medical = medical }, 0);
+        ulong before = session.World.StateHash();
+        var health = new OracleState().Capture(session, Data())["characters"]![0]!["health"]!.AsArray();
+        Assert.Equal(before, session.World.StateHash());
+        double? Maximum(int index) => health[index]!["maximum"]?.GetValue<double>();
+        Assert.Equal(["fixture-a-plain:neither", "fixture-b-scaled:neither", "fixture-c-worn:neither", "fixture-d-stump:neither",
+            "fixture-e-worn-away:neither", "fixture-f-nonfinite:neither", "fixture-g-infinite:neither", "fixture-h-above-cap:neither"], health.Select(p => p!["id"]!.GetValue<string>()));
+        Assert.Equal(100, Maximum(0));
+        Assert.Equal(187.5, Maximum(1));
+        Assert.Equal(70, Maximum(2));
+        Assert.Equal(5, Maximum(3));
+        Assert.Null(Maximum(4));
+        Assert.Null(Maximum(5));
+        Assert.Null(Maximum(6));
+        Assert.Null(Maximum(7));
     }
 
     [Fact]

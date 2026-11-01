@@ -107,8 +107,8 @@ internal sealed class OracleState
                     string partId = part.Template.StringId + Side(part.Template.Side);
                     if (KnownId(part.Template.StringId) is null || !partIds.Add(partId)) { health = null; break; }
                     health.Add(new JsonObject { ["id"] = partId, ["current"] = Number(part.Flesh), ["stun"] = Number(part.Stun),
-                        // The original exposes stored _maxHealth. Equivalence with calculated MaxHp is not established.
-                        ["maximum"] = null });
+                        // Calculated MaxHp, not the original's stored _maxHealth. Null when negative or non-finite, as the native probe.
+                        ["maximum"] = part.MaxHp >= 0 ? Number(part.MaxHp) : null });
                 }
             }
             var row = new JsonObject

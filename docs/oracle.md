@@ -92,9 +92,21 @@ The additive 0.2 fields expose saved-origin evidence, broad melee/ranged combat
 mode and squad templates. Town placement/current membership/origin remain null:
 equality of native `Town::instanceID.uid` and `TownSite.InstanceId` is unproven.
 Names, array indexes, town definition IDs and transient HANDs are not substitutes.
-`order` and `health[].maximum` remain null where original-task/stored-health
-equivalence is unknown. Template fallbacks on newly created squads also need
-their own semantic verification.
+`order` remains null: a Meitou act-out row is not proof of the original
+running task. `health[].maximum` is Meitou's calculated `MaxHp` (base, or 5 for
+a stump, or the fitted prosthetic's HP, times multiplier and scale, minus wear),
+null when negative or non-finite as in the native probe. It is not the
+original's stored `_maxHealth`. In the setup heal receipts of the 1 November
+2026 campaign (unworn, full health, right after the setup heal) the saved
+player matched part by part on both engines in every repetition, including a
+stump at 5 (**Observed**). Spawned members of races `17-gamedata.quack` (100 per
+part) and `5276-chareditor.mod` (125 per part) showed the same set of values on
+both engines, but the race draw differs between engines, so this is not a
+same-character comparison; whether 125 comes from base HP, multiplier or scale
+is **Unknown**. Agreement under wear, prosthetics, robots, and multiplier or
+scale changes after load is **Unknown**. Reading it changes no simulation state or state hash
+(**Verified**, `OracleStateTests`). Template fallbacks on newly created squads
+also need their own semantic verification.
 
 In Oracle mode, `--seed` is applied to the in-memory save before `SaveLoader`
 and its first draws; it replaces the save's stored seed without rewriting that
