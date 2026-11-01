@@ -108,4 +108,30 @@
     </ItemGroup>
   </Target>
 
+  <!-- The opt-in oracle's build_commit (docs/oracle.md): the full commit, or "unknown" without git, on any git failure or with uncommitted changes. GitCommit above stays the UI's. -->
+  <Target Name="ReadOracleBuildCommit" BeforeTargets="GetAssemblyAttributes">
+    <Exec Command="git rev-parse HEAD" WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low" Condition="'$(OracleBuildCommit)' == ''">
+      <Output TaskParameter="ConsoleOutput" ItemName="_OracleHead" />
+      <Output TaskParameter="ExitCode" PropertyName="_OracleHeadExit" />
+    </Exec>
+    <Exec Command="git status --porcelain" WorkingDirectory="$(MSBuildProjectDirectory)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low" Condition="'$(OracleBuildCommit)' == '' and '$(_OracleHeadExit)' == '0'">
+      <Output TaskParameter="ConsoleOutput" ItemName="_OracleDirty" />
+      <Output TaskParameter="ExitCode" PropertyName="_OracleDirtyExit" />
+    </Exec>
+    <PropertyGroup>
+      <OracleBuildCommit Condition="'$(OracleBuildCommit)' == '' and '$(_OracleHeadExit)' == '0' and '$(_OracleDirtyExit)' == '0' and '@(_OracleDirty->Count())' == '0'">@(_OracleHead)</OracleBuildCommit>
+      <OracleBuildCommit Condition="'$(OracleBuildCommit)' == ''">unknown</OracleBuildCommit>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>OracleBuildCommit</_Parameter1>
+        <_Parameter2>$(OracleBuildCommit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
 </Project>

@@ -28,6 +28,9 @@ internal sealed class OracleState
     internal string? CharacterIdentity(CharacterId id) =>
         _characterIds.TryGetValue(id, out string? identity) && _currentCharacters.ContainsKey(identity) ? identity : null;
 
+    internal string? SquadIdentity(int id) =>
+        _squadIds.TryGetValue(id, out string? identity) && _currentSquads.ContainsKey(identity) ? identity : null;
+
     internal bool TryResolveCharacter(string identity, out CharacterId id) => _currentCharacters.TryGetValue(identity, out id);
     internal bool TryResolveSquad(string identity, out int id) => _currentSquads.TryGetValue(identity, out id);
 

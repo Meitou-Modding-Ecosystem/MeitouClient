@@ -1,5 +1,8 @@
 using System.Numerics;
 using Meitou.Data.Gameplay;
+using Meitou.Data.Gameplay.Bodies;
+using Meitou.Game;
+using Meitou.Game.Oracle;
 using Meitou.Simulation;
 using SimWorld = Meitou.Simulation.World;
 using Meitou.Simulation.Movement;
@@ -11,6 +14,104 @@ namespace Meitou.Tests.Oracle;
 public class OracleSetupTests
 {
     static float Ground(float x, float z) => 7 + x * 0.01f;
+
+    [Theory]
+    [InlineData(true, true, true, false, true, false, false, 1, null)]                           // read-only, open
+    [InlineData(true, true, true, true, true, false, false, 1, null)]                            // mutation, open
+    [InlineData(false, true, true, false, true, false, false, 1, "world_not_ready")]             // G1
+    [InlineData(true, false, true, false, true, false, false, 1, "not_allowed:load_save")]       // G2: not a probe load_save
+    [InlineData(true, true, false, false, true, false, false, 1, "not_allowed:allow_setup")]     // G3: no opt-in
+    [InlineData(true, true, true, true, false, false, false, 1, "invalid_request")]              // M1: running
+    [InlineData(true, true, true, true, true, true, false, 1, "invalid_request")]                // M1: run_until active
+    [InlineData(true, true, true, false, false, true, true, 1, null)]                            // census ignores M1 and M2
+    [InlineData(true, true, true, true, true, false, true, 1, "not_allowed:autosave")]           // M2
+    [InlineData(true, true, true, true, true, false, null, 1, "not_allowed:autosave")]           // M2: unreadable autosave
+    [InlineData(true, true, true, false, true, false, false, 0, "state_unavailable")]            // G4
+    [InlineData(true, true, true, true, false, false, false, 0, "invalid_request")]              // M1 before G4
+    [InlineData(true, true, true, true, true, false, true, 0, "not_allowed:autosave")]           // M2 before G4
+    [InlineData(true, false, false, true, false, true, true, 0, "not_allowed:load_save")]        // the first failing row wins
+    public void The_gate_refuses_in_the_contract_order(bool ready, bool probeLoad, bool allowSetup, bool mutation, bool paused, bool running, bool? autosave, int players,
+        string? expected)
+    {
+        var refusal = OracleSetupPolicy.Refusal(ready, probeLoad, allowSetup, mutation, paused, running, autosave, players);
+        string? got = refusal is not { } r ? null : r.Code != "not_allowed" ? r.Code
+            : "not_allowed:" + (r.Message.Contains("allow_setup:true") ? "allow_setup" : r.Message.Contains("autosave") ? "autosave" : "load_save");
+        Assert.Equal(expected, got);
+    }
+
+    [Theory]
+    [InlineData("oracle-base-nature", "oracle-base-nature", 3, 3, true)]
+    [InlineData("my-campaign", "my-campaign", 3, 3, true)]                 // no save-name allowlist
+    [InlineData("oracle-base-nature", null, -1, 3, false)]                 // loaded by --load, not by load_save
+    [InlineData("oracle-base-nature", "oracle-base-ville", 3, 3, false)]   // the current world is not the one the oracle loaded
+    [InlineData("Oracle-Base-Nature", "oracle-base-nature", 3, 3, false)]  // names are exact
+    [InlineData("oracle-base-nature", "oracle-base-nature", 3, 4, false)]  // another world replaced it since
+    public void Only_a_completed_probe_load_of_the_current_world_counts(string? current, string? loaded, int probeEpoch, int worldEpoch, bool expected) =>
+        Assert.Equal(expected, OracleSetupPolicy.ProbeLoad(current, loaded, probeEpoch, worldEpoch));
+
+    [Fact]
+    public void Oracle_mode_refuses_player_saves()
+    {
+        Assert.True(OracleSetupPolicy.RefusesPlayerSaveRequests(oracle: true));
+        Assert.False(OracleSetupPolicy.RefusesPlayerSaveRequests(oracle: false));
+    }
+
+    [Fact]
+    public void Readiness_reports_the_contract_keys_without_a_window_and_says_why_a_value_is_missing()
+    {
+        var ready = OracleSetupPolicy.Readiness(true, true, false, false, false, false, false, null, true, true, 42);
+        foreach (var key in new[] { "world_present", "initialized", "game_resetting", "loading_from_save", "loading_from_save_unavailable_reason", "load_pending",
+                     "load_pause_pending", "world_ready", "paused", "paused_unavailable_reason", "zone_manager_is_loading", "zone_manager_unavailable_reason", "frame" })
+            Assert.True(ready.ContainsKey(key), key);
+        Assert.False(ready.ContainsKey("window"));
+        Assert.True(ready["world_ready"]!.GetValue<bool>()); Assert.True(ready["paused"]!.GetValue<bool>()); Assert.Null(ready["paused_unavailable_reason"]);
+        Assert.False(ready["load_pause_pending"]!.GetValue<bool>()); Assert.Null(ready["zone_manager_is_loading"]); Assert.Equal(42, ready["frame"]!.GetValue<long>());
+
+        var loading = OracleSetupPolicy.Readiness(true, true, true, false, false, false, false, null, false, false, 7);
+        Assert.True(loading["loading_from_save"]!.GetValue<bool>()); Assert.True(loading["covered"]!.GetValue<bool>()); Assert.True(loading["load_pause_pending"]!.GetValue<bool>());
+        Assert.False(loading["paused"]!.GetValue<bool>()); Assert.Null(loading["paused_unavailable_reason"]);
+
+        var none = OracleSetupPolicy.Readiness(false, false, false, false, false, false, true, "boom", false, null, 0);
+        Assert.Null(none["paused"]); Assert.Equal("world_unavailable", none["paused_unavailable_reason"]!.GetValue<string>());
+        Assert.True(none["load_pending"]!.GetValue<bool>()); Assert.True(none["load_pause_pending"]!.GetValue<bool>()); Assert.Equal("boom", none["load_error"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Part_ids_and_indexes_follow_the_dump_and_native_conventions()
+    {
+        Assert.Equal("28-gamedata.quack:left", OracleSetupPolicy.PartId("28-gamedata.quack", BodySide.Left));
+        Assert.Equal("100-gamedata.quack:neither", OracleSetupPolicy.PartId("100-gamedata.quack", BodySide.None));
+        Assert.Equal(5, OracleSetupPolicy.Horizontal(new Vector3(3, 100, 4), Vector3.Zero), 6);
+        Assert.Equal(3, OracleSetupPolicy.Index(3));
+        Assert.Throws<ArgumentException>(() => OracleSetupPolicy.Index(2.5));
+    }
+
+    [Fact]
+    public void Template_spawn_keys_repeat_after_a_reload_and_differ_within_one_world()
+    {
+        // The host resets the serial on every finished probe load, so the same request sequence on a fresh load rolls the same squads.
+        Assert.Equal(OracleSetupPolicy.SpawnKey("57-gamedata.base", 1), OracleSetupPolicy.SpawnKey("57-gamedata.base", 1));
+        Assert.NotEqual(OracleSetupPolicy.SpawnKey("57-gamedata.base", 1), OracleSetupPolicy.SpawnKey("57-gamedata.base", 2));
+        Assert.NotEqual(OracleSetupPolicy.SpawnKey("57-gamedata.base", 1), OracleSetupPolicy.SpawnKey("58-gamedata.base", 1));
+    }
+
+    [Fact]
+    public void Ping_reports_the_adapter_version_and_the_scene_setup_capability()
+    {
+        var ping = OracleSetupPolicy.PingIdentity();
+        Assert.Equal(OracleProtocol.AdapterVersion, ping["plugin_version"]!.GetValue<string>());
+        Assert.Equal("0.11.0", OracleProtocol.AdapterVersion);
+        Assert.Equal("0.2", ping["state_schema_version"]!.GetValue<string>());
+        Assert.Equal(["scene_setup"], ping["capabilities"]!.AsArray().Select(c => c!.GetValue<string>()));
+    }
+
+    [Fact]
+    public void Spawning_into_the_player_faction_is_refused()
+    {
+        Assert.Equal(("invalid_request", "spawning into the player faction is refused"),
+            OracleSetupPolicy.SpawnRefusal(templateFound: true, squadTemplate: true, faction: 1, playerFaction: 1, nearPlayer: true, multiplier: 1));
+        Assert.Null(OracleSetupPolicy.SpawnRefusal(templateFound: true, squadTemplate: true, faction: 0, playerFaction: 1, nearPlayer: true, multiplier: 1));
+    }
 
     [Fact]
     public void Assign_writes_the_player_pair_where_it_is_read_and_counts_the_change()

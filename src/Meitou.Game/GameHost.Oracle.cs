@@ -61,6 +61,7 @@ sealed partial class GameHost
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "kenshi", "save");
         _oracleLoadPending = GameOptions.Load is not null;
         _oracleState = new OracleState();
+        StartOracleSetup();
         _oracleServer = new OracleServer(GameOptions.OraclePort);
         _oracleServer.PublishHeartbeat(new { frame = 0, timestamp_ms = 0, service_frame = 0,
             service_timestamp_ms = 0, service_thread = 0, game_thread = 0, loading = true });
@@ -88,11 +89,17 @@ sealed partial class GameHost
         _oracleLoadPending = false;
         _oracleLoadError = null;
         Saves.SaveInUse = folder;
+        // Scene setup opens only on a world the oracle's own load_save finished, with the opt-in that load carried; any other load clears it.
+        if (_oracleRequestedLoad is not null) { _oracleWorldMutated = false; _oracleSpawnSerial = 0; }
+        _oracleProbeLoadedSave = _oracleRequestedLoad; _oracleAllowSetup = _oracleRequestedLoad is not null && _oracleRequestedAllowSetup; _oracleProbeEpoch = Saves.WorldEpoch;
+        _oracleRequestedLoad = null; _oracleRequestedAllowSetup = false;
     }
 
     void OracleLoadFailed(string error)
     {
         if (!GameOptions.Oracle || !_oracleLoadPending) return;
+        // A failed load never completes: the scene-setup gate stays closed and world_mutated keeps its value.
+        _oracleRequestedLoad = null; _oracleRequestedAllowSetup = false;
         _oracleLoadPending = false;
         _oracleLoadError = error;
         Session?.Simulation.SetSpeed(0);
@@ -184,18 +191,18 @@ sealed partial class GameHost
         {
             case "ping":
                 OracleKeys(p);
-                return new { target = "meitou", plugin_version = OracleProtocol.AdapterVersion, game_version = "MeitouClient",
-                    schema_version = "0.2", supported_schema_versions = new[] { "0.1", "0.2" },
-                    instance_id = _oracleInstance, process_id = Environment.ProcessId, oracle_available = true,
-                    world_ready = OracleReady, frame = _oracleFrame, timestamp_ms = RealTime.Elapsed.TotalMilliseconds,
-                    paused = Session.Simulation.IsPaused, load_pause_pending = _oracleLoadPending || Covered,
-                    current_save = Saves.SaveInUse is null ? null : Path.GetFileName(Path.TrimEndingDirectorySeparator(Saves.SaveInUse)),
-                    save_root = _oracleSaveRoot, saved_origins_required = false, rekenshi_settings_available = false,
-                    seed = _oracleSeed.ToString(CultureInfo.InvariantCulture), seed_source = _oracleSeedSource,
-                    seed_applied_before_load = _oracleSeedApplied, load_error = _oracleLoadError,
-                    startup_boundary = "population_prepared_without_simulation_tick",
-                    set_game_speed_preserve_pause_available = true, camera_load_edge_lock_available = true,
-                    autosave_disabled_for_oracle = true };
+                var ping = OracleSetupPolicy.PingIdentity();
+                ping["instance_id"] = _oracleInstance; ping["process_id"] = Environment.ProcessId; ping["oracle_available"] = true;
+                ping["world_ready"] = OracleReady; ping["frame"] = _oracleFrame; ping["timestamp_ms"] = RealTime.Elapsed.TotalMilliseconds;
+                ping["paused"] = Session.Simulation.IsPaused; ping["load_pause_pending"] = _oracleLoadPending || Covered;
+                ping["current_save"] = OracleCurrentSave; ping["save_root"] = _oracleSaveRoot; ping["saved_origins_required"] = false; ping["rekenshi_settings_available"] = false;
+                ping["seed"] = _oracleSeed.ToString(CultureInfo.InvariantCulture); ping["seed_source"] = _oracleSeedSource;
+                ping["seed_applied_before_load"] = _oracleSeedApplied; ping["load_error"] = _oracleLoadError;
+                ping["startup_boundary"] = "population_prepared_without_simulation_tick";
+                ping["set_game_speed_preserve_pause_available"] = true; ping["camera_load_edge_lock_available"] = true;
+                ping["autosave_disabled_for_oracle"] = true; ping["world_readiness"] = OracleReadiness(); ping["world_mutated"] = _oracleWorldMutated;
+                ping["build_commit"] = _oracleBuildCommit;
+                return ping;
             case "get_clock":
                 OracleKeys(p); RequireOracleWorld(); return OracleClock();
             case "dump_state": return DumpOracleState(p);
@@ -224,7 +231,7 @@ sealed partial class GameHost
                 _oraclePreparedControl = null; _oracleControlToken = null;
                 return OracleControlResult(false, true);
             case "issue_order": return IssueOracleOrder(p);
-            default: throw new OracleHostError("not_implemented", $"oracle command {command} is not implemented");
+            default: return ExecuteOracleSetup(command, p) ?? throw new OracleHostError("not_implemented", $"oracle command {command} is not implemented");
         }
     }
 
@@ -252,13 +259,14 @@ sealed partial class GameHost
 
     object LoadOracleSave(JsonElement p)
     {
-        OracleKeys(p, "name", "lock_edge", "pause_on_ready", "seed");
+        OracleKeys(p, "name", "lock_edge", "pause_on_ready", "seed", "allow_setup");
         string name = OracleText(p, "name", 128);
         OracleHostPolicy.ValidateSaveName(name);
         bool edge = p.TryGetProperty("lock_edge", out _) && OracleBool(p, "lock_edge");
         bool paused = !p.TryGetProperty("pause_on_ready", out _) || OracleBool(p, "pause_on_ready");
         if (!paused) throw new ArgumentException("oracle loads require pause_on_ready:true");
         ulong seed = p.TryGetProperty("seed", out var seedJson) ? OracleHostPolicy.ReadSeed(seedJson) : _oracleSeed;
+        bool allowSetup = p.TryGetProperty("allow_setup", out _) && OracleBool(p, "allow_setup");
         if (!Saves.SavesAvailable(out string why) || Saves.Busy()) throw new OracleHostError("busy", why.Length > 0 ? why : "a save or load is in progress");
         string folder = Path.Combine(_oracleSaveRoot, name);
         OracleHostPolicy.EnsureNoLinks(folder);
@@ -275,8 +283,10 @@ sealed partial class GameHost
         if (edge) _oracleEdgeOwned = true;
         Saves.BeginQuickLoad(folder);
         if (ActiveSceneLoad is null) { _oracleLoadPending = false; throw new OracleHostError("load_failed", "load was not scheduled"); }
+        // Accepted: the scene-setup gate closes until this load completes (OracleFinishedLoad), which then applies allow_setup.
+        _oracleRequestedLoad = name; _oracleRequestedAllowSetup = allowSetup; _oracleProbeLoadedSave = null; _oracleAllowSetup = false;
         return new { accepted = true, pause_on_ready = true, name, lock_edge = edge,
-            seed = seed.ToString(CultureInfo.InvariantCulture) };
+            seed = seed.ToString(CultureInfo.InvariantCulture), allow_setup = allowSetup };
     }
 
     object SetOracleSpeed(JsonElement p)
@@ -457,35 +467,43 @@ sealed partial class GameHost
         if (type is not ("move" or "attack")) throw new OracleHostError("not_implemented", "only move and attack orders are implemented");
         bool character = p.TryGetProperty("character_id", out _), squad = p.TryGetProperty("squad_id", out _);
         if (character == squad) throw new ArgumentException("provide exactly one character_id or squad_id");
+        if (type == "move" && p.TryGetProperty("target_id", out _)) throw new ArgumentException("move uses position, not target_id");
+        if (type == "attack" && p.TryGetProperty("position", out _)) throw new ArgumentException("attack uses target_id, not position");
+        string actor = OracleText(p, character ? "character_id" : "squad_id", 200);
+        Vector3 destination = type == "move" ? OraclePosition(p, "position") : default;
         _oracleState!.Capture(Session, PopData!, "0.2");
+        var table = Session.World.Characters;
+        bool Dead(CharacterId id) => table.Cold(id.Slot)?.Medical?.Dead == true;
+        // In the native probe's order: the attack target, then the actors.
+        CharacterId? target = null;
+        if (type == "attack")
+        {
+            if (!_oracleState.TryResolveCharacter(OracleText(p, "target_id", 200), out var victim) || !table.IsAlive(victim) || Dead(victim))
+                throw new OracleHostError("not_found", "attack target is not loaded and alive");
+            target = victim;
+        }
         List<CharacterId> actors = [];
         if (character)
         {
-            if (!_oracleState.TryResolveCharacter(OracleText(p, "character_id", 200), out var id)) throw new OracleHostError("not_found", "character is not loaded");
+            if (!_oracleState.TryResolveCharacter(actor, out var id)) throw new OracleHostError("not_found", "character is not loaded");
             actors.Add(id);
         }
         else
         {
-            if (!_oracleState.TryResolveSquad(OracleText(p, "squad_id", 200), out var id) || Session.World.Squads.Find(id) is not { } found)
+            if (!_oracleState.TryResolveSquad(actor, out var id) || Session.World.Squads.Find(id) is not { } found)
                 throw new OracleHostError("not_found", "squad is not loaded");
-            actors.AddRange(found.Members);
+            actors.AddRange(found.Members.Where(table.IsAlive));
         }
-        if (actors.Count == 0 || actors.Count > 256) throw new OracleHostError("state_unavailable", "order requires 1..256 loaded actors");
-        SimCommand order;
-        if (type == "move")
-        {
-            if (p.TryGetProperty("target_id", out _)) throw new ArgumentException("move uses position, not target_id");
-            order = new MoveOrder(actors, OraclePosition(p, "position")) { Tick = Session.World.Tick };
-        }
-        else
-        {
-            if (p.TryGetProperty("position", out _)) throw new ArgumentException("attack uses target_id, not position");
-            if (!_oracleState.TryResolveCharacter(OracleText(p, "target_id", 200), out var target)) throw new OracleHostError("not_found", "attack target is not loaded");
-            order = new Meitou.Simulation.Combat.AttackOrder(actors, target) { Tick = Session.World.Tick };
-        }
+        if (actors.Count == 0) throw new OracleHostError("not_found", "no loaded members in requested squad");
+        if (actors.Count > 256) throw new OracleHostError("state_unavailable", "order requires 1..256 loaded actors");
+        // As the native probe: a dead actor or one that is its own target refuses the whole order.
+        if (actors.Any(id => Dead(id) || id == target)) throw new OracleHostError("invalid_request", "an order actor is dead, unavailable, or its own target");
+        SimCommand order = target is { } victimId ? new Meitou.Simulation.Combat.AttackOrder(actors, victimId) { Tick = Session.World.Tick }
+            : new MoveOrder(actors, destination) { Tick = Session.World.Tick };
         Session.World.Commands.Enqueue(order);
         Session.World.ApplyPausedInterfaceCommands();
-        return new { accepted = true, type, characters = actors.Count };
+        // characters is kept for one release beside the native key affected_characters.
+        return new { accepted = true, type, affected_characters = actors.Count, characters = actors.Count };
     }
 
     static JsonArray OracleVector(Vector3 v) => new(v.X, v.Y, v.Z);

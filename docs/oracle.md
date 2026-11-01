@@ -22,7 +22,8 @@ services commands at safe frame boundaries including pause, and joins/settles
 tick-ahead before reading the world. Network workers only parse detached JSON
 or read a published heartbeat. Replacing a world invalidates the projection,
 control tokens and pending advances; the socket belongs to the host and is
-disposed with it. Autosaves are disabled in Oracle mode.
+disposed with it. Autosaves are disabled in Oracle mode, and every key, menu
+or import save/load request is dropped (only the oracle's `load_save` loads).
 Initial preparation readies population without an unclocked simulation/combat
 tick; ping records `startup_boundary:"population_prepared_without_simulation_tick"`.
 
@@ -54,8 +55,22 @@ Network reads do not advance timestamps and cannot hide a stopped host.
 Supported commands: `ping`, `get_clock`, `dump_state`, `pause`,
 `set_game_speed`, `run_until`, `run_until_status`, `cancel_run_until`,
 `load_save`, `issue_order`, `get_scene_state`, `set_camera_free`,
-`prepare_scene_control`, `commit_scene_control`, `restore_scene_control`.
-Unknown commands and scene thread details return `not_implemented`.
+`prepare_scene_control`, `commit_scene_control`, `restore_scene_control`, and
+the scene-setup commands below. Unknown commands and scene thread details
+return `not_implemented`.
+
+Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.11.0, the
+KenshiOracle protocol release implemented). Ping also reports
+`capabilities:["scene_setup"]`, `state_schema_version:"0.2"`,
+`world_readiness`, `world_mutated` and `build_commit`: the full 40-hex commit
+from the assembly metadata `OracleBuildCommit` (`git rev-parse HEAD` at build
+time), or `"unknown"` without git, on a git failure or with uncommitted changes
+(`git status --porcelain`); it is checked against `^[0-9a-f]{40}$` at startup.
+The UI's short `GitCommit` is separate. `issue_order` orders only loaded squad
+members, checks the attack target before the actors, refuses a dead or missing
+target, a squad with no loaded member and a dead actor or one that is its own
+target, with the native probe's texts, and replies `affected_characters` (and
+`characters`, kept for one release).
 `run_until` has an operation ID and finishes paused; batches can overshoot the
 requested calendar time. Capture actual time rather than claiming exact-tick
 arrival. Loads are asynchronous, end paused, and report readiness through ping.
@@ -89,10 +104,50 @@ outside common state. KenshiOracle uses `base_seed + repetition - 1`, then
 reloads with the pre-experiment seed during restoration. A known seed does not
 remove timing differences from asynchronous services or reconstruct consumed RNG.
 
+## Scene setup
+
+Implements the KenshiOracle scene-setup contract (`docs/scene-setup.md` in
+KenshiOracle, adapter 0.11.0): `setup_info`, `setup_area_census` (read-only,
+also while time runs), `setup_spawn_squad`, `setup_set_relation` and
+`setup_heal`; names, keys, parameter texts, gate order and refusal texts are
+the contract's. [`GameHost.OracleSetup.cs`](../src/Meitou.Game/GameHost.OracleSetup.cs)
+projects exactly the contract keys; Meitou-only facts go to `engine_detail`.
+No command saves.
+
+- Gate: a world finished by the oracle's own `load_save` in the current world
+  epoch, requested with `allow_setup:true` (echoed in the reply). An accepted
+  `load_save` closes the gate until that load finishes; a failed load keeps it
+  closed. There is no save-name allowlist. Mutations also need a paused world
+  and no `run_until`; the autosave refusal never fires here because oracle mode
+  has no autosave. `world_mutated` is set before a mutation's engine call and
+  cleared only when a probe load finishes.
+- Spawn: a SQUAD_TEMPLATE plan (`SquadFactory.Plan`, counts and looks rolled
+  from the world seed and `rng_key`) with the given faction, idle, outside any
+  town, on the ground (`y` ignored), `permanent` ignored, no slave squads. The
+  plan is made before any change, so a plan with a unique character is refused
+  without consuming a spawn serial. `rng_key` mixes the template id and the
+  accepted-spawn serial, reset by each finished probe load. The session squad
+  multiplier must be 1.
+- Relations: `FactionRelations.Assign` applies the player-row swap (a pair with
+  the player is one cell read from both sides) and counts in `Changes`; the war
+  flag is untouched (**Verified**, `OracleSetupTests`).
+- Heal: the F10 heal inside a paused tick bracket and republished, so the next
+  dump sees it (**Verified** for the bracket, `OracleSetupTests`). `max` is
+  Meitou's calculated `MaxHp`; the unconscious flag clears on the next body
+  tick.
+- `setup_info.squad_size` reads the install's raw `settings.cfg` line by the
+  contract's rule; `source` is `user_config` when the user config held the
+  Gameplay settings at startup, else `settings.cfg` when Meitou's own reader
+  takes the multiplier from that file (even from duplicate lines, where the
+  contract's `line` is null), else `default`.
+
+In-game behaviour of these commands: **Unknown** until run.
+
 ## Verification and remaining scope
 
-**Verified:** 115 focused Oracle/camera tests pass; the 62 shared canonical
-vectors, including 59 historical cases, match Python/native expected bytes.
+**Verified:** 145 focused Oracle/camera tests pass (fork tip on `88ae71a1`);
+the 62 shared canonical vectors, including 59 historical cases, match
+Python/native expected bytes.
 Tests use synthetic worlds and ephemeral loopback ports, never production ports.
 See [Oracle tests](../tests/Meitou.Tests/Oracle) and
 [camera restoration tests](../tests/Meitou.Tests/Engine/OracleCameraRestoreTests.cs).

@@ -57,6 +57,7 @@ sealed class GameSaves(GameHost host)
         host.FeedbackCapture.HandleFeedback();
         PrintSavedLog();
         Autosave(realDt);
+        RefuseRequestsUnderOracle();
         if (QuickSaveRequested)
         {
             QuickSaveRequested = false;
@@ -88,6 +89,21 @@ sealed class GameSaves(GameHost host)
             var (data, from, options) = (host.PopData!, LoadedSave, CaptureOptions());
             (PreparedBase, _preparedFor) = (Task.Run(() => SaveCapture.PrepareBase(data, from, options)), from);
         }
+    }
+
+    /// <summary>
+    /// In oracle mode no key, menu or import request writes or loads a save: only the oracle's own load_save loads, directly.
+    /// </summary>
+    void RefuseRequestsUnderOracle()
+    {
+        bool asked = QuickSaveRequested || QuickLoadRequested || SaveRequestedFolder is not null || LoadRequestedFolder is not null
+            || ImportRequested is not null;
+        if (!asked || !OracleSetupPolicy.RefusesPlayerSaveRequests(host.GameOptions.Oracle)) return;
+
+        QuickSaveRequested = QuickLoadRequested = false;
+        SaveRequestedFolder = LoadRequestedFolder = null;
+        ImportRequested = null;
+        host.OracleRefusedPlayerSaveRequest();
     }
 
     /// <summary>
