@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Meitou.Data.Gameplay.Ai;
 using Meitou.Data.Gameplay.Bodies;
 using Meitou.Data.Save;
 using Meitou.Game.Host;
@@ -37,9 +38,15 @@ internal sealed class OracleState
     internal static string SavedHandId(Hand hand) => string.Create(CultureInfo.InvariantCulture,
         $"hand:{unchecked((uint)hand.Type)}:{unchecked((uint)hand.C)}:{unchecked((uint)hand.Cs)}:{unchecked((uint)hand.I)}:{unchecked((uint)hand.S)}");
 
-    internal JsonObject Capture(WorldSession session, PopulationData data, string schemaVersion = "0.2")
+    /// <summary>The state schemas the adapter writes, oldest first; each adds keys to the one before and never changes them.</summary>
+    internal static readonly string[] SchemaVersions = ["0.1", "0.2", "0.3", "0.4"];
+    internal const string DefaultSchemaVersion = "0.4";
+
+    internal JsonObject Capture(WorldSession session, PopulationData data, string schemaVersion = DefaultSchemaVersion)
     {
-        if (schemaVersion is not ("0.1" or "0.2" or "0.3")) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
+        int level = Array.IndexOf(SchemaVersions, schemaVersion);
+        if (level < 0) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
+        bool v02 = level >= 1, v03 = level >= 2, v04 = level >= 3;
         if (!ReferenceEquals(_world, session.World))
         {
             _world = session.World;
@@ -106,9 +113,15 @@ internal sealed class OracleState
                 {
                     string partId = part.Template.StringId + Side(part.Template.Side);
                     if (KnownId(part.Template.StringId) is null || !partIds.Add(partId)) { health = null; break; }
-                    health.Add(new JsonObject { ["id"] = partId, ["current"] = Number(part.Flesh), ["stun"] = Number(part.Stun),
+                    var item = new JsonObject { ["id"] = partId, ["current"] = Number(part.Flesh), ["stun"] = Number(part.Stun),
                         // Calculated MaxHp, not the original's stored _maxHealth. Null when negative or non-finite, as the native probe.
-                        ["maximum"] = part.MaxHp >= 0 ? Number(part.MaxHp) : null });
+                        ["maximum"] = part.MaxHp >= 0 ? Number(part.MaxHp) : null };
+                    if (v04)
+                    {
+                        // The stored treatment values (save keys bandage<k>, rig<k>, wear<k>): native bandaging, juryRigging, wearDamage.
+                        item["bandage"] = Number(part.Bandage); item["splint"] = Number(part.Rig); item["wear"] = Number(part.Wear);
+                    }
+                    health.Add(item);
                 }
             }
             var row = new JsonObject
@@ -119,22 +132,23 @@ internal sealed class OracleState
                 ["position"] = Position(hot[id.Slot].Position),
                 ["state"] = medical is null ? null : medical.Dead ? "dead" : medical.Unconscious ? "unconscious" : "alive",
                 ["health"] = health,
-                // A Meitou movement/AI task is not by itself proof of the original TaskType.
-                ["order"] = null,
+                // 0.1 to 0.3: a Meitou movement/AI task is not by itself proof of the original TaskType. 0.4: its task row (Order).
+                ["order"] = v04 && cold is not null ? Order(hot[id.Slot], cold) : null,
             };
-            if (schemaVersion != "0.1")
+            if (v02)
             {
                 row["identity_origin"] = _savedCharacters.Contains(id) ? "saved" : null;
                 row["current_town_id"] = null; row["town_assignment"] = null;
                 row["in_combat"] = combat.TryGetValue(id, out bool mode) ? JsonValue.Create(mode) : null;
             }
-            if (schemaVersion == "0.3")
+            if (v03)
             {
                 // Meitou models 0..2 only (SlaveSave loads a saved 3 as free), so ex_slave is never emitted here.
                 row["slave_state"] = cold?.SlaveState switch { 0 => "not_slave", 1 => "slave", 2 => "escaping_slave", _ => null };
                 // The owner faction's index; the original's slaver handle is not loaded, so null does not prove there is no owner.
                 row["slave_owner_faction_id"] = cold is null ? null : Faction(cold.SlaveOwner);
             }
+            if (v04) AddState04(row, cold);
             characters.Add(row);
         }
         var squadRows = new JsonArray();
@@ -145,11 +159,13 @@ internal sealed class OracleState
                          .Select(id => _characterIds[id]).Order(OracleCanonicalJson.ScalarOrder)) members.Add(member);
             var row = new JsonObject { ["id"] = _squadIds[squad.Id], ["faction_id"] = Faction(squad.Faction), ["members"] = members,
                 ["leader_id"] = CharacterIdentity(squad.Leader) };
-            if (schemaVersion != "0.1")
+            if (v02)
             {
                 row["identity_origin"] = _savedSquads.Contains(squad.Id) ? "saved" : null;
                 row["template_id"] = KnownId(squad.TemplateId); row["origin_town_id"] = null;
             }
+            // The squad's purse in cats (platoon save key money): an integer, null outside the oracle's numeric range.
+            if (v04) row["money"] = Math.Abs(squad.Money) <= 1_000_000_000 ? JsonValue.Create(squad.Money) : null;
             squadRows.Add(row);
         }
         var factions = new JsonArray();
@@ -185,6 +201,80 @@ internal sealed class OracleState
         // An opaque world-local engine identity; it establishes neither saved origin nor cross-engine equivalence.
         string material = string.Create(CultureInfo.InvariantCulture, $"meitou-oracle:{_world!.Seed}:{kind}:{engineIdentity}");
         return "local:" + kind + ":" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+    }
+
+    /// <summary>
+    /// The state 0.4 stat keys (KenshiLib <c>StatsEnumerated</c> name without <c>STAT_</c>, lowercase) in stat number order, each the stored value.
+    /// HIVEMEDIC and VET share Medic's storage and WEAPONS and SURVIVAL have none (<see cref="StatsInfo.StorageOf"/>), so they are not keys.
+    /// </summary>
+    internal static readonly (string Key, StatsEnumerated Stat)[] StatKeys =
+    [
+        ("strength", StatsEnumerated.Strength), ("melee_attack", StatsEnumerated.MeleeAttack), ("labouring", StatsEnumerated.Labouring),
+        ("science", StatsEnumerated.Science), ("engineering", StatsEnumerated.Engineering), ("robotics", StatsEnumerated.Robotics),
+        ("smithing_weapon", StatsEnumerated.SmithingWeapon), ("smithing_armour", StatsEnumerated.SmithingArmour), ("medic", StatsEnumerated.Medic),
+        ("thieving", StatsEnumerated.Thieving), ("turrets", StatsEnumerated.Turrets), ("farming", StatsEnumerated.Farming),
+        ("cooking", StatsEnumerated.Cooking), ("stealth", StatsEnumerated.Stealth), ("athletics", StatsEnumerated.Athletics),
+        ("dexterity", StatsEnumerated.Dexterity), ("melee_defence", StatsEnumerated.MeleeDefence), ("toughness", StatsEnumerated.Toughness),
+        ("assassination", StatsEnumerated.Assassination), ("swimming", StatsEnumerated.Swimming), ("perception", StatsEnumerated.Perception),
+        ("katanas", StatsEnumerated.Katanas), ("sabres", StatsEnumerated.Sabres), ("hackers", StatsEnumerated.Hackers),
+        ("heavyweapons", StatsEnumerated.HeavyWeapons), ("blunt", StatsEnumerated.Blunt), ("martialarts", StatsEnumerated.MartialArts),
+        ("masscombat", StatsEnumerated.MassCombat), ("dodge", StatsEnumerated.Dodge), ("polearms", StatsEnumerated.Polearms),
+        ("crossbows", StatsEnumerated.Crossbows), ("friendly_fire", StatsEnumerated.FriendlyFire), ("lockpicking", StatsEnumerated.Lockpicking),
+        ("smithing_bow", StatsEnumerated.SmithingBow),
+    ];
+
+    /// <summary>
+    /// The goal rows the original's task factory builds as <c>Task_Blank</c>, copied from docs/game/ai-tasks.md ("Factory mappings", the line
+    /// "(goal; Task_Blank)", 147 rows). Meitou's provenance of a goal names the goal while the original's body runs the immediate task under it
+    /// (an attack: Meitou 16 ATTACK_ENEMIES, the original e.g. 61), so such a row is no order.
+    /// </summary>
+    internal static readonly HashSet<int> TaskBlankRows =
+    [
+        8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 30, 32, 33, 34, 37, 38, 39, 41, 42, 43, 45, 46, 47, 48, 49, 50, 54, 55, 56,
+        57, 58, 59, 63, 66, 70, 84, 85, 86, 88, 89, 90, 91, 94, 101, 104, 105, 106, 109, 111, 112, 113, 114, 115, 117, 118, 120, 122, 125, 126,
+        131, 132, 135, 137, 138, 139, 142, 143, 144, 145, 148, 149, 151, 152, 153, 154, 155, 157, 158, 160, 167, 168, 169, 172, 173, 177, 178,
+        179, 183, 184, 187, 188, 189, 190, 191, 192, 193, 194, 195, 197, 202, 203, 204, 205, 206, 211, 212, 214, 217, 218, 222, 223, 230, 232,
+        233, 234, 237, 238, 239, 242, 243, 245, 248, 250, 251, 252, 254, 255, 259, 260, 265, 268, 270, 271, 273, 275, 276, 277, 279, 281, 282,
+        283, 288,
+    ];
+
+    /// <summary>
+    /// State 0.4's order: the row of the character's task provenance (<see cref="CharacterCold.Running"/>) while it runs the character's task now,
+    /// when the row is not 0, not a <see cref="TaskBlankRows"/> goal and has a native name. The type is that name by row number
+    /// (<see cref="OracleTaskNames"/>, never the Meitou enum's spelling), the target the census id of a character target, the position null
+    /// (whether the original reports the clicked or the floored goal is Unknown).
+    /// </summary>
+    JsonObject? Order(in CharacterHot hot, CharacterCold cold)
+    {
+        if (cold.Running is not { } run || !run.Runs((CharacterTask)hot.Task)) return null;
+        int row = (int)run.Row;
+        if (row == 0 || TaskBlankRows.Contains(row) || OracleTaskNames.Of(row) is not { } type) return null;
+        return new JsonObject { ["type"] = type, ["target_id"] = CharacterIdentity(run.Target), ["position"] = null };
+    }
+
+    /// <summary>The state 0.4 character fields; without the character's cold state each is unknown (null).</summary>
+    void AddState04(JsonObject row, CharacterCold? cold)
+    {
+        var medical = cold?.Medical;
+        row["medical"] = medical is null ? null : new JsonObject
+        {
+            ["blood"] = Number(medical.Blood), ["bleed_rate"] = Number(medical.Bleeding), ["hunger"] = Number(medical.Hunger),
+            ["fed"] = Number(medical.Fed), ["coma"] = medical.Coma, ["blood_loss_trauma"] = medical.BloodKo,
+        };
+        JsonObject? stats = null;
+        if (cold?.Stats is { } values)
+        {
+            stats = [];
+            foreach (var (key, stat) in StatKeys) stats[key] = Number(values[stat]);
+        }
+        row["stats"] = stats;
+        // Locks.HeldState is the original's UseStuffState (Character+0x2f8): None 0, Bed 1, Imprisoned 2; any other value is unknown.
+        row["in_something"] = cold is null ? null : (byte)cold.InSomething switch { 0 => "nothing", 1 => "bed", 2 => "prison", _ => null };
+        // Meitou carries characters only, so "other" is never emitted. A carried character outside this census has no id: unknown, not "character".
+        string? carried = cold is null || cold.Carrying.IsNone ? null : CharacterIdentity(cold.Carrying);
+        row["carrying"] = cold is null ? null : cold.Carrying.IsNone ? "nothing" : carried is null ? null : "character";
+        row["carrying_id"] = carried;
+        row["being_carried"] = cold is null ? null : !cold.CarriedBy.IsNone;
     }
 
     static string Side(BodySide side) => side switch { BodySide.Left => ":left", BodySide.Right => ":right", _ => ":neither" };

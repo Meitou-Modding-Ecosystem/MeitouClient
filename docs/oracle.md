@@ -61,8 +61,8 @@ return `not_implemented`.
 
 Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.11.0, the
 KenshiOracle protocol release implemented). Ping also reports
-`capabilities:["scene_setup"]`, `state_schema_version:"0.2"` (the default
-dump schema), `supported_schema_versions:["0.1","0.2","0.3"]`,
+`capabilities:["scene_setup"]`, `schema_version` and `state_schema_version`
+`"0.4"` (the default dump schema), `supported_schema_versions:["0.1","0.2","0.3","0.4"]`,
 `world_readiness`, `world_mutated` and `build_commit`: the full 40-hex commit
 from the assembly metadata `OracleBuildCommit` (`git rev-parse HEAD` at build
 time), or `"unknown"` without git, on a git failure or with uncommitted changes
@@ -78,8 +78,8 @@ arrival. Loads are asynchronous, end paused, and report readiness through ping.
 
 ## State, identities and seed
 
-`dump_state` accepts `filename` and optional `schema_version` (`0.2` default,
-`0.1` and `0.3` supported; the runner sends the version it negotiated). Filenames are constrained to one new JSON file beneath the
+`dump_state` accepts `filename` and optional `schema_version` (`0.4` default,
+`0.1` to `0.3` supported; the runner sends the version it negotiated). Filenames are constrained to one new JSON file beneath the
 output folder. The capture requires a ready paused world and no active advance.
 [`OracleState`](../src/Meitou.Game/Oracle/OracleState.cs) projects loaded
 characters/squads, factions and directional relations;
@@ -93,8 +93,8 @@ The additive 0.2 fields expose saved-origin evidence, broad melee/ranged combat
 mode and squad templates. Town placement/current membership/origin remain null:
 equality of native `Town::instanceID.uid` and `TownSite.InstanceId` is unproven.
 Names, array indexes, town definition IDs and transient HANDs are not substitutes.
-`order` remains null: a Meitou act-out row is not proof of the original
-running task. `health[].maximum` is Meitou's calculated `MaxHp` (base, or 5 for
+Through 0.3 `order` stays null: a Meitou act-out row is not proof of the original
+running task (0.4 below). `health[].maximum` is Meitou's calculated `MaxHp` (base, or 5 for
 a stump, or the fitted prosthetic's HP, times multiplier and scale, minus wear),
 null when negative or non-finite as in the native probe. It is not the
 original's stored `_maxHealth`. In the setup heal receipts of the 1 November
@@ -122,6 +122,31 @@ by code); null therefore does not prove there is no owner. Shackles, cages and
 prisoner use are not exposed. Reading the fields changes no simulation state or
 state hash (**Verified**, `OracleStateTests`). The shared canonical vectors include
 three 0.3 cases, and `OracleCanonicalJsonTests` also checks a 0.3 copy of case 0.
+
+State 0.4 is 0.3 plus character `medical`, `stats`, `in_something`, `carrying`,
+`carrying_id`, `being_carried`, health part `bandage`, `splint`, `wear`, squad
+`money` and a projected `order`; 0.1 to 0.3 bytes are unchanged (**Verified**,
+hashes pinned on patch 0006 in `OracleStateTests`). Unknown is null: no
+`Medical` gives a null `medical`, no `Stats` a null `stats`. `medical` reads
+`MedicalState` `Blood`, `Bleeding`, `Hunger`, `Fed`, `Coma` and `BloodKo`;
+the part keys read `HealthPart.Bandage`, `Rig` and `Wear`; `stats` has the 34
+stored stats keyed by the lowercase KenshiLib name (HIVEMEDIC and VET share
+Medic, WEAPONS and SURVIVAL have no storage, none is a key). `in_something` maps
+`Locks.HeldState` 0, 1, 2 to `nothing`, `bed`, `prison`, other values to null.
+`carrying` is `nothing` or `character` with the carried character's census id
+(null for both when that character is outside the census); Meitou never emits
+`other`. `being_carried` is `CarriedBy` set. `money` is `Squad.Money`, null
+beyond 1e9 in magnitude. `order` comes from `CharacterCold.Running` only while
+it `Runs` the character's task now, its row is not 0 and not one of the 147
+Task_Blank goals ([ai-tasks](game/ai-tasks.md) "Factory mappings"); `type` is
+the native probe's name by row number
+([`OracleTaskNames`](../src/Meitou.Game/Oracle/OracleTaskNames.cs), the
+KenshiLib enum order; Meitou's own symbols differ at 0, 38, 52, 65, 223, 245,
+289 and 290), `target_id` the census id of a character target, `position`
+null. A goal row is no order, so an attack (Meitou row 16) reads null while the
+original reports its immediate task. In-game equivalence of every 0.4 value is
+**Unknown** (no game run backs it). Reading them changes no simulation state or
+state hash (**Verified**, `OracleStateTests`).
 
 In Oracle mode, `--seed` is applied to the in-memory save before `SaveLoader`
 and its first draws; it replaces the save's stored seed without rewriting that

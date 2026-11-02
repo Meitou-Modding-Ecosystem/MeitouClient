@@ -9,7 +9,7 @@ namespace Meitou.Tests.Oracle;
 public class OracleCanonicalJsonTests
 {
     // SHA-256 of the fixture with CRLF normalised to LF, so checkouts with either line ending agree.
-    const string VectorHash = "06a63911f1375ec5d19027c261a1bd066f2a4682c84add7f0e84ce3f434b2170";
+    const string VectorHash = "cd935563cb97f247ca7021a6bc1215d76bf21c01382e8d544783e4c138447f63";
 
     static string VectorPath([CallerFilePath] string source = "") => Environment.GetEnvironmentVariable("KENSHI_ORACLE_VECTORS")
         ?? Path.Combine(Path.GetDirectoryName(source)!, "Fixtures", "canonical-vectors.json");
@@ -86,6 +86,40 @@ public class OracleCanonicalJsonTests
         Assert.Contains("\"race_id\":\"fixture-race\",\"slave_owner_faction_id\":null,\"slave_state\":\"not_slave\",\"squad_id\":", text);
         Assert.Contains("\"health\":[{\"current\":1,\"id\":\"fixture-a-first:neither\"", text);
         Assert.True(text.IndexOf("\"name\":\"Alpha\"", StringComparison.Ordinal) < text.IndexOf("\"name\":\"Beta\"", StringComparison.Ordinal));
+        state["characters"]!.AsArray().Add(state["characters"]![0]!.DeepClone());
+        Assert.Throws<System.Text.Json.JsonException>(() => OracleCanonicalJson.Serialize(state));
+    }
+
+    [Fact]
+    public void State_04_is_canonicalised_like_03()
+    {
+        // A 0.4 copy of case 0: rows and health parts still sort, nested 0.4 objects order their keys, duplicates still fail.
+        var document = JsonNode.Parse(File.ReadAllBytes(VectorPath()))!;
+        var state = document["cases"]![0]!["input"]!.DeepClone();
+        state["schema_version"] = "0.4";
+        foreach (var row in state["characters"]!.AsArray())
+        {
+            row!["slave_owner_faction_id"] = null; row["slave_state"] = "not_slave";
+            row["medical"] = new JsonObject { ["hunger"] = 2.25, ["blood"] = 80, ["fed"] = 0, ["bleed_rate"] = null, ["coma"] = false, ["blood_loss_trauma"] = false };
+            row["stats"] = new JsonObject { ["strength"] = 12.5, ["dexterity"] = 1 };
+            row["in_something"] = "nothing"; row["carrying"] = "nothing"; row["carrying_id"] = null; row["being_carried"] = false;
+            foreach (var part in row["health"]!.AsArray()) { part!["bandage"] = 0; part["splint"] = 0; part["wear"] = 0; }
+            row["health"]!.AsArray().Add(new JsonObject { ["id"] = "fixture-a-first:neither", ["current"] = 1, ["stun"] = 0, ["maximum"] = 1,
+                ["wear"] = 0.5, ["splint"] = null, ["bandage"] = 2 });
+        }
+        state["squads"]![0]!["money"] = 1234;
+        byte[] sorted = OracleCanonicalJson.Serialize(state);
+        var reversed = state.DeepClone();
+        var characters = reversed["characters"]!.AsArray().Select(row => row!.DeepClone()).Reverse().ToArray();
+        reversed["characters"]!.AsArray().Clear();
+        foreach (var row in characters) reversed["characters"]!.AsArray().Add(row);
+        Assert.Equal(sorted, OracleCanonicalJson.Serialize(reversed));
+        string text = Encoding.UTF8.GetString(sorted);
+        Assert.Contains("\"health\":[{\"bandage\":2,\"current\":1,\"id\":\"fixture-a-first:neither\",\"maximum\":1,\"splint\":null,\"stun\":0,\"wear\":0.5}", text);
+        Assert.Contains("\"medical\":{\"bleed_rate\":null,\"blood\":80,\"blood_loss_trauma\":false,\"coma\":false,\"fed\":0,\"hunger\":2.25}", text);
+        Assert.Contains("\"leader_id\":\"hand:1:7:101:1:1001\",\"members\":", text);
+        Assert.Contains("\"members\":[\"hand:1:7:101:1:1001\",\"hand:1:7:101:2:1002\"],\"money\":1234}", text);
+        Assert.Contains("\"stats\":{\"dexterity\":1,\"strength\":12.5}", text);
         state["characters"]!.AsArray().Add(state["characters"]![0]!.DeepClone());
         Assert.Throws<System.Text.Json.JsonException>(() => OracleCanonicalJson.Serialize(state));
     }
