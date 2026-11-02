@@ -451,7 +451,7 @@ internal static partial class OracleSetupPolicy
     internal static JsonObject PingIdentity() => new()
     {
         ["target"] = "meitou", ["plugin_version"] = OracleProtocol.AdapterVersion, ["game_version"] = "MeitouClient",
-        ["schema_version"] = "0.2", ["state_schema_version"] = "0.2", ["supported_schema_versions"] = new JsonArray("0.1", "0.2"),
+        ["schema_version"] = "0.2", ["state_schema_version"] = "0.2", ["supported_schema_versions"] = new JsonArray("0.1", "0.2", "0.3"),
         ["capabilities"] = new JsonArray([.. Capabilities.Select(c => (JsonNode?)c)]),
     };
 

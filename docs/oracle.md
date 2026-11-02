@@ -61,7 +61,8 @@ return `not_implemented`.
 
 Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.11.0, the
 KenshiOracle protocol release implemented). Ping also reports
-`capabilities:["scene_setup"]`, `state_schema_version:"0.2"`,
+`capabilities:["scene_setup"]`, `state_schema_version:"0.2"` (the default
+dump schema), `supported_schema_versions:["0.1","0.2","0.3"]`,
 `world_readiness`, `world_mutated` and `build_commit`: the full 40-hex commit
 from the assembly metadata `OracleBuildCommit` (`git rev-parse HEAD` at build
 time), or `"unknown"` without git, on a git failure or with uncommitted changes
@@ -78,7 +79,7 @@ arrival. Loads are asynchronous, end paused, and report readiness through ping.
 ## State, identities and seed
 
 `dump_state` accepts `filename` and optional `schema_version` (`0.2` default,
-`0.1` supported). Filenames are constrained to one new JSON file beneath the
+`0.1` and `0.3` supported; the runner sends the version it negotiated). Filenames are constrained to one new JSON file beneath the
 output folder. The capture requires a ready paused world and no active advance.
 [`OracleState`](../src/Meitou.Game/Oracle/OracleState.cs) projects loaded
 characters/squads, factions and directional relations;
@@ -107,6 +108,20 @@ is **Unknown**. Agreement under wear, prosthetics, robots, and multiplier or
 scale changes after load is **Unknown**. Reading it changes no simulation state or state hash
 (**Verified**, `OracleStateTests`). Template fallbacks on newly created squads
 also need their own semantic verification.
+
+State 0.3 is 0.2 plus two character fields; 0.1 and 0.2 output is unchanged.
+`slave_state` maps `CharacterCold.SlaveState` 0, 1 and 2 to `not_slave`,
+`slave` and `escaping_slave`, any other value to null. `ex_slave` is never
+emitted: `SlaveSave` loads a saved `slavestate` of 3 (or any value outside
+1..2) as 0, so an original ex-slave reads `not_slave` (**Verified** by code).
+`slave_owner_faction_id` is the id of `PopulationData.Factions[SlaveOwner]`
+when `SlaveOwner` is a valid index, else null. `SlaveSave` reads the owner only
+from Meitou's own `meitou slave owner` key, never the original's `slaver`
+handle, so a slave loaded from an original save has a null owner (**Verified**
+by code); null therefore does not prove there is no owner. Shackles, cages and
+prisoner use are not exposed. Reading the fields changes no simulation state or
+state hash (**Verified**, `OracleStateTests`). The shared canonical vectors include
+three 0.3 cases, and `OracleCanonicalJsonTests` also checks a 0.3 copy of case 0.
 
 In Oracle mode, `--seed` is applied to the in-memory save before `SaveLoader`
 and its first draws; it replaces the save's stored seed without rewriting that

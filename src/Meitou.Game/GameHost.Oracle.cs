@@ -241,7 +241,7 @@ sealed partial class GameHost
         string filename = OracleText(p, "filename", 105);
         OracleHostPolicy.ValidateFilename(filename);
         string version = p.TryGetProperty("schema_version", out _) ? OracleText(p, "schema_version", 8) : "0.2";
-        if (version is not ("0.1" or "0.2")) throw new ArgumentException("unsupported state schema_version");
+        if (version is not ("0.1" or "0.2" or "0.3")) throw new ArgumentException("unsupported state schema_version");
         var state = _oracleState!.Capture(Session, PopData!, version);
         byte[] bytes = OracleCanonicalJson.Serialize(state);
         if (bytes.Length > 64 * 1024 * 1024) throw new OracleHostError("state_unavailable", "state exceeds 64 MiB");

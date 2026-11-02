@@ -1,5 +1,7 @@
 using System.Numerics;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Meitou.Data;
 using Meitou.Data.Fcs;
 using Meitou.Data.Gameplay;
@@ -144,6 +146,70 @@ public class OracleStateTests
         Assert.False(old["characters"]![0]!.AsObject().ContainsKey("identity_origin"));
         Assert.False(old["characters"]![0]!.AsObject().ContainsKey("in_combat"));
         Assert.Equal("0.1", old["schema_version"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void Schema_03_adds_slave_state_and_owner_faction_and_keeps_the_state_hash()
+    {
+        using var session = Session();
+        void Add(string name, byte state, int owner) =>
+            session.World.Characters.Spawn(new(), new CharacterCold { Name = name, SlaveState = state, SlaveOwner = owner }, 0);
+        Add("slave", 1, 0);
+        Add("escaping", 2, -1);
+        Add("free", 0, -1);
+        Add("unknown-owner", 1, 5);
+        Add("ex-slave-raw", 3, 1);
+        ulong before = session.World.StateHash();
+        var state = new OracleState().Capture(session, Data(), "0.3");
+        Assert.Equal(before, session.World.StateHash());
+        Assert.Equal("0.3", state["schema_version"]!.GetValue<string>());
+        JsonNode Row(string name) => state["characters"]!.AsArray().Single(r => r!["name"]!.GetValue<string>() == name)!;
+        string? Text(JsonNode row, string key) => row[key]?.GetValue<string>();
+        Assert.Equal("slave", Text(Row("slave"), "slave_state"));
+        Assert.Equal("b", Text(Row("slave"), "slave_owner_faction_id"));
+        Assert.Equal("escaping_slave", Text(Row("escaping"), "slave_state"));
+        Assert.Null(Text(Row("escaping"), "slave_owner_faction_id"));
+        Assert.Equal("not_slave", Text(Row("free"), "slave_state"));
+        Assert.Null(Text(Row("free"), "slave_owner_faction_id"));
+        Assert.Equal("slave", Text(Row("unknown-owner"), "slave_state"));
+        Assert.Null(Text(Row("unknown-owner"), "slave_owner_faction_id"));
+        // Meitou never holds 3 after a load; a raw value outside 0..2 is unavailable, never not_slave.
+        Assert.Null(Text(Row("ex-slave-raw"), "slave_state"));
+        Assert.Equal("a", Text(Row("ex-slave-raw"), "slave_owner_faction_id"));
+        foreach (var row in state["characters"]!.AsArray())
+        {
+            var keys = row!.AsObject().Select(pair => pair.Key).ToHashSet();
+            Assert.Contains("slave_state", keys); Assert.Contains("slave_owner_faction_id", keys);
+            Assert.Contains("identity_origin", keys); Assert.Contains("in_combat", keys);
+            Assert.Contains("current_town_id", keys); Assert.Contains("town_assignment", keys);
+        }
+    }
+
+    [Fact]
+    public void Schema_02_output_is_unchanged_and_03_differs_only_by_the_two_slave_fields()
+    {
+        using var session = Session();
+        var saved = Saved();
+        var cold = new CharacterCold { Name = "Saved slave", Save = saved, SquadId = 4, Faction = 1, SlaveState = 1, SlaveOwner = 0 };
+        var id = session.World.Characters.Spawn(new CharacterHot { Position = new Vector3(1, 2, 3) }, cold, 0);
+        var squad = new Squad { Id = 4, TemplateId = "fixture-template", SaveName = saved.Source.Platoon.Name, Faction = 1, Leader = id };
+        squad.Members.Add(id); session.World.Squads.Add(squad);
+        var projection = new OracleState();
+        var v02 = projection.Capture(session, Data(), "0.2");
+        Assert.Equal(["id", "name", "race_id", "faction_id", "squad_id", "position", "state", "health", "order",
+            "identity_origin", "current_town_id", "town_assignment", "in_combat"], v02["characters"]![0]!.AsObject().Select(pair => pair.Key));
+        Assert.Equal(["id", "faction_id", "members", "leader_id", "identity_origin", "template_id", "origin_town_id"],
+            v02["squads"]![0]!.AsObject().Select(pair => pair.Key));
+        Assert.Equal(v02.ToJsonString(), projection.Capture(session, Data()).ToJsonString());
+        var v03 = projection.Capture(session, Data(), "0.3");
+        string canonical03 = Encoding.UTF8.GetString(OracleCanonicalJson.Serialize(v03));
+        // Canonical scalar key order places the new keys between race_id and squad_id.
+        Assert.Contains("\"race_id\":null,\"slave_owner_faction_id\":\"b\",\"slave_state\":\"slave\",\"squad_id\":", canonical03);
+        var stripped = v03.DeepClone();
+        stripped["schema_version"] = "0.2";
+        foreach (var row in stripped["characters"]!.AsArray()) { row!.AsObject().Remove("slave_state"); row.AsObject().Remove("slave_owner_faction_id"); }
+        Assert.Equal(OracleCanonicalJson.Serialize(v02), OracleCanonicalJson.Serialize(stripped));
+        Assert.Throws<ArgumentException>(() => projection.Capture(session, Data(), "0.4"));
     }
 
     [Fact]

@@ -39,7 +39,7 @@ internal sealed class OracleState
 
     internal JsonObject Capture(WorldSession session, PopulationData data, string schemaVersion = "0.2")
     {
-        if (schemaVersion is not ("0.1" or "0.2")) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
+        if (schemaVersion is not ("0.1" or "0.2" or "0.3")) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
         if (!ReferenceEquals(_world, session.World))
         {
             _world = session.World;
@@ -122,11 +122,18 @@ internal sealed class OracleState
                 // A Meitou movement/AI task is not by itself proof of the original TaskType.
                 ["order"] = null,
             };
-            if (schemaVersion == "0.2")
+            if (schemaVersion != "0.1")
             {
                 row["identity_origin"] = _savedCharacters.Contains(id) ? "saved" : null;
                 row["current_town_id"] = null; row["town_assignment"] = null;
                 row["in_combat"] = combat.TryGetValue(id, out bool mode) ? JsonValue.Create(mode) : null;
+            }
+            if (schemaVersion == "0.3")
+            {
+                // Meitou models 0..2 only (SlaveSave loads a saved 3 as free), so ex_slave is never emitted here.
+                row["slave_state"] = cold?.SlaveState switch { 0 => "not_slave", 1 => "slave", 2 => "escaping_slave", _ => null };
+                // The owner faction's index; the original's slaver handle is not loaded, so null does not prove there is no owner.
+                row["slave_owner_faction_id"] = cold is null ? null : Faction(cold.SlaveOwner);
             }
             characters.Add(row);
         }
@@ -138,7 +145,7 @@ internal sealed class OracleState
                          .Select(id => _characterIds[id]).Order(OracleCanonicalJson.ScalarOrder)) members.Add(member);
             var row = new JsonObject { ["id"] = _squadIds[squad.Id], ["faction_id"] = Faction(squad.Faction), ["members"] = members,
                 ["leader_id"] = CharacterIdentity(squad.Leader) };
-            if (schemaVersion == "0.2")
+            if (schemaVersion != "0.1")
             {
                 row["identity_origin"] = _savedSquads.Contains(squad.Id) ? "saved" : null;
                 row["template_id"] = KnownId(squad.TemplateId); row["origin_town_id"] = null;

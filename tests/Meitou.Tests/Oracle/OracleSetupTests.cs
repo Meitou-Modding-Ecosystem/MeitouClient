@@ -102,6 +102,7 @@ public class OracleSetupTests
         Assert.Equal(OracleProtocol.AdapterVersion, ping["plugin_version"]!.GetValue<string>());
         Assert.Equal("0.11.0", OracleProtocol.AdapterVersion);
         Assert.Equal("0.2", ping["state_schema_version"]!.GetValue<string>());
+        Assert.Equal(["0.1", "0.2", "0.3"], ping["supported_schema_versions"]!.AsArray().Select(v => v!.GetValue<string>()));
         Assert.Equal(["scene_setup"], ping["capabilities"]!.AsArray().Select(c => c!.GetValue<string>()));
     }
 
