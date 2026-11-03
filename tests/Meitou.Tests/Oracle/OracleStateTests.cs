@@ -210,6 +210,82 @@ public class OracleStateTests
         Assert.Null(new OracleState().Capture(session, Data(), "0.5")["characters"]![0]!["goal"]);
     }
 
+    /// <summary>
+    /// A session whose captive sweep runs: a worker whose mind keeps <c>stay_in_home</c>, the leader list of its squad holding 188 Working the slaves, and a
+    /// slave member 90 away (so the job's walk lasts).
+    /// </summary>
+    static (WorldSession Session, Meitou.Simulation.Kidnap.CaptiveSystem Captive, CharacterId Worker) CaptiveWork()
+    {
+        // The shout job gives up after 10 s: with no dialogue it would keep its slave until GiveUpSeconds (it ends on its line).
+        var captive = new Meitou.Simulation.Kidnap.CaptiveSystem(Data(), null, new Meitou.Simulation.Kidnap.CaptiveSettings { GiveUpSeconds = 10 });
+        var session = new WorldSession(Vector3.Zero, (-100, -100, 100, 100), (_, _) => 0, clock: new GameClock(12.5, 2), systems: [captive]);
+        var task = new AiTask("fixture-shout", "Working the slaves", TaskType.WorkTheSlaves, TaskPriority.NonUrgent, TaskTargetType.Specific, TaskEndEvent.Nothing);
+        var board = new Blackboard([new(0, new AiPackage { Id = "fixture-package", Name = "Fixture package", Roles = [[], [], [new AiGoal(task, 0, 24, 1)], [], []] })]);
+        board.Update();
+        var squad = new Squad { Id = 5, TemplateId = "fixture-template", Faction = 1, Ai = board };
+        session.World.Squads.Add(squad);
+        CharacterId Member(string name, Vector3 at, Action<CharacterCold> set)
+        {
+            var cold = new Meitou.Tests.Combat.Combatant { Name = name }.MakeCold();
+            (cold.SquadId, cold.Faction) = (squad.Id, squad.Faction);
+            set(cold);
+            var id = session.World.Characters.Spawn(new CharacterHot { Position = at, Health = 100, MaxSpeed = 60, WalkSpeed = 15 }, cold, 0);
+            squad.Members.Add(id);
+            return id;
+        }
+        var worker = Member("worker", Vector3.Zero, c => c.Ai = Mind(squad, TaskType.StayInHome, TaskPriority.Fluff));
+        squad.Leader = worker;
+        Member("slave", new Vector3(90, 0, 0), c => (c.SlaveState, c.SlaveOwner, c.Role) = (1, 1, (int)SquadRole.Slave));
+        return (session, captive, worker);
+    }
+
+    static JsonNode? GoalOf(WorldSession session, string name) =>
+        new OracleState().Capture(session, Data(), "0.5")["characters"]!.AsArray().Single(r => r!["name"]!.GetValue<string>() == name)!["goal"];
+
+    /// <summary>
+    /// While a captive job runs, a worker's 0.5 goal is the goal the job runs (here 188 at its tier), not the goal its mind held before: the captive
+    /// sweep gives the job's goal to the mind (<c>AiSystem.TakeCaptiveGoal</c>) and the state reads the mind. Catches a slaver reading
+    /// <c>stay_in_home</c> while it gathers or works slaves.
+    /// </summary>
+    [Fact]
+    public void Schema_05_goal_of_a_captive_worker_is_the_goal_its_job_runs()
+    {
+        var (session, captive, worker) = CaptiveWork();
+        using var _ = session;
+        for (int t = 0; t < 120 && !captive.Jobs.Any(j => j.Worker == worker); t++) session.World.RunTicks(1);
+        Assert.Contains(captive.Jobs, j => j.Worker == worker);
+        Assert.Equal(TaskType.WorkTheSlaves, session.World.Characters.Cold(worker.Slot)!.Ai!.Goal?.Task.Type);
+
+        var goal = GoalOf(session, "worker")!;
+        Assert.Equal(("work_the_slaves", "non_urgent"), (goal["type"]!.GetValue<string>(), goal["priority"]!.GetValue<string>()));
+        Assert.Null(goal["target_id"]);
+        // The slave works no job and has no mind.
+        Assert.Null(GoalOf(session, "slave"));
+    }
+
+    /// <summary>
+    /// Once the job is over and the worker has chosen again, its 0.5 goal is its mind's goal again (the job's goal is the mind's until that think;
+    /// this session has no AI, so the test sets the goal the think would choose). Catches a job's goal kept after the job ended.
+    /// </summary>
+    [Fact]
+    public void Schema_05_goal_of_a_worker_is_its_mind_goal_again_once_the_job_is_over()
+    {
+        var (session, captive, worker) = CaptiveWork();
+        using var _ = session;
+        for (int t = 0; t < 120 && !captive.Jobs.Any(j => j.Worker == worker); t++) session.World.RunTicks(1);
+        Assert.Contains(captive.Jobs, j => j.Worker == worker);
+        // Its one slave is freed: the job gives up after GiveUpSeconds and no other can start.
+        var slave = session.World.Squads.All.SelectMany(s => s.Members).First(m => session.World.Characters.Cold(m.Slot)!.Name == "slave");
+        session.World.Characters.Cold(slave.Slot)!.SlaveState = 0;
+        for (int t = 0; t < 900 && captive.Jobs.Any(j => j.Worker == worker); t++) session.World.RunTicks(1);
+        Assert.DoesNotContain(captive.Jobs, j => j.Worker == worker);
+        var mind = session.World.Characters.Cold(worker.Slot)!.Ai!;
+        mind.Goal = Mind(mind.Squad, TaskType.StayInHome, TaskPriority.Fluff).Goal;
+
+        var goal = GoalOf(session, "worker")!;
+        Assert.Equal(("stay_in_home", "fluff"), (goal["type"]!.GetValue<string>(), goal["priority"]!.GetValue<string>()));
+    }
+
     [Fact]
     public void Full_saved_hand_uses_all_unsigned_component_bits()
     {

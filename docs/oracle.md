@@ -156,7 +156,9 @@ state hash (**Verified**, `OracleStateTests`).
 
 State 0.5 is 0.4 plus character `goal`; 0.1 to 0.4 bytes, `order` included, are
 unchanged (**Verified**, hashes pinned on patch 0007 in `OracleStateTests`).
-`goal` is `CharacterCold.Ai.Goal`: `type` its row's native name by row number,
+`goal` is `CharacterCold.Ai.Goal`. While the character works a captive job that
+is the job's goal: the captive sweep gives it to the mind when the job starts
+(`AiSystem.TakeCaptiveGoal`). `type` is its row's native name by row number,
 Task_Blank rows included; `priority` its AI_TASK `classification`, 0 to 4 as
 `just_action`, `fluff`, `non_urgent`, `urgent`, `obedience` (both enums number
 alike, **Verified** by reading them), other values null; `target_id` null
