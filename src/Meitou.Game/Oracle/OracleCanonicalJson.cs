@@ -15,7 +15,7 @@ internal static class OracleCanonicalJson
     {
         ArgumentNullException.ThrowIfNull(node);
         var copy = node.DeepClone();
-        if (copy is JsonObject state && state["schema_version"]?.GetValue<string>() is "0.1" or "0.2" or "0.3" or "0.4")
+        if (copy is JsonObject state && state["schema_version"]?.GetValue<string>() is "0.1" or "0.2" or "0.3" or "0.4" or "0.5")
             OrderState(state);
         var output = new StringBuilder();
         Append(output, copy);

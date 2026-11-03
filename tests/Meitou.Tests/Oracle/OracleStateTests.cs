@@ -13,6 +13,7 @@ using Meitou.Game.Host;
 using Meitou.Simulation.Session;
 using Meitou.Game.Oracle;
 using Meitou.Simulation;
+using Meitou.Simulation.Ai;
 using Meitou.Simulation.Bodies;
 using Meitou.Simulation.Locks;
 using Meitou.Simulation.Saving;
@@ -85,6 +86,128 @@ public class OracleStateTests
         Assert.Equal("b550d9deb2a29d0ecc351313b2bc4dfbcf4378f5af22f71cf4d368016ae0aee4", Hash("0.3"));
         foreach (string version in new[] { "0.1", "0.2", "0.3" })
             foreach (var row in projection.Capture(session, Data(), version)["characters"]!.AsArray()) Assert.Null(row!["order"]);
+    }
+
+    static AiMind Mind(Squad squad, TaskType goal, TaskPriority priority, params TaskType[] plan)
+    {
+        var mind = new AiMind { Squad = squad, Goal = new AiGoal(new AiTask("fixture-task", "Fixture task", goal, priority, TaskTargetType.Self, TaskEndEvent.Nothing), 0, 24, 1) };
+        foreach (var step in plan) mind.Plan.Add(new PlanStep(step, default));
+        return mind;
+    }
+
+    static void Act(WorldSession session, string name, CharacterTask task, RunningTask? running, AiMind? mind) =>
+        session.World.Characters.Spawn(new CharacterHot { Task = (byte)task }, new CharacterCold { Name = name, Running = running, Ai = mind }, 0);
+
+    /// <summary>
+    /// A world of AI minds (state 0.5's goal and plan step): a Task_Blank goal walking its carried step, a goal whose step is its own row, a goal
+    /// with a step the engine does not carry out, a player order under a mind, a mind before its first think and a character without one.
+    /// </summary>
+    static void Goals(WorldSession session)
+    {
+        var squad = new Squad { Id = 5, TemplateId = "fixture-template", Faction = 1 };
+        session.World.Squads.Add(squad);
+        static RunningTask Goal(CharacterTask task, TaskType row) => new(task, row, TaskSource.Goal, -1, CharacterId.None, null, 0);
+        Act(session, "wanderer", CharacterTask.GoTo, Goal(CharacterTask.GoTo, TaskType.WanderTown),
+            Mind(squad, TaskType.WanderTown, TaskPriority.Fluff, TaskType.MoveOnFreeWill, TaskType.WanderTown));
+        Act(session, "sleeper", CharacterTask.GoTo, Goal(CharacterTask.GoTo, TaskType.UseBed), Mind(squad, TaskType.UseBed, TaskPriority.NonUrgent, TaskType.UseBed));
+        Act(session, "operator", CharacterTask.GoTo, Goal(CharacterTask.GoTo, TaskType.OperateMachinery),
+            Mind(squad, TaskType.OperateMachinery, TaskPriority.Urgent, TaskType.MeleeAttack, TaskType.OperateMachinery));
+        Act(session, "ordered", CharacterTask.GoTo, new RunningTask(CharacterTask.GoTo, TaskType.MoveCusOrdered, TaskSource.Order, -1, CharacterId.None, null, 0),
+            Mind(squad, TaskType.WanderTown, TaskPriority.Obedience, TaskType.MoveOnFreeWill));
+        Act(session, "fresh", CharacterTask.Idle, null, new AiMind { Squad = squad });
+        Act(session, "player", CharacterTask.Idle, null, null);
+    }
+
+    [Fact]
+    public void Schema_01_to_04_bytes_are_pinned_on_a_world_holding_goals_and_plan_steps()
+    {
+        // Pinned on 8677d68d (patch 0007) before the 0.5 projection existed: 0.5 must leave these bytes, the order included, untouched.
+        using var session = Session();
+        Rich(session);
+        Goals(session);
+        var projection = new OracleState();
+        string Hash(string version) => Convert.ToHexStringLower(SHA256.HashData(OracleCanonicalJson.Serialize(projection.Capture(session, Data(), version))));
+        Assert.Equal("3b5eb62aec1fc599c1a73566353096e9b490a881c7771a72a8064f959c268918", Hash("0.1"));
+        Assert.Equal("7a3a50515bae252283dc2bcb72a45318edffb36478253e3a74cf2b23709a3eb6", Hash("0.2"));
+        Assert.Equal("3e4402636192ef74422e5733573910745ecb652022ea1b348024f63a29f534a9", Hash("0.3"));
+        Assert.Equal("c9dd3d18e304d1e1286a3120841cf310807fd3d7c113590319324cac020d9684", Hash("0.4"));
+        var v04 = projection.Capture(session, Data(), "0.4");
+        Assert.All(v04["characters"]!.AsArray(), row => Assert.False(row!.AsObject().ContainsKey("goal")));
+        string? Order(string name) => v04["characters"]!.AsArray().Single(r => r!["name"]!.GetValue<string>() == name)!["order"]?["type"]?.GetValue<string>();
+        // The 0.4 rule: a Task_Blank goal row is no order, any other goal row is its own name whatever the plan step.
+        Assert.Null(Order("wanderer"));
+        Assert.Equal("use_bed", Order("sleeper"));
+        Assert.Equal("operate_machinery", Order("operator"));
+        Assert.Equal("move_cus_ordered", Order("ordered"));
+    }
+
+    [Fact]
+    public void Schema_05_goal_is_the_mind_goal_by_row_number_and_order_names_a_carried_plan_step()
+    {
+        using var session = Session();
+        Goals(session);
+        ulong before = session.World.StateHash();
+        var state = new OracleState().Capture(session, Data(), "0.5");
+        Assert.Equal(before, session.World.StateHash());
+        Assert.Equal("0.5", state["schema_version"]!.GetValue<string>());
+        JsonNode Row(string name) => state["characters"]!.AsArray().Single(r => r!["name"]!.GetValue<string>() == name)!;
+        void Goal(string name, string type, string priority)
+        {
+            var goal = Row(name)["goal"]!;
+            Assert.Equal(["type", "priority", "target_id"], goal.AsObject().Select(p => p.Key));
+            Assert.Equal(type, goal["type"]!.GetValue<string>());
+            Assert.Equal(priority, goal["priority"]!.GetValue<string>());
+            Assert.True(goal.AsObject().ContainsKey("target_id")); Assert.Null(goal["target_id"]);
+        }
+        // WANDER_TOWN (37) is a Task_Blank row: still a goal, named by number.
+        Goal("wanderer", "wander_town", "fluff");
+        Goal("sleeper", "use_bed", "non_urgent");
+        Goal("operator", "operate_machinery", "urgent");
+        Goal("ordered", "wander_town", "obedience");
+        // No goal before the first think, none without a mind.
+        foreach (string name in new[] { "fresh", "player" }) { Assert.True(Row(name).AsObject().ContainsKey("goal")); Assert.Null(Row(name)["goal"]); }
+        string? Order(string name) => Row(name)["order"]?["type"]?.GetValue<string>();
+        // Part B: a goal's task walking a carried step other than the goal's row names the step, with no target or position.
+        Assert.Equal("move_on_free_will", Order("wanderer"));
+        Assert.Equal(["type", "target_id", "position"], Row("wanderer")["order"]!.AsObject().Select(p => p.Key));
+        Assert.Null(Row("wanderer")["order"]!["target_id"]); Assert.Null(Row("wanderer")["order"]!["position"]);
+        // A step equal to the goal's row, a step the engine does not carry out and a player order keep the 0.4 rule.
+        Assert.Equal("use_bed", Order("sleeper"));
+        Assert.Equal("operate_machinery", Order("operator"));
+        Assert.Equal("move_cus_ordered", Order("ordered"));
+        Assert.Null(Row("fresh")["order"]); Assert.Null(Row("player")["order"]);
+        string canonical = Encoding.UTF8.GetString(OracleCanonicalJson.Serialize(state));
+        Assert.Contains("\"goal\":{\"priority\":\"fluff\",\"target_id\":null,\"type\":\"wander_town\"}", canonical);
+    }
+
+    [Theory]
+    [InlineData(TaskPriority.JustAction, "just_action")]
+    [InlineData(TaskPriority.Fluff, "fluff")]
+    [InlineData(TaskPriority.NonUrgent, "non_urgent")]
+    [InlineData(TaskPriority.Urgent, "urgent")]
+    [InlineData(TaskPriority.Obedience, "obedience")]
+    [InlineData((TaskPriority)5, null)]
+    [InlineData((TaskPriority)(-1), null)]
+    public void Schema_05_goal_priority_is_the_native_tier_name_or_null(TaskPriority priority, string? expected)
+    {
+        using var session = Session();
+        var squad = new Squad { Id = 5, TemplateId = "fixture-template" };
+        session.World.Squads.Add(squad);
+        Act(session, "thinker", CharacterTask.Idle, null, Mind(squad, TaskType.Idle, priority));
+        var goal = new OracleState().Capture(session, Data(), "0.5")["characters"]![0]!["goal"]!;
+        Assert.Equal("idle", goal["type"]!.GetValue<string>());
+        Assert.True(goal.AsObject().ContainsKey("priority"));
+        Assert.Equal(expected, goal["priority"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public void Schema_05_goal_of_a_row_without_a_native_name_is_null()
+    {
+        using var session = Session();
+        var squad = new Squad { Id = 5, TemplateId = "fixture-template" };
+        session.World.Squads.Add(squad);
+        Act(session, "thinker", CharacterTask.Idle, null, Mind(squad, (TaskType)OracleTaskNames.Count, TaskPriority.Fluff));
+        Assert.Null(new OracleState().Capture(session, Data(), "0.5")["characters"]![0]!["goal"]);
     }
 
     [Fact]
@@ -247,7 +370,7 @@ public class OracleStateTests
         Assert.Equal(["id", "faction_id", "members", "leader_id", "identity_origin", "template_id", "origin_town_id"],
             v02["squads"]![0]!.AsObject().Select(pair => pair.Key));
         Assert.Equal(v02.ToJsonString(), projection.Capture(session, Data(), "0.2").ToJsonString());
-        Assert.Equal("0.4", projection.Capture(session, Data())["schema_version"]!.GetValue<string>());
+        Assert.Equal("0.5", projection.Capture(session, Data())["schema_version"]!.GetValue<string>());
         var v03 = projection.Capture(session, Data(), "0.3");
         string canonical03 = Encoding.UTF8.GetString(OracleCanonicalJson.Serialize(v03));
         // Canonical scalar key order places the new keys between race_id and squad_id.
@@ -256,7 +379,7 @@ public class OracleStateTests
         stripped["schema_version"] = "0.2";
         foreach (var row in stripped["characters"]!.AsArray()) { row!.AsObject().Remove("slave_state"); row.AsObject().Remove("slave_owner_faction_id"); }
         Assert.Equal(OracleCanonicalJson.Serialize(v02), OracleCanonicalJson.Serialize(stripped));
-        Assert.Throws<ArgumentException>(() => projection.Capture(session, Data(), "0.5"));
+        Assert.Throws<ArgumentException>(() => projection.Capture(session, Data(), "0.6"));
     }
 
     static void SetPrivate(object target, string property, object value) =>

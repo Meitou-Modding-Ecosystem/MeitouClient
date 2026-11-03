@@ -9,6 +9,7 @@ using Meitou.Data.Gameplay.Bodies;
 using Meitou.Data.Save;
 using Meitou.Game.Host;
 using Meitou.Simulation;
+using Meitou.Simulation.Ai;
 using Meitou.Simulation.Combat;
 using Meitou.Simulation.Movement;
 using Meitou.Simulation.Population;
@@ -39,14 +40,14 @@ internal sealed class OracleState
         $"hand:{unchecked((uint)hand.Type)}:{unchecked((uint)hand.C)}:{unchecked((uint)hand.Cs)}:{unchecked((uint)hand.I)}:{unchecked((uint)hand.S)}");
 
     /// <summary>The state schemas the adapter writes, oldest first; each adds keys to the one before and never changes them.</summary>
-    internal static readonly string[] SchemaVersions = ["0.1", "0.2", "0.3", "0.4"];
-    internal const string DefaultSchemaVersion = "0.4";
+    internal static readonly string[] SchemaVersions = ["0.1", "0.2", "0.3", "0.4", "0.5"];
+    internal const string DefaultSchemaVersion = "0.5";
 
     internal JsonObject Capture(WorldSession session, PopulationData data, string schemaVersion = DefaultSchemaVersion)
     {
         int level = Array.IndexOf(SchemaVersions, schemaVersion);
         if (level < 0) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
-        bool v02 = level >= 1, v03 = level >= 2, v04 = level >= 3;
+        bool v02 = level >= 1, v03 = level >= 2, v04 = level >= 3, v05 = level >= 4;
         if (!ReferenceEquals(_world, session.World))
         {
             _world = session.World;
@@ -132,8 +133,8 @@ internal sealed class OracleState
                 ["position"] = Position(hot[id.Slot].Position),
                 ["state"] = medical is null ? null : medical.Dead ? "dead" : medical.Unconscious ? "unconscious" : "alive",
                 ["health"] = health,
-                // 0.1 to 0.3: a Meitou movement/AI task is not by itself proof of the original TaskType. 0.4: its task row (Order).
-                ["order"] = v04 && cold is not null ? Order(hot[id.Slot], cold) : null,
+                // 0.1 to 0.3: a Meitou movement/AI task is not by itself proof of the original TaskType. 0.4: its task row; 0.5: or its plan step (Order).
+                ["order"] = v04 && cold is not null ? Order(hot[id.Slot], cold, v05) : null,
             };
             if (v02)
             {
@@ -149,6 +150,7 @@ internal sealed class OracleState
                 row["slave_owner_faction_id"] = cold is null ? null : Faction(cold.SlaveOwner);
             }
             if (v04) AddState04(row, cold);
+            if (v05) row["goal"] = Goal(cold);
             characters.Add(row);
         }
         var squadRows = new JsonArray();
@@ -242,15 +244,42 @@ internal sealed class OracleState
     /// State 0.4's order: the row of the character's task provenance (<see cref="CharacterCold.Running"/>) while it runs the character's task now,
     /// when the row is not 0, not a <see cref="TaskBlankRows"/> goal and has a native name. The type is that name by row number
     /// (<see cref="OracleTaskNames"/>, never the Meitou enum's spelling), the target the census id of a character target, the position null
-    /// (whether the original reports the clicked or the floored goal is Unknown).
+    /// (whether the original reports the clicked or the floored goal is Unknown). From 0.5 (<paramref name="planStep"/>) a goal's task names
+    /// its plan step instead (<see cref="StepOrder"/>).
     /// </summary>
-    JsonObject? Order(in CharacterHot hot, CharacterCold cold)
+    JsonObject? Order(in CharacterHot hot, CharacterCold cold, bool planStep)
     {
         if (cold.Running is not { } run || !run.Runs((CharacterTask)hot.Task)) return null;
+        if (planStep && StepOrder(run, cold.Ai) is { } step) return new JsonObject { ["type"] = step, ["target_id"] = null, ["position"] = null };
         int row = (int)run.Row;
         if (row == 0 || TaskBlankRows.Contains(row) || OracleTaskNames.Of(row) is not { } type) return null;
         return new JsonObject { ["type"] = type, ["target_id"] = CharacterIdentity(run.Target), ["position"] = null };
     }
+
+    /// <summary>
+    /// State 0.5's order of a goal's task (<see cref="TaskSource.Goal"/>, whose provenance row is the goal's): the native name of the mind's first plan
+    /// step (<see cref="AiMind.Step"/>) when it is a step the engine carries out (<see cref="AiSystem.Carried"/>) other than the goal's row; null otherwise.
+    /// </summary>
+    static string? StepOrder(RunningTask run, AiMind? mind) =>
+        run.Source == TaskSource.Goal && mind is { Goal: { } goal, Step: var step } && step != TaskType.None && step != goal.Task.Type
+            && AiSystem.Carried(step) ? OracleTaskNames.Of((int)step) : null;
+
+    /// <summary>
+    /// State 0.5's goal: the mind's current goal (<see cref="AiMind.Goal"/>) named by row number, Task_Blank rows included, with its AI_TASK tier;
+    /// null without a mind, before its first think or for a row without a native name. <see cref="AiGoal"/> has no target, so target_id is null.
+    /// </summary>
+    static JsonObject? Goal(CharacterCold? cold)
+    {
+        if (cold?.Ai?.Goal is not { } goal || OracleTaskNames.Of((int)goal.Task.Type) is not { } type) return null;
+        return new JsonObject { ["type"] = type, ["priority"] = Priority(goal.Task.Priority), ["target_id"] = null };
+    }
+
+    /// <summary>The native <c>taskPriority</c> spelling of a tier (both enums number 0 to 4 alike); any other value is unknown.</summary>
+    internal static string? Priority(TaskPriority priority) => priority switch
+    {
+        TaskPriority.JustAction => "just_action", TaskPriority.Fluff => "fluff", TaskPriority.NonUrgent => "non_urgent",
+        TaskPriority.Urgent => "urgent", TaskPriority.Obedience => "obedience", _ => null,
+    };
 
     /// <summary>The state 0.4 character fields; without the character's cold state each is unknown (null).</summary>
     void AddState04(JsonObject row, CharacterCold? cold)

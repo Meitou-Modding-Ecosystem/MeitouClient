@@ -9,7 +9,7 @@ namespace Meitou.Tests.Oracle;
 public class OracleCanonicalJsonTests
 {
     // SHA-256 of the fixture with CRLF normalised to LF, so checkouts with either line ending agree.
-    const string VectorHash = "cd935563cb97f247ca7021a6bc1215d76bf21c01382e8d544783e4c138447f63";
+    const string VectorHash = "99f4bfee37ee2c953c7dc34954d8d525e5f116564dcfda11c67bb2ab0f8c1484";
 
     static string VectorPath([CallerFilePath] string source = "") => Environment.GetEnvironmentVariable("KENSHI_ORACLE_VECTORS")
         ?? Path.Combine(Path.GetDirectoryName(source)!, "Fixtures", "canonical-vectors.json");

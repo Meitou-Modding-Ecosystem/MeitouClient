@@ -62,7 +62,7 @@ return `not_implemented`.
 Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.11.0, the
 KenshiOracle protocol release implemented). Ping also reports
 `capabilities:["scene_setup"]`, `schema_version` and `state_schema_version`
-`"0.4"` (the default dump schema), `supported_schema_versions:["0.1","0.2","0.3","0.4"]`,
+`"0.5"` (the default dump schema), `supported_schema_versions:["0.1","0.2","0.3","0.4","0.5"]`,
 `world_readiness`, `world_mutated` and `build_commit`: the full 40-hex commit
 from the assembly metadata `OracleBuildCommit` (`git rev-parse HEAD` at build
 time), or `"unknown"` without git, on a git failure or with uncommitted changes
@@ -78,8 +78,8 @@ arrival. Loads are asynchronous, end paused, and report readiness through ping.
 
 ## State, identities and seed
 
-`dump_state` accepts `filename` and optional `schema_version` (`0.4` default,
-`0.1` to `0.3` supported; the runner sends the version it negotiated). Filenames are constrained to one new JSON file beneath the
+`dump_state` accepts `filename` and optional `schema_version` (`0.5` default,
+`0.1` to `0.4` supported; the runner sends the version it negotiated). Filenames are constrained to one new JSON file beneath the
 output folder. The capture requires a ready paused world and no active advance.
 [`OracleState`](../src/Meitou.Game/Oracle/OracleState.cs) projects loaded
 characters/squads, factions and directional relations;
@@ -143,10 +143,33 @@ the native probe's name by row number
 ([`OracleTaskNames`](../src/Meitou.Game/Oracle/OracleTaskNames.cs), the
 KenshiLib enum order; Meitou's own symbols differ at 0, 38, 52, 65, 223, 245,
 289 and 290), `target_id` the census id of a character target, `position`
-null. A goal row is no order, so an attack (Meitou row 16) reads null while the
-original reports its immediate task. In-game equivalence of every 0.4 value is
-**Unknown** (no game run backs it). Reading them changes no simulation state or
+null. A goal row is no order. Every task the AI starts records its goal's row
+(`AiSystem.GoalRow`), while the original's order is the body's current action,
+a step of the goal's plan. So an attack (Meitou row 16) and a resident's town
+goal (`IDLE`, `WANDER_TOWN`, `SHOPPING`, `JOB_MEDIC`...) read null, while the
+original reports e.g. `move_on_free_will`, `stand_at_node` or `use_bed`
+(**Observed**, one paused run per engine on one save: Meitou named an order for
+324 of 2338 character checkpoints, the original for 1933). In the same runs,
+every 0.4 value that has a save key equalled the save at load on both engines
+(**Observed**); in-game equivalence beyond that is **Unknown**. Reading them changes no simulation state or
 state hash (**Verified**, `OracleStateTests`).
+
+State 0.5 is 0.4 plus character `goal`; 0.1 to 0.4 bytes, `order` included, are
+unchanged (**Verified**, hashes pinned on patch 0007 in `OracleStateTests`).
+`goal` is `CharacterCold.Ai.Goal`: `type` its row's native name by row number,
+Task_Blank rows included; `priority` its AI_TASK `classification`, 0 to 4 as
+`just_action`, `fluff`, `non_urgent`, `urgent`, `obedience` (both enums number
+alike, **Verified** by reading them), other values null; `target_id` null
+(`AiGoal` has no target). `goal` is null without a mind (player squads),
+before the first think (right after a load) or for a row without a name, so
+"no goal" is never a value. In 0.5 only, `order` of a goal's task
+(`TaskSource.Goal`, whose row is the goal's) is the mind's first plan step
+(`AiMind.Step`) when that step is not None, differs from the goal's row, is one
+`AiSystem.Carried` lists and has a name; `target_id` and `position` are then
+null. Otherwise the 0.4 rule holds. **Unknown**: whether Meitou's tier is the
+same quantity as the native stored `currentGoalPriority` (the tier passed when
+the goal was set), and whether the first plan step is the step the original
+body runs at the same moment.
 
 In Oracle mode, `--seed` is applied to the in-memory save before `SaveLoader`
 and its first draws; it replaces the save's stored seed without rewriting that

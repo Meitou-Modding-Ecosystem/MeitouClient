@@ -33,9 +33,9 @@ public sealed partial class AiSystem
     /// The steps the engine carries out besides a goal's own (docs/simulation.md "Planner"): moving and running (the goal's walk), travelling to the
     /// mission town (the travel goal's walk), standing at a node, shopping, sleeping, manning a turret, operating or pretending to (sitting at the
     /// seat), sheathing and getting out of bed, drawing a weapon, going home and getting near a target (walks of their own before the goal's
-    /// act-out). A plan ending in another step fails.
+    /// act-out). A plan ending in another step fails. Public for the oracle adapter, which reports such a step as the character's order.
     /// </summary>
-    static bool Carried(TaskType step) => step is TaskType.MoveOnFreeWill or TaskType.MoveOnFreeWillFast or TaskType.TravelToTargetTown
+    public static bool Carried(TaskType step) => step is TaskType.MoveOnFreeWill or TaskType.MoveOnFreeWillFast or TaskType.TravelToTargetTown
         or TaskType.TravelToTargetTownFast or TaskType.StandAtNode or TaskType.BuyShit
         or TaskType.UseBed or TaskType.UseBedOrder or TaskType.UseTurret or TaskType.OperateMachinery or TaskType.CollectOutputResource
         or TaskType.FillMachine or TaskType.PretendToOperateMachinery or TaskType.UnequipWeapon
