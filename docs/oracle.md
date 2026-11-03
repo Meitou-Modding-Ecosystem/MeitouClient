@@ -59,7 +59,7 @@ Supported commands: `ping`, `get_clock`, `dump_state`, `pause`,
 the scene-setup commands below. Unknown commands and scene thread details
 return `not_implemented`.
 
-Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.11.0, the
+Ping's `plugin_version` is `OracleProtocol.AdapterVersion` (0.12.0, the
 KenshiOracle protocol release implemented). Ping also reports
 `capabilities:["scene_setup"]`, `schema_version` and `state_schema_version`
 `"0.5"` (the default dump schema), `supported_schema_versions:["0.1","0.2","0.3","0.4","0.5"]`,
