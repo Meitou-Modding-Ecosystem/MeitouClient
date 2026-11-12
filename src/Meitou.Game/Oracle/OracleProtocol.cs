@@ -7,7 +7,7 @@ namespace Meitou.Game.Oracle;
 internal static class OracleProtocol
 {
     /// <summary>The adapter version ping reports as <c>plugin_version</c>; it follows the KenshiOracle protocol release it implements.</summary>
-    internal const string AdapterVersion = "0.12.0";
+    internal const string AdapterVersion = "0.13.0";
     internal const int MaxLineBytes = 65536; // Includes the terminating LF.
     internal const int QueueCapacity = 64;
     static readonly UTF8Encoding Utf8 = new(false, true);
