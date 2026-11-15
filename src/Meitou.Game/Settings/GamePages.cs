@@ -545,6 +545,11 @@ sealed class GamePages(SettingsMenu menu)
             + "in the Shinobi Thieves tower. The game's world places them there and draws them inside the room.",
             Toggle: new("Walls inside buildings", () => menu.Config.FixPartsInBuildings, v => menu.Config.FixPartsInBuildings = v,
                 Remaster: true, OnOff: true)));
+        result.Add(new("Bags in the inventory",
+            "Guards searching for smuggled or stolen goods and bandits after food or loot also look inside bags carried in the inventory, and guards "
+            + "confiscating stolen goods inside the worn backpack. The game misses those bags, so goods hidden in them are never found.",
+            Toggle: new("Bags in the inventory", () => menu.Config.FixBagSearch,
+                v => { menu.Config.FixBagSearch = v; menu.BagSearchChanged?.Invoke(v); }, Remaster: true, OnOff: true)));
         result.Insert(0, menu.PageSidesEntry(result, "All fixes", "Every bug on this page as the game ships it, or every fix.", "fix"));
     }
 
@@ -655,6 +660,10 @@ sealed class GamePages(SettingsMenu menu)
         result.Add(new("Pause after loading",
             "A save starts paused once it has loaded, so nothing happens before you look around. In the game it runs at once.",
             Toggle: new("Pause after loading", () => menu.Config.PauseOnLoad, v => menu.Config.PauseOnLoad = v, Remaster: true, OnOff: true)));
+        result.Add(new("Camera stays near your squads",
+            "As in the game, the camera (the free camera too) cannot go farther than 2250 units from the nearest of your characters. "
+            + "Off, it can fly anywhere in the world.",
+            Toggle: new("Camera stays near your squads", () => menu.Config.CameraLeash, v => menu.Config.CameraLeash = v, OnOff: true)));
         result.Add(new("Open bags at once",
             "A character's bag window opens with their inventory until you close it with OPEN BAG. In the game every bag stays shut after loading "
             + "until OPEN BAG is pressed for it.",

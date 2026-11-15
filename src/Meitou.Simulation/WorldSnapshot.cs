@@ -317,6 +317,11 @@ public sealed record InventoryItemView(int Index, string Record, string Name, st
     /// </summary>
     public int StolenFrom { get; init; } = -1;
     /// <summary>
+    /// The name of the character a stolen item was taken from (<see cref="Items.ItemInstance.Owner"/>; <see cref="CharacterTable.OwnerNameOf"/>), ""
+    /// when that character is not in the world, null when the item is not stolen or its mark names no character: the tooltip's <c>Stolen from:</c>.
+    /// </summary>
+    public string? StolenOwner { get; init; }
+    /// <summary>
     /// The item's <c>unique</c> flag (<see cref="Items.ItemInstance.Unique"/>): the tooltip's [Unique] row.
     /// </summary>
     public bool Unique { get; init; }
@@ -558,6 +563,14 @@ public sealed class CharacterSnapshot
     /// </summary>
     public HudView? Hud { get; internal set; }
     /// <summary>
+    /// The code mods' medical-panel readings of a selected or inspected character (<see cref="CharacterCold.Meters"/>, copied); empty otherwise.
+    /// </summary>
+    public IReadOnlyList<Bodies.MeterReading?> Meters { get; internal set; } = [];
+    /// <summary>
+    /// A selected or inspected character's levels in the code mods' skills, by <see cref="Bodies.ModSkills.All"/> order; empty otherwise.
+    /// </summary>
+    public IReadOnlyList<float> ModSkills { get; internal set; } = [];
+    /// <summary>
     /// The inventory of a selected character, of the one whose loot window is open, or of a player character whose inventory is shown (null for
     /// the others).
     /// </summary>
@@ -579,6 +592,10 @@ public sealed class CharacterSnapshot
     /// The bone of another character this one is drawn on (<see cref="CharacterCold.DrawAnchor"/>); null: none.
     /// </summary>
     public DrawAnchor? Anchor { get; internal set; }
+    /// <summary>
+    /// The rigid meshes code mods hang on its bones (<see cref="CharacterCold.BoneMeshes"/>); empty: none.
+    /// </summary>
+    public IReadOnlyList<BoneMesh> BoneMeshes { get; internal set; } = [];
     /// <summary>
     /// The ITEM (string id) held in the <c>hands</c> point while operating: the functionality's <c>special tool</c>
     /// (docs/game/buildings-production.md "Production"); null for none.

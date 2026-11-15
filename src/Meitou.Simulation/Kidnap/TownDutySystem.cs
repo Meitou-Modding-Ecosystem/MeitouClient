@@ -190,7 +190,7 @@ public sealed class TownDuty
 /// <list type="bullet">
 /// <item><b>273 Remove Intruder</b> (finder <c>FUN_14099c250</c>, <b>Verified</b> by decompile): only while the member stands in a town that is its
 /// home town, the town its occupation holds, or a town of its faction (<c>Ownerships::isMyTown</c>, KenshiLib names); the intruder is knocked out, in
-/// that town, not carried or caged, and (an engine reading of the sensed-list classes) not of the member's faction or an ally. The original's last
+/// that town, not carried or caged (Meitou: nor in a bed), and (an engine reading of the sensed-list classes) not of the member's faction or an ally. The original's last
 /// test, <c>amInsideTownWalls</c>, is read as the town's built-up area (<see cref="BuiltUp"/>). The member lifts it, then</item>
 /// <item><b>112 Find and put in cage</b> (a living body) or <b>281</b> (any body), while the package lists it: the best free cage in the town (the
 /// original's finder; an occupier may use the occupied town's, its use test passing for that town, <c>FUN_140621230</c>), where the intruder is
@@ -1040,7 +1040,8 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
     }
 
     /// <summary>
-    /// The nearest downed intruder within the member's sight in its town's built-up area (-1: none).
+    /// The nearest downed intruder within the member's sight in its town's built-up area (-1: none). Meitou: one in a bed is left alone (the
+    /// original skips only the caged, so guards threw patients out of rented beds, issue 751).
     /// </summary>
     int Intruder(World world, int slot, CharacterCold cold, CampaignTown town)
     {
@@ -1050,7 +1051,8 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
         int best = -1;
         foreach (int v in _downed)
         {
-            if (v == slot || _reserved.Contains(world.Characters.IdOf(v)) || carry.Friendly(cold, world.Characters.Cold(v)!))
+            var body = world.Characters.Cold(v)!;
+            if (v == slot || body.InSomething == HeldState.Bed || _reserved.Contains(world.Characters.IdOf(v)) || carry.Friendly(cold, body))
                 continue;
 
             var p = next[v].Position;
@@ -1189,7 +1191,8 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
 
     /// <summary>
     /// The nearest store of the town with food in it (<c>BuildingFinder_LootFoodAndStuff</c>, its filter only partly read: buildings with an
-    /// inventory holding food): a complete player storage of the player town, or a container that is not locked inside the town. Its id and where the
+    /// inventory holding food): a complete player storage of the town (for a player-side run also one in a placed town's bought house), or a
+    /// container that is not locked inside the town. Its id and where the
     /// member walks. With <paramref name="owner"/> (a player-side run) only stores of that faction; for an <paramref name="animal"/> raw food counts
     /// too and a store inside another building is skipped (the finder's animal tests).
     /// </summary>
@@ -1199,13 +1202,14 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
         var here = Flat(at);
         (string, Vector2)? best = null;
         float bestD = float.MaxValue;
-        if (town.PlayerTown > 0 || town.IsNone)
+        // A player-side run also takes the player's storages in a placed town, standing in a house the player owns there (#762).
+        if (town.PlayerTown > 0 || town.IsNone || owner >= 0)
         {
             foreach (var m in world.Machines.All)
             {
                 if (m.Storage is not { } s || !s.Items.Any(i => Edible(i, animal, race))
                         || world.Buildings.Find(m.Site) is not { Complete: true } site
-                                || !InScope(world, town, at, CampaignTown.OfPlayer(site.Town), site.Position))
+                                || !InScope(world, town, at, SiteTown(world, site), site.Position))
                     continue;
 
                 if (owner >= 0 && site.Owner != owner || animal && site.Parent is not null || asker?.IsUnreachable(m.Site, world.Tick) == true)
@@ -1242,6 +1246,12 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
         if (!town.IsNone) return storeTown == town;
         return Data.World.WorldLayout.WithinOneZone(at.X, at.Z, storePosition.X, storePosition.Z);
     }
+
+    /// <summary>
+    /// The town of a player site: its player town, else (furniture in a bought house) the placed town it stands in.
+    /// </summary>
+    CampaignTown SiteTown(World world, Construction.BuildSite site) =>
+        site.Town > 0 ? CampaignTown.OfPlayer(site.Town) : AiSystem.TownAt(data, world, site.Position);
 
     /// <summary>
     /// Food the finder looks for (<c>FUN_14042ee50</c>): <c>item function</c> 3, and raw food (15) for an animal or when the race's special food
@@ -1860,7 +1870,7 @@ public sealed class TownDutySystem(PopulationData data, PopulationSystem populat
         {
             TaskStart.Stand(table, g);
             if ((d.Next += world.TickSeconds) <= CarrySystem.ConfiscateSeconds) return true;
-            carry.Confiscate(gc, table.Cold(p)!);
+            carry.Confiscate(gc, table.Cold(p)!, world.BagSearchFix);
             return End(world, d);
         }
 

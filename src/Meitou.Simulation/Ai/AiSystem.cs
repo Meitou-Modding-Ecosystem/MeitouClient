@@ -1,4 +1,5 @@
 using System.Numerics;
+using Meitou.Data.Fcs;
 using Meitou.Data.Gameplay;
 using Meitou.Data.Gameplay.Ai;
 using Meitou.Data.World;
@@ -135,12 +136,6 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// How near a ditch target counts as at it for the planner (units; the errand walks the rest, <see cref="Kidnap.TownDutySystem"/>).
     /// </summary>
     const float StoreSlack = 20;
-
-    /// <summary>
-    /// How near an enemy must be for <c>isNoEnemiesInVicinity</c> to fail (units; <b>engine choice</b>, about a turret's range: the original's radius
-    /// is <b>Unknown</b>).
-    /// </summary>
-    public const float EnemyVicinity = 1000;
 
     /// <summary>
     /// The live relation table (the population data's).
@@ -648,7 +643,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
             // Static guard's finder (FUN_14099edd0, Verified; 38 and 268 both register it, 268 with the indoors flag; 157 has its own, FUN_14099f1a0)
             // returns 0.5 on its normal exit; only its visitor branch (a node beside a neutral stranger, not modelled) returns 1. Staying home needs
             // a piece of the home's furniture to operate (the finder of 43 returns 0 without one).
-            AiBehaviour.Post when type == TaskType.StayInHome => TownPlaceClaims.HasStayingFurniture(board.Home) ? 1 : 0,
+            AiBehaviour.Post when type == TaskType.StayInHome => TownPlaceClaims.HasStayingFurniture(world, board.OwnHome) ? 1 : 0,
             AiBehaviour.Post when type is TaskType.StandAtGuardNodeHomebuilding or TaskType.StandAtGuardNodeHomebuildingIndoorsOnly =>
                 GuardFactor(world, self, board, mind),
             // A turret is only wanted by a member that found one (the nearest unused one to it in <see cref="TownPlaceClaims.ClaimTurrets"/>):
@@ -971,7 +966,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         var self = world.Characters.IdOf(slot);
         if (mind.Target is null)
         {
-            var (centre, scatter) = PatrolArea(world, board, world.Characters.Previous[slot].Position);
+            var (centre, scatter) = PatrolArea(world, mind.Squad, board, world.Characters.Previous[slot].Position);
             mind.Target = PatrolPoint(world, self, centre, scatter);
         }
 
@@ -989,9 +984,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// <summary>
     /// The area order of 36 Patrolling town (<c>Task_PatrolTown</c> through <c>FUN_1405c6b30</c>, docs/game/ai-tasks.md "Town goals",
     /// <b>Verified</b>): the squad's town hand (<c>FUN_140269cd0</c>: its mission town, else its home town) at a scatter of half the town's radius,
-    /// at least 500; with neither, the character's own position at 1250.
+    /// at least 500; a nest squad's town is its nest (the original's <c>Nest</c> is a town: #771, Meitou had its members random-walk kilometres
+    /// away); with none, the character's own position at 1250.
     /// </summary>
-    (Vector2 Centre, float Scatter) PatrolArea(World world, Blackboard board, Vector3 from)
+    (Vector2 Centre, float Scatter) PatrolArea(World world, Squad? squad, Blackboard board, Vector3 from)
     {
         var town = board.Destination.IsNone && board.Town >= 0 ? CampaignTown.OfSite(board.Town) : board.Destination;
         if (town.Site >= 0)
@@ -1004,6 +1000,9 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         {
             return (Flat(player.Position), MathF.Max(PatrolScatterMin, player.Radius * 0.5f));
         }
+
+        if (squad is not null && world.SystemOf<PopulationSystem>()?.NestOf(squad.Id) is { } nest)
+            return (squad.HomeCentre, MathF.Max(PatrolScatterMin, nest.Radius * 0.5f));
 
         return (Flat(from), PatrolScatter);
     }
@@ -1878,7 +1877,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
             return (Flat(post.Position), true, post.Position.Y, post.Yaw);
 
         if (!mind.HomeUnreachable && GateSpot(board, mind, type) is { } guard) return (Flat(guard), true, guard.Y, null);
-        if (board.Home is not { } home || mind.HomeUnreachable || type is TaskType.HoldPosition or TaskType.ManTheGate)
+
+        // Staying home is in the squad's own home, whatever building a bar package made its home (FUN_1408cbc00 lists the home building's furniture).
+        var at = type == TaskType.StayInHome ? board.OwnHome : board.Home;
+        if (at is not { } home || mind.HomeUnreachable || type is TaskType.HoldPosition or TaskType.ManTheGate)
             return (mind.Post, false, null, null);
 
         HomeSpotKind kind = behaviour == AiBehaviour.Sleep ? HomeSpotKind.Bed : type switch
@@ -2706,6 +2708,12 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     readonly Dictionary<(AiPackage, AiRole), IReadOnlyList<AiGoal>> _combatGoals = [];
 
     /// <summary>
+    /// The "Attack enemies" goal (16) for a debug spawn that must aggro (<see cref="Squad.DebugAggro"/>), made on first use; null when the data has
+    /// none.
+    /// </summary>
+    AiGoal? _attackEnemiesGoal;
+
+    /// <summary>
     /// The BuildingFunction bits the finder of a new home looks through: 0x13, BF_ANY, MINE and REFINERY (the house function's number 19 passed as a
     /// bit mask, as the worker finder's 0x41a is read, <b>Observed</b>); a building with no functionality counts as BF_ANY.
     /// </summary>
@@ -2814,7 +2822,18 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
             }
 
             cold.Ai.EngineGoals = package is null ? [] : CombatGoalsOf(package, RoleOf(squad, squad.Members[k], cold));
+            if (squad.DebugAggro && AttackEnemiesGoal() is { } attack) cold.Ai.EngineGoals = [.. cold.Ai.EngineGoals, attack];
         }
+    }
+
+    /// <summary>
+    /// The "Attack enemies" goal (16) of the AI_TASK records, for a debug spawn that must aggro; null when the data has none.
+    /// </summary>
+    AiGoal? AttackEnemiesGoal()
+    {
+        if (_attackEnemiesGoal is { } known) return known;
+        var task = data.Db.OfType(FcsRecordType.AiTask).Select(AiTask.From).FirstOrDefault(t => t.Type == TaskType.AttackEnemies);
+        return _attackEnemiesGoal = task is null ? null : new AiGoal(task, 0, 100, 1f);
     }
 
     /// <summary>
@@ -3166,8 +3185,8 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         }
 
         /// <summary>
-        /// A package of class <paramref name="kind"/> just started for the bound squad: a patrol lays its route, a bar package takes a table, and the
-        /// other classes set up what they need.
+        /// A package of class <paramref name="kind"/> just started for the bound squad: a patrol lays its route, a bar package that relaxes
+        /// takes a table (<see cref="AsksForTable"/>), and the other classes set up what they need.
         /// </summary>
         public void Started(Blackboard board, AiPackage package, PackageClass kind)
         {
@@ -3179,6 +3198,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
                     break;
                 case PackageClass.Bar:
                 case PackageClass.BarOutdoors:
+                    if (!AsksForTable(package)) break;
                     if (BarTown(board) is >= 0 and var town
                         && _system.PickTable(_world, town, _squad, outdoors: kind == PackageClass.BarOutdoors) is var (bar, table))
                         (board.Home, board.BarTable) = (bar, table);
@@ -3201,6 +3221,21 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
                     _system.RefugeeStarted(_world, _squad, board);
                     break;
             }
+        }
+
+        /// <summary>
+        /// Whether a goal of <paramref name="package"/> asks for the package's target (214 Relaxing). The original's bar package takes its table when
+        /// the target is first asked for (docs/game/ai-tasks.md "Hang-around-bar package"), so one without such a goal, the Hub's Squatters, holds none.
+        /// </summary>
+        static bool AsksForTable(AiPackage package)
+        {
+            foreach (var goals in package.Roles)
+            {
+                foreach (var goal in goals)
+                    if (goal.Task.Type == TaskType.RelaxInTownPackage) return true;
+            }
+
+            return false;
         }
     }
 

@@ -11,7 +11,8 @@ saves opt into lossless bytes ([save](save.md)). Layouts retained below, [load o
 Bit0 only controls missing-base warning; both new/modifying records merge or create. Retain
 first definition's type even if later record differs. New takes name; existing renames when bit1,
 independent of bit0. Each key merges within its own bool/float/int/vec3/vec4/string/filename table;
-same spelling in other kinds remains distinct. Missing fields remain. REMOVED=true in merged
+same spelling in other kinds remains distinct. Missing fields remain; an empty string/filename overwrites like any value
+(**Observed** `FUN_1406c9ce0`: no empty test; its per-key filter is filled only for types 11, 13, 14). REMOVED=true in merged
 bool table removes every index; later same ID creates fresh record, no old fields.
 
 References merge by(list,target), append new at end, replace existing in place. Remove only when
@@ -185,7 +186,6 @@ CONTAINER, CROSSBOW, BLUEPRINT and MAP_ITEM have no such field. Quality (`DebugG
 ## Open questions
 
 - The game's behaviour on a truncated or corrupt file, and the exact layouts of file types 8–14.
-- Save games: the same record format, file type 15, with GAMESTATE_* / *_STATE types; see [save.md](save.md).
 - Non-UTF-8 strings in third-party mods: currently rejected. The game doesn't care: it copies string
   bytes as they are (Verified, `FUN_1406c0b50`, `FUN_1406bc480`), so lossless handling means keeping
   the raw bytes.
