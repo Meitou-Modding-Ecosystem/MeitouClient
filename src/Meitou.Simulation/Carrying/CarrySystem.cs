@@ -1295,8 +1295,11 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
             return;
         }
 
-        // The right click's crime and the steal roll (the owner watching unless down); caught, the item stays.
-        if (!victim.IsPlayer && Crimes?.Pickpocket(world, i, t, item, Crime.CrimeSystem.TakeKind.RightClick) == true) return;
+        bool bagFirst = take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack;
+        var arriving = Crime.CrimeSystem.MarksTheft(world, cold, victim) && item.Mark == StolenMark.None
+            ? StolenMark.Of(victim, table.IdOf(t))
+            : item.Mark;
+        if (RefusedTake(world, i, t, item, LootRoom(world, cold, item, arriving, bagFirst))) return;
         int fitted = InventoryCommands.LimbSlotOf(item.Section);
         if (fitted >= 0 && (victim.Medical?.LimbPart(fitted) is not { Limb: LimbState.Replaced } limb || limb.ReplacementItem != item))
             return;
@@ -1304,13 +1307,12 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         bool worn = InventoryCommands.IsEquipmentSection(item.Section) || fitted >= 0;
         var mark = item.Mark;
         int death = DeathUnits(from);
-        if (Crime.CrimeSystem.MarksTheft(world, cold, victim) && item.Mark == StolenMark.None) item.Mark = StolenMark.Of(victim, table.IdOf(t));
+        item.Mark = arriving;
         var owner = from.Items.Contains(item) ? from : from.Backpack?.Contents ?? from;
 
         if (TakeLootMoney(world, i, t, owner, item, mark, death)) return;
 
-        int moved = InventoryCommands.MoveInto(owner, item, InventoryCommands.ClickCount(item, take.Count), cold.Inventory!,
-            take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack,
+        int moved = InventoryCommands.MoveInto(owner, item, InventoryCommands.ClickCount(item, take.Count), cold.Inventory!, bagFirst,
             out bool wear, cold);
         if (owner.Items.Contains(item)) item.Mark = mark;   // what stays keeps its mark
         if (moved == 0)
@@ -1324,6 +1326,39 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         if (worn) Assembly?.RefreshEquipment(victim);
         if (wear) Assembly?.RefreshEquipment(cold);
         Seen(world, i, t, owner.Items.Contains(item) ? 1 : 0);
+    }
+
+    /// <summary>
+    /// The crime side of a right-click take out of the open loot: the right click's crime and the steal roll (the owner watching unless down), or,
+    /// when the looter has no <paramref name="room"/>, the crime alone and "no room" (no roll, no thievery XP: the original asks for room first,
+    /// <see cref="InventoryCommands.HasRoomFor(Inventory, ItemInstance, bool, CharacterCold?)"/>, #796). True: caught or no room, the item stays.
+    /// </summary>
+    bool RefusedTake(World world, int looter, int body, ItemInstance item, bool room)
+    {
+        var table = world.Characters;
+        var cold = table.Cold(looter)!;
+        bool npcOwner = !table.Cold(body)!.IsPlayer;
+        const Crime.CrimeSystem.TakeKind kind = Crime.CrimeSystem.TakeKind.RightClick;
+        if (room) return npcOwner && Crimes?.Pickpocket(world, looter, body, item, kind) == true;
+
+        if (npcOwner) Crimes?.PendPickpocket(world, looter, body, kind);
+        if (cold.IsPlayer) world.Post($"{cold.Name} has no room for {item.Name}.");
+        return true;
+    }
+
+    /// <summary>
+    /// Whether the looter has room for a unit of <paramref name="item"/> as it arrives (with the stolen mark <paramref name="arriving"/>, which
+    /// decides the stacks it joins); money the player's faction takes always (it becomes cats, <see cref="TakeLootMoney"/>).
+    /// </summary>
+    bool LootRoom(World world, CharacterCold cold, ItemInstance item, StolenMark arriving, bool bagFirst)
+    {
+        if (item.ItemFunction == PlayerSystem.MoneyFunction && cold.Faction == world.Player.Faction && Data is not null) return true;
+
+        var mark = item.Mark;
+        item.Mark = arriving;
+        bool room = InventoryCommands.HasRoomFor(cold.Inventory!, item, bagFirst, cold);
+        item.Mark = mark;
+        return room;
     }
 
     /// <summary>
@@ -1493,8 +1528,8 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
     }
 
     /// <summary>
-    /// Whether a member of the victim's faction sees the looter: awake, not carried, and the looter within its sight (<see cref="SightMap.Sees"/>,
-    /// outdoor range <see cref="CarrySettings.Sight"/> x its race's <c>vision range mult</c>). The original's witness rules are richer
+    /// Whether a member of the victim's faction sees the looter: awake, not carried, and the looter within its sight (<see cref="SightRay.Sees"/>,
+    /// with the sight ray; outdoor range <see cref="CarrySettings.Sight"/> x its race's <c>vision range mult</c>). The original's witness rules are richer
     /// (docs/game/carry-loot.md "Witnesses"); this is the part the engine has.
     /// </summary>
     bool Witnessed(World world, CharacterTable table, int looter, int victim)
@@ -1506,7 +1541,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         {
             if (w == looter || w == victim || !next[w].Alive) continue;
             if (table.Cold(w) is not { Medical.Incapacitated: false } c || c.Faction != faction || !c.CarriedBy.IsNone) continue;
-            if (world.Sight.Sees(w, looter, next[w].Position, at, AggroSystem.RangeOf(c, Settings.Sight)) > 0) return true;
+            if (SightRay.Sees(world, w, looter, next[w].Position, at, AggroSystem.RangeOf(c, Settings.Sight)) > 0) return true;
         }
         return false;
     }

@@ -468,11 +468,15 @@ public sealed partial class World
                 sk.Strength, sk.Athletics)
             : null;
         s.Inventory = selected && cold!.Inventory is { } carried ? Items.InventoryText.Lines(carried) : [];
-        s.AllSkills = detailed && cold!.Stats is { } allStats ? Array.AsReadOnly(allStats.ToArray()) : [];
+        s.AllSkills = detailed && cold!.Stats is { } allStats ? Array.AsReadOnly(allStats.ToEffectiveArray()) : [];
         s.SkillXpMultipliers = detailed && cold!.Race is { } skillRace ? Array.AsReadOnly((float[])skillRace.StatMultipliers.Clone()) : [];
         s.Hud = detailed && cold!.Medical is { } hudMed && cold.Race is { } hudRace && cold.Stats is { } hudStats
             ? HudOf(id, cold, hudMed, hudRace, hudStats, state[i], combat, bodyConstants, !Sight.Outdoors(i), Sight.Inside(i), population?.Db)
             : null;
+        s.Meters = detailed && cold!.Meters is { } meters ? Array.AsReadOnly((Bodies.MeterReading?[])meters.Clone()) : [];
+        s.ModSkills = detailed && Bodies.ModSkills.All.Count > 0 && cold!.Stats is { } modStats
+            ? Array.AsReadOnly(Bodies.ModSkills.Levels(modStats))
+            : [];
         s.LimbBits = cold?.Medical?.LimbBits ?? 0;
         s.BloodAmounts = cold?.Medical?.ShownBlood ?? 0UL;
         s.Knockdown = cold?.Knockdown ?? default;
@@ -497,8 +501,6 @@ public sealed partial class World
         s.NoLootGuilt = cold is { } guilt
             && (guilt.NpcClass is FundamentalType.Bandit or FundamentalType.Slave || population is { Factions: { } fl }
                 && (uint)guilt.Faction < (uint)fl.Count && fl[guilt.Faction].NotReal);
-        s.WarParty = cold is { SquadId: >= 0 } warCold && Squads.Find(warCold.SquadId) is { PlatoonId: >= 0 } warSquad
-            && Platoons.Find(warSquad.PlatoonId)?.Campaign is not null;
         s.Body = cold?.Medical is { } med && cold.Race is { } race ? BodyOf(cold, med, race, state[i].Task, extraBloodLoss) : null;
     }
 
@@ -513,7 +515,7 @@ public sealed partial class World
 
         // The original skips robots' appearances (FUN_140531820) and animals have none.
         s.Build = cold is { Stats: { } buildStats, Medical: { } fed, Race.IsRobot: false, Appearance: { Animal: null } look }
-            ? ShapedBuild(cold, Data.Characters.CharacterShape.BuildFromStats(look.Female, buildStats, static (stats, s) => stats[s], fed.Hunger))
+            ? ShapedBuild(cold, Data.Characters.CharacterShape.BuildFromStats(look.Female, buildStats, static (stats, s) => stats.Stored(s), fed.Hunger))
             : null;
         bool pathed = detailed && (state[i].Flags & (ushort)MoveFlags.HasPath) != 0;
         s.Path = pathed ? cold!.Path.Skip(state[i].PathCursor).ToArray() : [];
@@ -521,6 +523,7 @@ public sealed partial class World
         s.CarriedBy = cold?.CarriedBy ?? CharacterId.None;
         s.Carry = cold is { CarriedBy.IsNone: false } ? cold.CarryAttach ?? Carrying.CarryPose.Fallback : null;
         s.Anchor = cold?.DrawAnchor;
+        s.BoneMeshes = cold?.BoneMeshes ?? [];
         s.Carrying = cold?.Carrying ?? CharacterId.None;
         s.HeldTool = state[i].Task == (byte)CharacterTask.Operate && cold is { OperateSite: not null, Appearance.Animal: null }
             ? cold.OperateTool
@@ -823,26 +826,38 @@ public sealed partial class World
     /// <summary>
     /// The inventory panel's items shown in a grid, with <paramref name="steal"/>'s stealing chance of each (null: none).
     /// </summary>
-    static IReadOnlyList<InventoryItemView> ItemsOf(Items.Inventory grid, int faction, PopulationData? population,
+    IReadOnlyList<InventoryItemView> ItemsOf(Items.Inventory grid, int faction, PopulationData? population,
         Func<Items.ItemInstance, float?>? steal = null) =>
-        Array.AsReadOnly(grid.Shown().Select(shown => new InventoryItemView(shown.Index, shown.Item.Record, shown.Item.Name, shown.Item.Section,
-            shown.Item.X, shown.Item.Y, shown.Item.Width, shown.Item.Height, shown.Item.Quantity, shown.Item.Weight, shown.Item.Quality)
+        Array.AsReadOnly(grid.Shown().Select(shown => ItemViewOf(shown.Index, shown.Item, faction, population, steal)).ToArray());
+
+    /// <summary>
+    /// One item of <see cref="ItemsOf"/>: the stolen faction and the robbed character's name only when it counts as stolen for its holder's
+    /// <paramref name="faction"/>.
+    /// </summary>
+    InventoryItemView ItemViewOf(int index, Items.ItemInstance item, int faction, PopulationData? population, Func<Items.ItemInstance, float?>? steal)
+    {
+        bool stolen = item.IsStolenFor(faction, population);
+
+        return new InventoryItemView(index, item.Record, item.Name, item.Section, item.X, item.Y, item.Width, item.Height, item.Quantity, item.Weight,
+            item.Quality)
         {
-            Material = shown.Item.MaterialId,
-            Rotated = shown.Item.Rotated,
-            Colour = shown.Item.ColourId,
-            Charge = shown.Item.ChargeFraction,
-            Company = shown.Item.CompanyId,
-            Crafter = shown.Item.Crafter,
-            ModTag = shown.Item.ModTag,
-            Level = shown.Item.Level,
-            Charges = shown.Item.Charges,
-            MaxCharges = shown.Item.MaxCharges,
-            StolenFrom = shown.Item.IsStolenFor(faction, population) ? shown.Item.StolenFrom : -1,
-            Unique = shown.Item.Unique,
-            BagItems = shown.Item.Contents?.Items.Count ?? -1,
-            StealChance = steal?.Invoke(shown.Item)
-        }).ToArray());
+            Material = item.MaterialId,
+            Rotated = item.Rotated,
+            Colour = item.ColourId,
+            Charge = item.ChargeFraction,
+            Company = item.CompanyId,
+            Crafter = item.Crafter,
+            ModTag = item.ModTag,
+            Level = item.Level,
+            Charges = item.Charges,
+            MaxCharges = item.MaxCharges,
+            StolenFrom = stolen ? item.StolenFrom : -1,
+            StolenOwner = stolen ? Characters.OwnerNameOf(item.Owner) : null,
+            Unique = item.Unique,
+            BagItems = item.Contents?.Items.Count ?? -1,
+            StealChance = steal?.Invoke(item)
+        };
+    }
 
     /// <summary>
     /// The bar of Task_PickLock and Task_PickLock_Shackles (docs/game/locks.md "Lockpicking"): "Lockpicking (Chance {p}%)" with the cage penalty,

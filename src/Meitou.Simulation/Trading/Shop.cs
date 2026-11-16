@@ -73,8 +73,8 @@ public sealed class Shop
     /// least 18) in which each container's grid is a rectangle of its own (<see cref="Inventory.Regions"/>), so each container holds its own items
     /// and the trade window shows them all (the cells outside every container greyed, <see cref="Unused"/>). The rectangles are packed
     /// (<see cref="Pack"/>) in a few orders (by height, area, width, longer side, largest first; ties in the building's order) and the lowest packing
-    /// is kept. The original's merged section is ceil(cells / width) high; this is up to ~5 % more when the containers do not tile (Squin's shops: 3
-    /// to 13 rows, and 300 random orders found none lower).
+    /// is kept. The original's merged section is ceil(cells / width) high; this is more when the containers do not tile, and never less than the
+    /// stacked heights of the containers wider than half the stock, which share no row (the L-House bar's four 10 x 10 barrels: 58 rows for 43).
     /// </summary>
     public static Shop? ForBuilding(Meitou.Data.World.TownBuilding building, Trader terms)
     {
@@ -213,6 +213,28 @@ public sealed class Shop
         }
 
         region = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Whether container <paramref name="fixture"/>'s rectangle of <see cref="Stock"/> takes one unit of <paramref name="item"/> (a pure read, as
+    /// the container's own grid would): a stack of it there with room left under <paramref name="stackLimit"/>, or a free cell.
+    /// </summary>
+    public bool RegionTakes(string fixture, ItemInstance item, int stackLimit)
+    {
+        if (!RegionOf(fixture, out var r)) return false;
+
+        foreach (var other in Stock.Items)
+        {
+            if (r.Holds(other) && other.Record == item.Record && other.Quality == item.Quality && other.Mark == item.Mark
+                    && other.Section == "main" && other.Quantity < stackLimit)
+                return true;
+        }
+
+        for (int y = r.Y; y + item.Height <= r.Y + r.Height; y++)
+            for (int x = r.X; x + item.Width <= r.X + r.Width; x++)
+                if (Stock.IsFree("main", x, y, item.Width, item.Height)) return true;
+
         return false;
     }
 

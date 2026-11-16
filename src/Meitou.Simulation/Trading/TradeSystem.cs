@@ -133,6 +133,11 @@ public sealed record TradeItemView(int Index, string Record, string Name, string
     /// </summary>
     public int StolenFrom { get; init; } = -1;
     /// <summary>
+    /// The name of the character a stolen item was taken from, "" when that character is not in the world, null when the item is not stolen or its
+    /// mark names no character (as <see cref="InventoryItemView.StolenOwner"/>).
+    /// </summary>
+    public string? StolenOwner { get; init; }
+    /// <summary>
     /// The item's <c>unique</c> flag (<see cref="Items.ItemInstance.Unique"/>): the tooltip's [Unique] row.
     /// </summary>
     public bool Unique { get; init; }
@@ -678,22 +683,59 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     /// </summary>
     static void TakeContents(World world, Shop shop)
     {
-        for (int k = 0; k < shop.Containers.Count; k++)
+        for (int k = 0; k < shop.Containers.Count; k++) TakeContents(world, shop, k);
+    }
+
+    /// <summary>
+    /// Stock container <paramref name="k"/> of a building shop hands what it holds to its rectangle of the stock.
+    /// </summary>
+    static void TakeContents(World world, Shop shop, int k)
+    {
+        if (world.Fixtures.Find(shop.Containers[k]) is not { Contents: { } grid } || grid.Items.Count == 0) return;
+
+        var region = shop.Stock.Regions![k];
+
+        foreach (var item in grid.Items)
         {
-            if (world.Fixtures.Find(shop.Containers[k]) is not { Contents: { } grid } || grid.Items.Count == 0)
-                continue;
-
-            var region = shop.Stock.Regions![k];
-
-            foreach (var item in grid.Items)
-            {
-                item.X += region.X;
-                item.Y += region.Y;
-                shop.Stock.Items.Add(item);
-            }
-
-            grid.Items.Clear();
+            item.X += region.X;
+            item.Y += region.Y;
+            shop.Stock.Items.Add(item);
         }
+
+        grid.Items.Clear();
+    }
+
+    /// <summary>
+    /// A building shop's stock container <paramref name="fixture"/> gets its rectangle of the stock back into its own grid while something is put
+    /// into it (a ditch, docs/game/ai-tasks.md "Ditching": the original's stock is what the home's containers hold, so what goes into one is for
+    /// sale); <see cref="TakeBack"/> returns it to the stock afterwards.
+    /// </summary>
+    internal static void Lend(World world, Shop shop, string fixture)
+    {
+        if (shop.Stock.Regions is null || IndexOf(shop, fixture) is not (>= 0 and var k)) return;
+
+        GiveBack(world, shop, k, all: true);
+    }
+
+    /// <summary>
+    /// The stock container <paramref name="fixture"/> lent by <see cref="Lend"/> hands its grid back to its rectangle of the shop's stock.
+    /// </summary>
+    internal static void TakeBack(World world, Shop shop, string fixture)
+    {
+        if (shop.Stock.Regions is null || IndexOf(shop, fixture) is not (>= 0 and var k)) return;
+
+        TakeContents(world, shop, k);
+    }
+
+    /// <summary>
+    /// The index of a stock container among a building shop's (<see cref="Shop.Containers"/>), -1 for none.
+    /// </summary>
+    static int IndexOf(Shop shop, string fixture)
+    {
+        for (int k = 0; k < shop.Containers.Count; k++)
+            if (shop.Containers[k] == fixture) return k;
+
+        return -1;
     }
 
     /// <summary>
@@ -715,19 +757,27 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     /// </summary>
     internal static void GiveBack(World world, Shop shop, bool all = false)
     {
-        if (shop.Stock.Regions is not { } regions) return;
+        if (shop.Stock.Regions is null) return;
 
-        for (int k = 0; k < shop.Containers.Count; k++)
+        for (int k = 0; k < shop.Containers.Count; k++) GiveBack(world, shop, k, all);
+    }
+
+    /// <summary>
+    /// Stock container <paramref name="k"/> of a building shop takes its unique items (with <paramref name="all"/>, everything) of its rectangle of
+    /// the stock back into its own grid, at the same cells.
+    /// </summary>
+    static void GiveBack(World world, Shop shop, int k, bool all)
+    {
+        if (world.Fixtures.Find(shop.Containers[k]) is not { Contents: { } grid }) return;
+
+        var region = shop.Stock.Regions![k];
+
+        foreach (var item in shop.Stock.Items.Where(i => (all || i.Unique) && region.Holds(i)).ToList())
         {
-            if (world.Fixtures.Find(shop.Containers[k]) is not { Contents: { } grid }) continue;
-
-            foreach (var item in shop.Stock.Items.Where(i => (all || i.Unique) && regions[k].Holds(i)).ToList())
-            {
-                shop.Stock.Items.Remove(item);
-                (item.X, item.Y) = (item.X - regions[k].X, item.Y - regions[k].Y);
-                if (grid.IsFree("main", item.X, item.Y, item.Width, item.Height)) grid.Items.Add(item);
-                else grid.AddTo("main", item);
-            }
+            shop.Stock.Items.Remove(item);
+            (item.X, item.Y) = (item.X - region.X, item.Y - region.Y);
+            if (grid.IsFree("main", item.X, item.Y, item.Width, item.Height)) grid.Items.Add(item);
+            else grid.AddTo("main", item);
         }
     }
 
@@ -859,24 +909,81 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     }
 
     /// <summary>
-    /// Fills the shop again (the specials on its first fill), sets the squad's purse, relocks a building shop's containers that hold stock and sets
-    /// the next restock tick.
+    /// Fills the shop again (the specials on its first fill), sets the squad's purse, spreads a building shop's new stock over its containers and
+    /// relocks those that hold some, and sets the next restock tick.
     /// </summary>
     void Refill(World world, Squad squad, Shop shop, SquadTemplate template)
     {
         squad.Money = ShopFiller.Fill(shop, template, Market(world), _data, world.Seed, (ulong)squad.Id, specials: shop.Fills == 0);
 
-        // The building filler unlocks the stock containers it fills (FUN_14095b210), then locks each that holds something (FUN_1409565e0, #328).
         if (shop.Building is not null && squad.HomeBuilding is { } home)
         {
-            foreach (var f in home.Fixtures)
-            {
-                if (f.HoldsShopStock && world.Fixtures.Find(f.Id)?.Lock is { } l)
-                    l.Locked = shop.RegionOf(f.Id, out var region) && shop.Stock.Items.Any(region.Holds);
-            }
+            SpreadStock(world, shop, home, template, (ulong)squad.Id);
+            Relock(world, shop, home);
         }
 
         shop.NextRestockTick = world.Tick + (long)(template.VendorsRefreshTime / BodySystem.HoursPerTick);
+    }
+
+    /// <summary>
+    /// A building shop's new stock is spread over its containers as a stocked home's (<see cref="HomeStock"/>): the original's building filler
+    /// (<c>FUN_14095b210</c>) fills a trader's home the same way, so its barrels and cabinets hold goods, not only the first container (#768). The
+    /// unique items kept from before stay where they lie, their cells taken by copies while the spread runs; what no usable container takes is
+    /// lost. A shop none of whose containers is registered keeps the fill as it was put.
+    /// </summary>
+    void SpreadStock(World world, Shop shop, Meitou.Data.World.TownBuilding home, SquadTemplate template, ulong key)
+    {
+        var boxes = StockBoxes(world, home).Where(b => shop.RegionOf(b.Fixture.Id, out _)).ToList();
+        if (boxes.Count == 0) return;
+
+        var made = shop.Stock.Items.Where(i => !i.Unique).ToList();
+        shop.Stock.Items.RemoveAll(i => !i.Unique);
+        var kept = BlockKept(shop, boxes);
+
+        var usable = HomeStock.Usable(boxes, VendorEntries(template, FactionRecord(shop.Terms.Faction)));
+        var rng = new RandomStream(world.Seed, Rng.Mix(key ^ SpreadSalt ^ ((ulong)shop.Fills << 40)), RngPurpose.Trade);
+        HomeStock.Spread(usable, made, Market(world).BaseValue, ref rng);
+
+        foreach (var box in boxes) box.Grid.Items.RemoveAll(kept.Contains);
+        TakeContents(world, shop);
+    }
+
+    /// <summary>
+    /// Puts a copy of each unique item of the stock into the container whose rectangle holds it, at its cell there, so the spread leaves those cells
+    /// free; returns the copies.
+    /// </summary>
+    static HashSet<ItemInstance> BlockKept(Shop shop, List<StockBox> boxes)
+    {
+        var kept = new HashSet<ItemInstance>(ReferenceEqualityComparer.Instance);
+
+        foreach (var box in boxes)
+        {
+            shop.RegionOf(box.Fixture.Id, out var region);
+
+            foreach (var item in shop.Stock.Items.Where(region.Holds))
+            {
+                var copy = item.WithQuantity(item.Quantity);
+                copy.Unique = true;
+                (copy.X, copy.Y) = (item.X - region.X, item.Y - region.Y);
+                box.Grid.Items.Add(copy);
+                kept.Add(copy);
+            }
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// The building filler unlocks the stock containers it fills (<c>FUN_14095b210</c>), then locks each that holds something (<c>FUN_1409565e0</c>,
+    /// #328).
+    /// </summary>
+    static void Relock(World world, Shop shop, Meitou.Data.World.TownBuilding home)
+    {
+        foreach (var f in home.Fixtures)
+        {
+            if (f.HoldsShopStock && world.Fixtures.Find(f.Id)?.Lock is { } l)
+                l.Locked = shop.RegionOf(f.Id, out var region) && shop.Stock.Items.Any(region.Holds);
+        }
     }
 
     /// <summary>
@@ -1475,6 +1582,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
                 Charges = item.Charges,
                 MaxCharges = item.MaxCharges,
                 StolenFrom = stolen ? item.StolenFrom : -1,
+                StolenOwner = stolen ? world.Characters.OwnerNameOf(item.Owner) : null,
                 Unique = item.Unique,
                 FenceChance = odds is { } shown ? Math.Clamp(shown, 0, 1) : null,
                 FenceOdds = odds is < 1 ? Math.Max(odds.Value, 0) : null,

@@ -213,7 +213,7 @@ public static partial class SaveCapture
         // Again, with the states of the buildings first written now (job targets name them by handle).
         buildings = HeldSave.BuildingStates(game);
         MachineSave.Write(game, world);
-        TownMachineSave.Write(game.Camera.Record, world);
+        TownMachineSave.Write(game, world);
         if (world.Systems.OfType<Production.ProductionSystem>().FirstOrDefault() is { } production)
             RockMachineSave.Write(game.Camera.Record, world, production);
         world.Systems.OfType<Combat.CombatSystem>().FirstOrDefault()?.WriteTurretShots(world, buildings);
@@ -845,9 +845,18 @@ public static partial class SaveCapture
 
         if (cold.PortraitSerial is { } portraitSerial) g.Ints["portrait_serial"] = (int)portraitSerial;
 
+        // Its floor (getFloor), which the original reads back on load (FUN_140626f50) and writes for every character, 0 to 3 in vanilla saves.
+        g.Ints["floor"] = SavedFloor(world, id);
+
         // The character's slot 0x398 (FUN_1406280a0): an animal's age, 1 for people (docs/game/animals.md "Ageing"; Verified in vanilla saves).
         if ((cold.Stats ?? link?.Stats) is { } aged) g.Floats["age"] = aged.Scale;
     }
+
+    /// <summary>
+    /// The floor the character stands on (<see cref="Perception.SightMap.FloorOf"/> at its last-tick position); 0 for one not in the world.
+    /// </summary>
+    static int SavedFloor(World world, CharacterId id) =>
+        world.Characters.TryResolveNext(id, out int slot) ? world.Sight.FloorOf(slot, world.Characters.Previous[slot].Position) : 0;
 
     /// <summary>
     /// Writes a squad's dialogue-given AI on its platoon record (<see cref="AiSave"/>); the handle of its contract's mission target is written
@@ -901,7 +910,7 @@ public static partial class SaveCapture
         }
 
         if (medical is null && isNew && RaceOf(recordId, data.Db, races) is { } race)
-            medical = MedicalState.Create(race, stats?.Strength ?? 50);
+            medical = MedicalState.Create(race, stats?.Stored(StatsEnumerated.Strength) ?? 50);
 
         if (medical is not null && sc.Medical is { } mr)
         {
@@ -1237,7 +1246,8 @@ public static partial class SaveCapture
         }
 
         /// <summary>
-        /// Writes the squads in the world, the stored ones and the campaign's and code mods' stand-ins; returns the platoons written by world platoon id.
+        /// Writes the squads in the world, the stored ones and the campaign's and code mods' stand-ins; returns the platoons written by world
+        /// platoon id.
         /// </summary>
         public Dictionary<int, SavePlatoon> Write(LoadedSave? loaded)
         {

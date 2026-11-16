@@ -188,9 +188,9 @@ setting reaches the launcher with its release; the launcher knows none of them. 
   as `SettingsMenu.Section` / `ToggleSection` place them, switches first. Interior lamps is not listed: it changes the stealth sight, so it
   is on the game's Advanced page only, as is Lamp warmth.
 - Mutually exclusive techniques are one choice each (`WorldFrame.ChoiceSliders`): `Sun shadows` (Off / Faithful cascades / Meitou cascades /
-  Traced), `Ambient occlusion type` (Off / SSAO / GTAO), `Global illumination` (Off / Probes / Probes + hybrid). The switches they stand for
-  (`WorldFrame.ChoiceDrivenSwitches`) are not listed but stay saved; the game applies a saved choice after them at start, so the launcher's choice wins
-  and an older file of switches alone keeps its look.
+  Traced / Traced near, cascades far), `Ambient occlusion type` (Off / SSAO / GTAO), `Global illumination` (Off / Probes / Probes + hybrid).
+  The switches they stand for (`WorldFrame.ChoiceDrivenSwitches`) are not listed but stay saved; the game applies a saved choice after them at
+  start, so the launcher's choice wins and an older file of switches alone keeps its look.
 - A section's `groups` (null in older schemas: flat rows) are the menu's features (`FeatureGrouping.FeatureGroups`): one row headed by
   a setting (`header`) or a `title` and `description`, with an arrow folding its `members` under it (closed until opened; open ones stay
   open while the launcher runs), named without the feature's name they repeat, as in the game. The Display section has two: the upscaler (render scale and its custom value, sharpness, DLSS preset) and HDR output (white and peak brightness).
@@ -212,8 +212,7 @@ setting reaches the launcher with its release; the launcher knows none of them. 
 - Detect (when `presets.detect` names the game's option, `--recommend-preset <file>`) runs the played version's game, which makes a
   headless Vulkan device (the GPU it would pick), reads the memory and the cores, and writes `{ preset, summary, gpu, integrated,
   videoMemoryMb, memoryMb, cores, problem }`; the launcher saves `preset` as above and shows `summary`. Without Vulkan (a Metal-only Mac)
-  the memory and cores decide alone. The rule (`HardwareProbe.Recommend`) is a judgement, **Unknown** whether it suits: integrated
-  GPU (Apple's: under 16 GB memory), under 3 GB video memory, 8 GB memory or 4 threads is Low; a GeForce by its model against the
+  the memory and cores decide alone. a GeForce by its model against the
   classes the tiers are meant for (`GeForceTier`: RTX 3060 Medium, 3070 to 4070 High, 4070 Ti to 4080 Ultra, 4080 Super and 4090
   Extreme, other series by their place among these, a laptop GPU a class lower); any other card by video memory (under 6 GB Medium,
   under 12 GB High, under 24 GB Ultra, else Extreme); under 12 GB memory or 6 threads Medium at most. Observed: Intel Iris Xe (integrated) is Low, in 2.5 s.
@@ -245,7 +244,8 @@ The Settings page's Language picks the game's and the launcher's language: Engli
 languages Meitou has texts for, marked when Meitou's own texts are not translated. Choosing one writes only the `language` line of the Kenshi
 folder's `settings.cfg` (encoding and line endings kept) and remembers the code in `launcher.json` (`Language`, used without a Kenshi folder); at
 start the `settings.cfg` value wins. The launcher's labels come from the same `.po` catalogs as the game's Meitou texts
-([localisation](formats/localisation.md)); a string without a translation stays English. Mod names, news and release notes are data, not translated.
+([localisation](formats/localisation.md)), without the mods' `meitou.po`; a string without a translation stays
+English. Mod names, news and release notes are data, not translated.
 Labels the layout holds are translated by one walk of the visual and logical trees (texts, button captions, placeholders, tooltips; a control
 never shown has only logical children). Combo box items are data and not walked, except the label items of the Mac renderer and memory
 boxes (`LabelCombos`); the closed box keeps the content its selected item had when chosen, so a selection-box template redraws it in the
@@ -280,6 +280,14 @@ interpolated string, which no translation could match.
   newest first and labelled by root, and applies the chosen save's CAMERA `mods` list ([save](formats/save.md#camera-type-56-id-1051-the-world-record))
   as an all-enabled preset, without `base` and the core mods. `SaveModList` (Meitou.Core) reads it; **Verified** equal to
   `SaveCamera.Mods` on 22 of the owner's saves (0 to 180 mods).
+- An enabled mod that blanks mods above it reads "Empties file paths in N records of A, B, C and K more: it likely belongs above them"
+  (`ModBlanking`, `ModRecordScan`, Meitou.Core; [why](animation.md#animation-files)). It counts a record when it is stated whole (flag
+  bit 0 clear), empties more of the filename values set so far than it gives itself, and the mod its string id names is enabled above it;
+  REMOVED resets the record. Not counted: changes (bit 0 set), the base game's records, stubs for mods that are not enabled, records of a
+  renamed mod (the id keeps the old name), and patches that overwrite with full copies instead of blanks. It also names a mod that
+  restates another's record with most of its paths cleared, which may be meant (**Observed**: two armour records of one overhaul among
+  363 workshop files). The data files are scanned once per list load, off the UI thread (363 files, 131 MB: 0.14 s from a warm file
+  cache; a cold start with a long list is not measured), and the list is walked again on every change.
 - A mod folder with `RE_Kenshi.json` is marked as a plugin mod whose DLLs Meitou ignores ([RE_Kenshi](formats/rekenshi.md)), unless it
   also has `meitou.json`: then only the code-mod note shows.
 - A mod folder with `meitou.json` is marked as a code mod ([modding](modding.md)); enabled, its code runs, with no question
@@ -319,9 +327,6 @@ folders; `SubscribeItem` alone downloads an item within a second (11 KB), `Unsub
 20 s; with Steam closed `SteamAPI_InitFlat` fails ("Could not determine Steam client install directory") and does not start it.
 **Observed**: Steam's `content_log.txt` shows the subscriptions' download starting when the first process that queried them ran as app 233860, and
 `DownloadItem` only raising its priority ("Priority First"); `GetItemDownloadInfo` reported 0 bytes throughout, so progress is the installed count.
-**Unknown**: whether the dylib path survives Steam updates; whether pre-UGC (legacy `ISteamRemoteStorage`) items download this way (Valve's
-[Workshop guide](https://partner.steamgames.com/doc/features/workshop/implementation) says `DownloadItem` covers ISteamUGC items only); how a sync
-behaves offline or without a Kenshi licence beyond Steam's init message.
 
 ## Continue
 

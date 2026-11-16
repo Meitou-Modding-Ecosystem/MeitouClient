@@ -15,12 +15,12 @@ public sealed class NavMeshCache
     /// <summary>
     /// Bump when the builder's output changes for the same input (a new rule in the gatherer or the pruner).
     /// </summary>
-    public const int BuilderVersion = 58;
+    public const int BuilderVersion = 61;
 
     /// <summary>
     /// The layout version of the cache file; a file with another is not read.
     /// </summary>
-    const int FormatVersion = 6;
+    const int FormatVersion = 8;
     /// <summary>
     /// The first four bytes of a cache file.
     /// </summary>
@@ -61,48 +61,10 @@ public sealed class NavMeshCache
     }
 
     /// <summary>
-    /// Hash of the inputs every zone shares, by size and write time (not contents): the data files in load order (record contents: buildings,
-    /// layouts, foliage), the seed, height, biome, map feature and overlay files the gather and the foliage placer read, and the DotRecast version.
-    /// Collision files are not in it.
+    /// Hash of the inputs every zone shares, by size and write time (not contents): the data files, map files, level files of every layer,
+    /// collision files the records name and the DotRecast version (<see cref="NavContentHash"/>).
     /// </summary>
-    public static uint ContentHash(GameInstall install, GameDatabase db)
-    {
-        uint h = 2166136261;
-        void Add(string text)
-        {
-            foreach (char c in text)
-                h = (h ^ c) * 16777619;
-
-            h = (h ^ 0xff) * 16777619;
-        }
-
-        void Stamp(string path)
-        {
-            var file = new FileInfo(GameFiles.Resolve(path));
-            Add(file.Name);
-            Add(file.Exists ? $"{file.Length}:{file.LastWriteTimeUtc.Ticks}" : "-");
-        }
-
-        var mods = ModList.FindMods(install);
-        foreach (var name in db.Files)
-        {
-            Stamp(LoadOrder.BaseFiles.Contains(name) ? Path.Combine(install.DataDirectory, name)
-                : mods.TryGetValue(Path.GetFileNameWithoutExtension(name), out var mod) ? mod : name);
-        }
-
-        foreach (var rel in new[] { NavSeeds.RelativePath, TerrainHeightmap.RelativePath, BlendInfoFile.RelativePath, TerrainMaps.BiomeMap,
-            MapFeatureFile.RelativePath })
-            Stamp(Path.Combine(install.DataDirectory, rel));
-
-        if (Path.GetDirectoryName(TerrainMaps.OverlayTile(install, "new_overlay", 0, 0)) is { } overlays && System.IO.Directory.Exists(overlays))
-        {
-            foreach (var tile in System.IO.Directory.GetFiles(overlays, "new_overlay.*").Order(StringComparer.OrdinalIgnoreCase))
-                Stamp(tile);
-        }
-
-        Add(typeof(DotRecast.Recast.RcBuilder).Assembly.GetName().Version?.ToString() ?? "");
-        return h;
-    }
+    public static uint ContentHash(GameInstall install, GameDatabase db, WorldLevelData levels) => NavContentHash.Of(install, db, levels);
 
     /// <summary>
     /// The cached mesh when the file exists and matches the hashes; null otherwise (missing, stale or damaged).
@@ -144,8 +106,13 @@ public sealed class NavMeshCache
         for (int i = 0; i < doorIds.Length; i++)
             doorIds[i] = r.ReadString();
 
+        var buildingIds = new string[r.ReadInt32()];
+        for (int i = 0; i < buildingIds.Length; i++)
+            buildingIds[i] = r.ReadString();
+
         int count = r.ReadInt32();
         var doorOf = doorIds.Length > 0 ? new int[count] : null;
+        var buildingOf = buildingIds.Length > 0 ? new int[count] : null;
         var polygons = new int[count][];
         var neighbours = new int[count][];
         var areas = new byte[count];
@@ -173,6 +140,7 @@ public sealed class NavMeshCache
             }
 
             if (doorOf is not null) doorOf[p] = r.ReadInt16();
+            if (buildingOf is not null) buildingOf[p] = r.ReadInt16();
         }
 
         var corners = new Vector3[r.ReadInt32() * 3];
@@ -180,6 +148,8 @@ public sealed class NavMeshCache
             corners[i] = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
 
         var heights = ReadHeights(r, count);
+        var gateSides = ReadGateSides(r);
+        var codePoints = ReadCodePoints(r);
         if (r.ReadInt32() != count)
             return null; // trailer: truncated writes fail here
 
@@ -197,6 +167,10 @@ public sealed class NavMeshCache
             BoundsMax = boundsMax,
             DoorIds = doorIds.Length > 0 ? doorIds : null,
             DoorOf = doorOf,
+            GateSides = gateSides,
+            BuildingIds = buildingIds.Length > 0 ? buildingIds : null,
+            BuildingOf = buildingOf,
+            CodePoints = codePoints,
             Surfaces = corners.Length > 0 ? new NavSurfaces(corners) : null,
             Heights = heights,
             InteriorStart = interiorStart,
@@ -229,6 +203,35 @@ public sealed class NavMeshCache
 
         return heights;
     }
+
+    /// <summary>
+    /// The gates' side points (null when the zone has none).
+    /// </summary>
+    static GateSide[]? ReadGateSides(BinaryReader r)
+    {
+        var sides = new GateSide[r.ReadInt32()];
+        for (int i = 0; i < sides.Length; i++)
+            sides[i] = new GateSide(r.ReadString(), ReadVector(r), ReadVector(r));
+
+        return sides.Length > 0 ? sides : null;
+    }
+
+    /// <summary>
+    /// Where the zone's interior buildings read their own code (null when the zone has none).
+    /// </summary>
+    static BuildingCodePoint[]? ReadCodePoints(BinaryReader r)
+    {
+        var points = new BuildingCodePoint[r.ReadInt32()];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = new BuildingCodePoint(r.ReadString(), ReadVector(r));
+
+        return points.Length > 0 ? points : null;
+    }
+
+    /// <summary>
+    /// Reads three floats.
+    /// </summary>
+    static Vector3 ReadVector(BinaryReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
 
     /// <summary>
     /// Writes a zone's mesh with the hashes <see cref="TryLoad"/> checks: to a temporary file first, then moved over the zone's file.
@@ -264,9 +267,14 @@ public sealed class NavMeshCache
             foreach (var id in ids)
                 w.Write(id);
 
+            var buildings = m.BuildingIds ?? [];
+            w.Write(buildings.Length);
+            foreach (var id in buildings)
+                w.Write(id);
+
             w.Write(m.PolygonCount);
             for (int p = 0; p < m.PolygonCount; p++)
-                WritePolygon(w, m, p, ids.Length > 0);
+                WritePolygon(w, m, p, ids.Length > 0, buildings.Length > 0);
 
             var corners = m.Surfaces?.Corners ?? [];
             w.Write(corners.Length / 3);
@@ -278,6 +286,8 @@ public sealed class NavMeshCache
             }
 
             WriteHeights(w, m.Heights);
+            WriteGateSides(w, m.GateSides);
+            WriteCodePoints(w, m.CodePoints);
             w.Write(m.PolygonCount);
         }
 
@@ -285,9 +295,9 @@ public sealed class NavMeshCache
     }
 
     /// <summary>
-    /// Writes one polygon: its corners, neighbours, links, area, kept flag and (with doors) its door.
+    /// Writes one polygon: its corners, neighbours, links, area, kept flag, (with doors) its door and (with interiors) its building.
     /// </summary>
-    static void WritePolygon(BinaryWriter w, ZoneNavMesh m, int p, bool withDoors)
+    static void WritePolygon(BinaryWriter w, ZoneNavMesh m, int p, bool withDoors, bool withBuildings)
     {
         w.Write((byte)m.Polygons[p].Length);
         w.Write(m.Areas[p]);
@@ -304,6 +314,44 @@ public sealed class NavMeshCache
             w.Write(i);
 
         if (withDoors) w.Write((short)(m.DoorOf?[p] ?? -1));
+        if (withBuildings) w.Write((short)(m.BuildingOf?[p] ?? -1));
+    }
+
+    /// <summary>
+    /// Writes the gates' side points (a count first).
+    /// </summary>
+    static void WriteGateSides(BinaryWriter w, GateSide[]? sides)
+    {
+        w.Write(sides?.Length ?? 0);
+        foreach (var side in sides ?? [])
+        {
+            w.Write(side.Building);
+            WriteVector(w, side.First);
+            WriteVector(w, side.Second);
+        }
+    }
+
+    /// <summary>
+    /// Writes the interior buildings' code points (a count first).
+    /// </summary>
+    static void WriteCodePoints(BinaryWriter w, BuildingCodePoint[]? points)
+    {
+        w.Write(points?.Length ?? 0);
+        foreach (var point in points ?? [])
+        {
+            w.Write(point.Building);
+            WriteVector(w, point.At);
+        }
+    }
+
+    /// <summary>
+    /// Writes three floats.
+    /// </summary>
+    static void WriteVector(BinaryWriter w, Vector3 v)
+    {
+        w.Write(v.X);
+        w.Write(v.Y);
+        w.Write(v.Z);
     }
 
     /// <summary>

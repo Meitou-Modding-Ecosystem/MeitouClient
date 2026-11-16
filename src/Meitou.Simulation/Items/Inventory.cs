@@ -161,6 +161,11 @@ public sealed class Inventory(int width, int height)
     public bool HasRoomFor(ItemInstance item) => Room(this, "main", item) || Backpack?.Contents is { } bag && Room(bag, "backpack_content", item);
 
     /// <summary>
+    /// Whether <paramref name="section"/> takes one unit of <paramref name="item"/> (a dry run): a stack of it with room left, or a free cell.
+    /// </summary>
+    public bool HasRoomIn(string section, ItemInstance item) => Room(this, section, item);
+
+    /// <summary>
     /// Whether <paramref name="inv"/>'s <paramref name="section"/> takes one unit of <paramref name="item"/>: a stack of it with room left, or a
     /// free cell.
     /// </summary>
@@ -249,6 +254,22 @@ public sealed class Inventory(int width, int height)
             if (i.Contents is { } bag)
                 foreach (var inner in bag.All()) yield return inner;
         }
+    }
+
+    /// <summary>
+    /// The items a search of the carrier finds: this inventory's own and the worn backpack's contents, with <paramref name="carriedBags"/> also the
+    /// contents of bags carried in the grid (<see cref="All"/>; the game's searches miss those, Meitou fix <see cref="World.BagSearchFix"/>).
+    /// </summary>
+    public IEnumerable<ItemInstance> Searched(bool carriedBags) => carriedBags ? All() : Items.Concat(Backpack?.Contents?.All() ?? []);
+
+    /// <summary>
+    /// The bags carried in the grid (containers other than the worn backpack).
+    /// </summary>
+    public IEnumerable<Inventory> CarriedBags()
+    {
+        var worn = Backpack;
+        foreach (var i in Items)
+            if (i.Contents is { } bag && !ReferenceEquals(i, worn)) yield return bag;
     }
 
     /// <summary>

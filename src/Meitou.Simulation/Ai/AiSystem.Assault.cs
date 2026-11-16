@@ -87,7 +87,7 @@ public sealed partial class AiSystem
                 || Relations.Contains(c.Faction) && Relations.Contains(me.Faction) && Relations.IsAlly(me.Faction, c.Faction)))
                 continue;
 
-            if (PursuitSystem.PathImpossible(me, m, world.Tick)) continue;
+            if (PursuitSystem.PathImpossible(me, m, world.Tick) || TargetScore.SparesSlave(me, c)) continue;
 
             var candidate = new TargetCandidate
             {

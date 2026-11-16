@@ -419,11 +419,12 @@ public sealed partial class FixtureRegistry
     }
 
     /// <summary>
-    /// Registers a town building and adds it to the sight's occluders.
+    /// Registers a town building and adds it to the sight's occluders. A gate the last labelling listed gets its first code back on its first door.
     /// </summary>
     void RegisterWithSight(World world, PopulationData data, int site, TownBuilding b, int townFaction)
     {
         RegisterBuilding(world, data, site, b, townFaction);
+        world.SystemOf<LockSystem>()?.ApplyGateCode(world, b.Key);
         if (data.Sight is { } sight) world.Sight.Add(sight, SightBuilding(b, IsDestroyed(b)));
     }
 
@@ -649,6 +650,7 @@ public sealed partial class FixtureRegistry
     {
         var doorRefs = record.GetReferences("doors");
         bool gate = TownBuildings.IsGate(db, record, _functions);
+        bool inGateSet = LockSystem.InGateSet(record);
         for (int i = 0; i < doorRefs.Count; i++)
         {
             var door = db.Find(doorRefs[i].TargetStringId);
@@ -668,6 +670,7 @@ public sealed partial class FixtureRegistry
                 WantsLock = door?.GetBool("always locks") ?? false,
                 HostRecordId = record.StringId,
                 IsGate = gate,
+                InGateSet = inGateSet,
                 Leaf = door is null ? new DoorLeaf(0, 30, 1, 0) : DoorLeaf.Of(door),
                 Lock = new LockState { Level = RollLevel(world.Seed, id, faction, IntOf(door, "lock level bonus"), door: true),
                         Hardness = FloatOf(record, "hardness") },
@@ -1033,6 +1036,7 @@ public sealed partial class FixtureRegistry
             Restrains = functionality?.GetBool("restrains movement") ?? false,
             OccupantSelection = kind == FixtureKind.Cage && (functionality?.GetBool("occupant selection") ?? false),
             UseRange = functionality is null ? 25 : FloatOf(functionality, "use range", 25),
+            Function = functionality?.GetInt("function") ?? -1,
             Contents = kind == FixtureKind.Container && storageWidth > 0 && storageHeight > 0
                     ? new Items.Inventory(storageWidth, storageHeight) { StackBonusMult = record.GetFloat("stackable bonus mult", 1) } : null,
             Lock = !locked ? null
@@ -1863,10 +1867,12 @@ public sealed partial class FixtureRegistry
     /// <summary>
     /// Frees a prisoner (Task_ReleasePrisoner, economy.md 11.5, <b>Observed</b>): the cage is unlocked and emptied, the state and sentence cleared
     /// (not the slave state: a slave released by a faction other than the player's becomes that faction's slave); when the releaser's faction books
-    /// bounties its entry and the jail's (the cage owner's) are erased. A player-faction prisoner gets "{1} has been released from prison.". The
-    /// prisoner is put in front of the cage (<see cref="ExitSpot"/>). False when the character is not imprisoned.
+    /// bounties its entry and the jail's (the cage owner's) are erased. A <paramref name="jailer"/> release (Task_ReleasePrisoner and the engine's
+    /// stand-ins for it) of a player-faction prisoner that is no slave posts "{1} has been released from prison." (<c>FUN_1403570a0</c>, slave test
+    /// <c>FUN_1405c8aa0</c>, <b>Verified</b>); bail, trade, recruiting and liberators post nothing. The prisoner is put in front of the cage
+    /// (<see cref="ExitSpot"/>). False when the character is not imprisoned.
     /// </summary>
-    public bool Release(World world, CharacterId prisoner, int releaserFaction = -1, CrimeSystem? crimes = null)
+    public bool Release(World world, CharacterId prisoner, int releaserFaction = -1, CrimeSystem? crimes = null, bool jailer = false)
     {
         var table = world.Characters;
         if (!table.TryResolveNext(prisoner, out int s) || table.Cold(s) is not { IsImprisoned: true } c) return false;
@@ -1898,7 +1904,7 @@ public sealed partial class FixtureRegistry
         if (releaserFaction >= 0 && releaserFaction != world.Player.Faction && c.SlaveState != 0)
             c.SlaveOwner = releaserFaction;
 
-        if (c.IsPlayer) world.Post(Loc.Tr("{1} has been released from prison.", c.Name));
+        if (jailer && c.IsPlayer && c.SlaveState == 0) world.Post(Loc.Tr("{1} has been released from prison.", c.Name));
         return true;
     }
 
@@ -2130,7 +2136,7 @@ public sealed partial class FixtureRegistry
     /// <summary>
     /// Takes a building's lock and door state from its saved GAMESTATE_BUILDING (docs/game/locks.md "Save keys"): <c>hardness</c> and <c>broken</c>
     /// always, level and <c>locked</c> only when the saved <c>lock lvl</c> is above 0; doors by suffix i: <c>state</c>, <c>doa</c>, <c>broken</c>,
-    /// <c>gatecode</c>, <c>wants lock</c>, <c>lock lvl</c>, <c>locked</c>, <c>hardness</c>. Interior fixtures (whose save ids are not mapped) keep
+    /// <c>wants lock</c>, <c>lock lvl</c>, <c>locked</c>, <c>hardness</c>, and the gate code set to -1 (<c>gatecode</c> is written, not read). Interior fixtures (whose save ids are not mapped) keep
     /// their rolls but count as restored, apart from Meitou's own <c>meitou lock</c> key (see <see cref="InteriorKey"/>). A <paramref name="level"/>
     /// state (the level data's, for a building no save has) marks restored only the doors it has a <c>state</c> for, so the squad's <c>initial door
     /// state</c> still applies to the rest.
@@ -2153,7 +2159,7 @@ public sealed partial class FixtureRegistry
 
                 if (state.Floats.TryGetValue("doa" + i, out float doa)) f.OpenAmount = doa;
                 if (state.Bools.TryGetValue("broken" + i, out bool b)) f.DoorBroken = b;
-                if (state.Ints.TryGetValue("gatecode" + i, out int g)) f.GateCode = g;
+                f.GateCode = -1;   // DoorStuff::_loadFromSerialise sets -1 and never reads the saved gatecode (FUN_1402a06a0)
                 if (state.Bools.TryGetValue("wants lock" + i, out bool w)) f.WantsLock = w;
             }
             else if (f.Id == building && f.Lock is { } l) ReadLock(state, l, "", broken: true);

@@ -94,6 +94,11 @@ public sealed partial class MyGuiScreenHost
         /// Whether the player dragged the window (it may then leave the screen, <see cref="KeepVisible"/>); a placement by the host clears it.
         /// </summary>
         public bool Dragged;
+
+        /// <summary>
+        /// The host's fixed top-left for the window before the offset (<see cref="UiBindings.WindowPosition"/>); null: centred.
+        /// </summary>
+        public Vector2? FixedOrigin;
     }
 
     /// <summary>
@@ -140,9 +145,14 @@ public sealed partial class MyGuiScreenHost
     WindowGrab? _windowGrab;
 
     /// <summary>
-    /// The combo box whose list is open; null for none.
+    /// The combo box whose list is open; null for none. Set through <see cref="OpenCombo"/> and <see cref="CloseOpenCombo"/>.
     /// </summary>
     (string Screen, string Combo)? _openCombo;
+
+    /// <summary>
+    /// The fades of the <c>SmoothShow</c> combo boxes' lists.
+    /// </summary>
+    readonly ComboListFade _comboFades = new();
 
     /// <summary>
     /// The list or combo box that has the keyboard (the last one clicked): its screen and selection key.
@@ -206,7 +216,7 @@ public sealed partial class MyGuiScreenHost
     void PushWidgetState(string id, Screen s, UiBindings b)
     {
         foreach (var t in s.Sorts) b.Sorts[t.Key] = t.Value;
-        if (_openCombo is { } popup && popup.Screen == id) b.OpenCombo = popup.Combo;
+        foreach (var (combo, alpha, enabled) in _comboFades.Shown(id, _openCombo)) b.OpenCombos[combo] = (alpha, enabled);
         if (_grab is { } g && g.Screen == id) b.States[g.Control] = "pushed";
 
         _lastBindings[id] = b;
@@ -221,6 +231,7 @@ public sealed partial class MyGuiScreenHost
         if (_legacy?.Screen == id) _legacy = null;
         if (_windowGrab?.Screen == id) _windowGrab = null;
         if (_openCombo?.Screen == id) _openCombo = null;
+        _comboFades.Forget(id);
         if (_keyFocus?.Screen == id) _keyFocus = null;
 
         _lastBindings.Remove(id);
@@ -284,7 +295,7 @@ public sealed partial class MyGuiScreenHost
             && (c is null || !(c.Name.StartsWith(popup.Combo + "@List#", StringComparison.Ordinal)
                 || c.Action.StartsWith($"mygui:combo:{popup.Combo}:", StringComparison.Ordinal))))
         {
-            _openCombo = null;
+            CloseOpenCombo();
         }
 
         if (c is null) _keyFocus = null;
@@ -526,11 +537,13 @@ public sealed partial class MyGuiScreenHost
 
         if (what == "toggle")
         {
-            _openCombo = _openCombo == (id, combo) ? null : (id, combo);
+            if (_openCombo == (id, combo)) CloseOpenCombo();
+            else OpenCombo(id, combo);
+
             return;
         }
 
-        _openCombo = null;
+        CloseOpenCombo();
         SelectItem(id, combo, int.Parse(what, CultureInfo.InvariantCulture));
     }
 
@@ -541,9 +554,41 @@ public sealed partial class MyGuiScreenHost
     {
         if (_openCombo is null) return false;
 
-        _openCombo = null;
+        CloseOpenCombo();
         return true;
     }
+
+    /// <summary>
+    /// Opens the list of combo box <paramref name="combo"/> (MyGUI <c>showList</c>; another open list closes), fading it in when the combo box has
+    /// <c>SmoothShow</c>; an empty list is not shown.
+    /// </summary>
+    void OpenCombo(string id, string combo)
+    {
+        CloseOpenCombo();
+        if (_lastBindings.TryGetValue(id, out var b) && b.Lists.GetValueOrDefault(combo) is not { Count: > 0 }) return;
+
+        _openCombo = (id, combo);
+        if (SmoothShow(id, combo)) _comboFades.Show((id, combo));
+    }
+
+    /// <summary>
+    /// Closes the open combo box list (MyGUI <c>hideList</c>), fading it out when the combo box has <c>SmoothShow</c>.
+    /// </summary>
+    void CloseOpenCombo()
+    {
+        if (_openCombo is not { } open) return;
+
+        _openCombo = null;
+        if (SmoothShow(open.Screen, open.Combo)) _comboFades.Hide(open);
+    }
+
+    /// <summary>
+    /// Whether combo box <paramref name="combo"/> of screen <paramref name="id"/> has <c>SmoothShow</c> (<c>Kenshi_ComboBox</c> sets it; MyGUI
+    /// reads the bool as <c>true</c> or <c>1</c>).
+    /// </summary>
+    bool SmoothShow(string id, string combo) =>
+        Controls(id)?.LastOrDefault(c => c.Properties.GetValueOrDefault("ListKey") == combo && c.Properties.ContainsKey("ComboCount")) is { } owner
+        && owner.Properties.GetValueOrDefault("SmoothShow") is "true" or "1";
 
     /// <summary>
     /// A key for the focused list or combo box (the keyboard routing calls this before its own handling; true: used). Verified against MyGUI 3.2.2
@@ -571,7 +616,7 @@ public sealed partial class MyGuiScreenHost
         {
             if (key == UiListKey.Down)
             {
-                _openCombo = f;
+                OpenCombo(f.Screen, f.Key);
                 return true;
             }
 
@@ -595,7 +640,7 @@ public sealed partial class MyGuiScreenHost
                 if (old < 0) return false;
 
                 Activated?.Invoke(new(f.Screen, f.Key, "accept", items[source].Id, source));
-                if (combo) _openCombo = null;
+                if (combo) CloseOpenCombo();
 
                 return true;
             case UiListKey.Up: if (sel != 0) sel = sel < 0 ? 0 : sel - 1; break;
@@ -648,6 +693,7 @@ public sealed partial class MyGuiScreenHost
         }
 
         if (s.FirstViewport == default) s.FirstViewport = viewport;
+        s.FixedOrigin = b.WindowPosition;
 
         bool first = true;
 
@@ -753,7 +799,8 @@ public sealed partial class MyGuiScreenHost
 
         var vp = s.Viewport;
         var size = s.PlacedSize;
-        float x = (vp.X - size.X) / 2 + want.X, y = (vp.Y - size.Y) / 2 + want.Y;
+        var origin = Origin(s, vp, size);
+        float x = origin.X + want.X, y = origin.Y + want.Y;
 
         if (s.Snap)
         {
@@ -765,8 +812,13 @@ public sealed partial class MyGuiScreenHost
 
         s.Dragged = true;
         (x, y) = OnScreen(s, vp, size, x, y);
-        s.Offset = new(x - (vp.X - size.X) / 2, y - (vp.Y - size.Y) / 2);
+        s.Offset = new Vector2(x, y) - origin;
     }
+
+    /// <summary>
+    /// The window's top-left before the screen's offset: the host's fixed position, else centred in the viewport.
+    /// </summary>
+    static Vector2 Origin(Screen s, Vector2 vp, Vector2 size) => s.FixedOrigin ?? (vp - size) / 2;
 
     /// <summary>
     /// A press on a grip: a widget with the user string <c>Scale</c> (four multipliers of the pointer's travel for left, top, width, height) or
@@ -827,6 +879,6 @@ public sealed partial class MyGuiScreenHost
 
         var vp = s.Viewport;
         s.Size = new(w, h);
-        s.Offset = new(x - (vp.X - w) / 2, y - (vp.Y - h) / 2);
+        s.Offset = new Vector2(x, y) - Origin(s, vp, new(w, h));
     }
 }

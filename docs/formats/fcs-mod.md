@@ -2,8 +2,8 @@
 
 **Verified** FcsRoundTripTests: four base files read/write byte-identically. FCS GameData/Item
 load/save supplies editor format facts; native Kenshi loader is authoritative where behaviour
-differs. Little-endian; strings=int32 UTF-8 byte count+bytes. Strict reader rejects invalid UTF-8;
-saves opt into lossless bytes ([save](save.md)). Layouts retained below, [load order](overview.md).
+differs. Little-endian; strings=int32 byte count+bytes, any bytes ([Strings](#strings)). Layouts retained below,
+[load order](overview.md).
 
 ## Merging
 
@@ -11,7 +11,8 @@ saves opt into lossless bytes ([save](save.md)). Layouts retained below, [load o
 Bit0 only controls missing-base warning; both new/modifying records merge or create. Retain
 first definition's type even if later record differs. New takes name; existing renames when bit1,
 independent of bit0. Each key merges within its own bool/float/int/vec3/vec4/string/filename table;
-same spelling in other kinds remains distinct. Missing fields remain. REMOVED=true in merged
+same spelling in other kinds remains distinct. Missing fields remain; an empty string/filename overwrites like any value
+(**Observed** `FUN_1406c9ce0`: no empty test; its per-key filter is filled only for types 11, 13, 14). REMOVED=true in merged
 bool table removes every index; later same ID creates fresh record, no old fields.
 
 References merge by(list,target), append new at end, replace existing in place. Remove only when
@@ -28,10 +29,30 @@ remove1406bf680, rename1406bfb70. These are facts, not translated binary logic.
 ## Game loader
 
 Native accepts8..17;17 skips declared header,16 reads version/skips4strings,8..15 headerless.
-Keep maximum nextId. byteSize ignored; flags from15,vec3/vec4 from9. Only flag0/1 affect merge.
+nextId: the data's counter restarts at 0 per file and ends at least at that file's nextId ([ids](zones.md#containers-and-ids)). byteSize ignored; flags from15,vec3/vec4 from9. Only flag0/1 affect merge.
 Silently truncate at NUL and byte limits: keys64, names/IDs/ref/instance identities512,
 string/filename4096. Prior types have integer IDs/extra tags and older refs; partial support is
-not a complete old-format specification. Error mid-record behaviour unverified.
+not a complete old-format specification.
+
+### Files that fail to load
+
+**Verified** (decompile 1.0.68: loader `FUN_1406c0b50`, game-data load `FUN_140870ae0` called from `FUN_14082b370` and
+`FUN_140872d70`, which ignore its result; `mods.cfg` reader `FUN_1408693a0`):
+- The loader fails only when the file does not open or its first int (the type) is outside 8..17; the latter logs
+  `[GameDataContainer::load] Invalid data file '<path>' (Version: <n>)`. Past that check it has no failure exit and never tests the stream,
+  so a truncated or damaged file counts as loaded, silently, with the records read before the damage.
+- `gamedata.base` failing: log `[Mods] Failed to load gamedata.base.`, box "Error!" / "Failed to load the core '{1}' file." with
+  `gamedata.base`; it stays first in the file list (its level folder is still read). A core `.mod` failing: log
+  `[Mods] Failed to load core mod: <name>`, the same box with `<name>.mod`, left out of the list. Loading goes on either way.
+- A mod failing: log `[Mods] Failed to load mod: <name>`, ` (*)` appended for a Workshop mod; left out of the list (no records, no level
+  data). After all mods, one box "Mod error(s) (Ignored files)": "Failed to load the following mod(s):" and a line per name. Loading goes on.
+- A `mods.cfg` name with no mod on disk is logged (`[Mods] Mod '<name>...`) and skipped before loading; it is not in the box.
+
+Meitou (`GameDatabase.LoadDataFile`, `FcsReader.HasKnownType`, `DataLoadErrors`): a file that does not open or has a type the reader does
+not know is left out (`GameDatabase.NotLoaded`, issue `DataFileNotLoaded`) and has no level layer; one that fails later keeps the records
+read whole before the problem (issue `DataFileDamaged`). The log lines go to the console log (`log.txt`) when the world loads; the boxes
+open, one after another, the first time the title screen opens. **Engine choices**: types 8..14 are left out (the reader knows 15..17); past
+the damage the original reads on without a defined result, Meitou stops there.
 
 Core files→core translation→ordered mods→first mod translation→postpasses→world leveldata.
 GLOBAL CONSTANTS lookup by name AND type27. Postpass resolves refs. **Verified** (`FUN_1406c34f0`, `GameDatabase.AddWallMasters`):
@@ -39,6 +60,21 @@ each BUILDING with `link type` != 3 sets-or-appends on every loaded record of it
 ref (0,0,0) back to itself; missing subsections are skipped. Translation files are ordinary record layers;
 language selection: [localisation](localisation.md). Game skips editor merge/delete bookkeeping; provenance file
 indices track creation/last update but their full uses unknown.
+
+## Strings
+
+- **Verified** (`FUN_1406c0b50`, `FUN_1406bc480`): the game copies a string's bytes into its `std::string` as they are, with no
+  encoding check, so a mod saved in another encoding (Latin-1, Windows-1252) loads. Record tables and lookups compare those bytes exactly.
+- **Verified** (`kenshi_x64.exe`'s byte-string to `MyGUI::UString` imports are the `std::string` and `const char*` constructors and
+  `assign(std::string)`): text reaches the UI through MyGUI's UTF-8 reading, which shows a byte that does not start a well-formed sequence
+  as the code point of its value ([mygui](mygui.md#text-of-game-strings)). A Latin-1 name therefore shows as Latin-1; Windows-1252 bytes 0x80 to 0x9F become C1 controls.
+- Meitou (`FcsReader`, `FcsWriter`, `LosslessUtf8`): every string is decoded as UTF-8, a byte outside a valid sequence kept as the lone
+  surrogate U+DC00 + byte, and encoded back to the same bytes. The mapping is one-to-one, so ordinal comparison is the game's byte comparison;
+  `boost::hash` orders (`BoostHashOrder.StringHash`) hash the stored bytes. Text is drawn through `MyGuiText.Runes`, MyGUI's reading.
+  **Observed** (scratch program, synthetic strings: Latin-1, lone continuation bytes, overlong, CESU surrogate, 5-byte form, truncated
+  sequence): a file read and written again is byte-identical, and `MyGuiText` gives the code points of a byte-level model of the
+  disassembled MyGUI routines; `GameDatabase.Apply` keeps names and string values byte-exact. No installed mod has such a string (77 mod
+  and translation files scanned).
 
 ## Record types and schema
 
@@ -181,11 +217,3 @@ the second is one int field per type (names from the editor's built-in enums, **
 
 CONTAINER, CROSSBOW, BLUEPRINT and MAP_ITEM have no such field. Quality (`DebugGiveItem.QualityTypes`): armour, crossbows and limbs are graded 5 / 20 /
 40 / 60 / 80 / 95 (Prototype to Masterwork, `ArmourTooltip.GradeNames`); a weapon is graded by a MATERIAL_SPECS_WEAPON model that a WEAPON_MANUFACTURER lists in `weapon models` (value 0 = level; **Observed** on the vanilla install with Rebirth: the player's `PLAYER_WEAPONS` maker lists levels 5 to 80, and the Meitou grade, level 100, is only in a Rebirth maker's list).
-
-## Open questions
-
-- The game's behaviour on a truncated or corrupt file, and the exact layouts of file types 8–14.
-- Save games: the same record format, file type 15, with GAMESTATE_* / *_STATE types; see [save.md](save.md).
-- Non-UTF-8 strings in third-party mods: currently rejected. The game doesn't care: it copies string
-  bytes as they are (Verified, `FUN_1406c0b50`, `FUN_1406bc480`), so lossless handling means keeping
-  the raw bytes.
