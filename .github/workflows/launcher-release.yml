@@ -26,12 +26,17 @@ env:
   VCPKG_COMMIT: 817892b0ecbc6af994dd6df999c73faf795adbf2 # libvpx 1.16.0
 
 jobs:
+  release-gate:
+    permissions:
+      contents: read
+    uses: TheIvoryDisaster/GutenStructure/.github/workflows/release-gate.yml@2e1bbd10b3a4f291fe0cf2a271252d6d758df285
   version:
+    needs: release-gate
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
@@ -54,7 +59,7 @@ jobs:
           grep -q '[^[:space:]]' "$RUNNER_TEMP/changes.md" || { echo "launcher/CHANGELOG.md has no non-empty '## v$v' section"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: changes
           path: ${{ runner.temp }}/changes.md
@@ -73,11 +78,11 @@ jobs:
           - { rid: osx-arm64, os: macos-latest, exe: meitou-launcher, legacy: true, channel: osx-arm64-legacy }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       # When Microsoft's download server is down (actions/setup-dotnet#794, 2026-10-25), the runner's preinstalled SDK is used if it
       # satisfies global.json; the next step fails otherwise.
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         id: dotnet
         continue-on-error: true
         with:
@@ -85,7 +90,7 @@ jobs:
 
       - name: macOS compatibility runtime
         if: matrix.legacy
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: 10.0.x
 
@@ -106,7 +111,7 @@ jobs:
       # News videos: libvpx built from source by vcpkg (pinned), linked statically into the executable (Meitou.Launcher.csproj, VpxRoot).
       - name: libvpx cache
         id: vpx-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: vpx-runtime
           key: vpx-${{ matrix.rid }}-${{ env.VCPKG_COMMIT }}-macos12
@@ -157,7 +162,7 @@ jobs:
           vpk pack --packId "$pack_id" --packVersion "$VERSION" --packTitle "$pack_title" --packDir pub \
             --mainExe "$EXE" --channel "$CHANNEL" --outputDir "out/$CHANNEL" "${icon[@]}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: launcher-${{ matrix.channel }}
           path: out/${{ matrix.channel }}
@@ -168,16 +173,16 @@ jobs:
     needs: [version, package]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: launcher-*
           path: out
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: changes
           path: ${{ runner.temp }}

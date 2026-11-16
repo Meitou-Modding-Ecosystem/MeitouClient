@@ -20,17 +20,22 @@ permissions:
   contents: write
 
 jobs:
+  release-gate:
+    permissions:
+      contents: read
+    uses: TheIvoryDisaster/GutenStructure/.github/workflows/release-gate.yml@2e1bbd10b3a4f291fe0cf2a271252d6d758df285
   # Checks the version and its changelog section, runs the quick tests; nothing is built or released if this fails.
   version:
+    needs: release-gate
     runs-on: windows-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: 11.0.x
 
@@ -65,7 +70,7 @@ jobs:
       - name: Quick tests
         run: dotnet test --filter "Category!=Slow&Category!=Bench" -c Release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: changes
           path: ${{ runner.temp }}/changes.md
@@ -85,17 +90,17 @@ jobs:
           - { rid: osx-arm64, os: macos-latest, legacy: true, package: osx-arm64-legacy }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: 11.0.x
 
       - name: macOS compatibility runtime
         if: matrix.legacy
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: 10.0.x
 
@@ -108,7 +113,7 @@ jobs:
         shell: pwsh
         run: ./tools/scripts/package-release.ps1 -Version "${{ needs.version.outputs.version }}" -Rid ${{ matrix.rid }} -LegacyMac:$${{ matrix.legacy }} -Output out -Cache "$env:RUNNER_TEMP/release-cache"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: zip-${{ matrix.package }}
           path: out/Meitou-${{ needs.version.outputs.version }}-${{ matrix.package }}.zip
@@ -120,17 +125,17 @@ jobs:
     needs: [version, package]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: zip-*
           merge-multiple: true
           path: out
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: changes
           path: ${{ runner.temp }}
