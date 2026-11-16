@@ -632,6 +632,7 @@ sealed partial class GameHost(
             clock: clock, simulation: settings, systems: systems, walkability: walkability);
 
         Session.World.BenchFacingFix = Config.FixBenchFacing;
+        Session.World.BagSearchFix = Config.FixBagSearch;
         Session.World.TakeIntoBackpack = Config.TakeIntoBackpack;
         Session.Simulation.SetFastSpeeds(Config.FastSpeed, Config.FastestSpeed);
         if (Gpu.Characters is { } nearChars)
@@ -703,6 +704,8 @@ sealed partial class GameHost(
                 Dismemberment = Saves.Gameplay.Dismemberment,
                 Decapitation = Config.Decapitation,
                 AdvancedRagdolls = Config.AdvancedRagdolls,
+                SquadXp = Config.SquadXp,
+                OthersXp = Config.OthersXp,
             },
             ZoneReady = ready =>
             {
@@ -875,7 +878,8 @@ sealed partial class GameHost(
 
         string credits = Assets.Find("credits.txt") is { } creditsFile ? File.ReadAllText(creditsFile) : "";
         Player.Frontend.ConfigureFrontend(Scene.Database,
-            () => Data.Save.SaveCatalog.Scan(Simulation.Saving.QuickSave.DefaultRoot, [Install.SaveDirectory, .. Install.UserSaveDirectories]), credits);
+            () => Data.Save.SaveCatalog.Scan(Simulation.Saving.QuickSave.DefaultRoot, [Install.SaveDirectory, .. Install.UserSaveDirectories]), credits,
+            () => Config.ContinueFolder(Install));
 
         // A record defined again, or changed with nothing to change, is how mods are built and what the game itself merges
         // (docs/formats/fcs-mod.md): logged, not a problem.
@@ -1046,13 +1050,24 @@ sealed partial class GameHost(
     }
 
     /// <summary>
-    /// The save windows' services: the Load button fix, the save in use and deleting a save.
+    /// The save windows' services: the Load button fix, the Hide Kenshi saves tick (kept in the config), the save in use and deleting a save.
     /// </summary>
     void ConnectSaves(PlayerInterface ui)
     {
         ui.Frontend.FixLoadButton = Config.FixLoadButton;
+        ui.Frontend.HideKenshiSaves = Config.HideKenshiSaves;
+        ui.Frontend.HideKenshiSavesChanged = KeepHideKenshiSaves;
         ui.Frontend.SaveInUse = SaveInUse;
         ui.Frontend.DeleteSave = DeleteSave;
+    }
+
+    /// <summary>
+    /// Writes the load window's Hide Kenshi saves tick to the config at once, so a closed window or crash keeps it.
+    /// </summary>
+    void KeepHideKenshiSaves(bool hide)
+    {
+        Config.HideKenshiSaves = hide;
+        Config.Save();
     }
 
     /// <summary>

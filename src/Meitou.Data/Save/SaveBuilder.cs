@@ -385,6 +385,7 @@ public sealed class SaveBuilder
         g.Floats["age"] = age;
         g.Floats["decay"] = 0;
         g.Ints["TI day"] = 0;
+        g.Ints["floor"] = 0;
         g.Ints["slavestate"] = 0;
         g.Ints["in something"] = 0;
         g.Ints["portrait_serial"] = Serial();
@@ -463,6 +464,7 @@ public sealed class SaveBuilder
         var order = first.Where(platoon.Characters.Contains).Concat(rest).ToList();
         platoon.Characters.Clear();
         platoon.Characters.AddRange(order);
+
         if (platoon.Collection is not { } collection) return;
 
         var instances = new HashSet<FcsInstance>(order.Select(c => c.Instance));

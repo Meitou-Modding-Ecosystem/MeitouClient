@@ -794,6 +794,38 @@ public sealed class CharacterCold
     public DrawAnchor? DrawAnchor { get; set; }
 
     /// <summary>
+    /// The rigid meshes code mods hang on this character's bones (docs/modding.md "Bone meshes"), in the order first set: replaced as a whole on each
+    /// change, so the snapshot publishes it as it is. Not saved, not hashed and read by no system.
+    /// </summary>
+    public IReadOnlyList<BoneMesh> BoneMeshes { get; private set; } = [];
+
+    /// <summary>
+    /// Hangs <paramref name="mesh"/> on its bone, in place of the one with the same <see cref="BoneMesh.Key"/> (ordinal).
+    /// </summary>
+    public void SetBoneMesh(BoneMesh mesh)
+    {
+        var list = BoneMeshes.ToList();
+        int at = list.FindIndex(m => m.Key == mesh.Key);
+        if (at >= 0) list[at] = mesh; else list.Add(mesh);
+        BoneMeshes = [.. list];
+    }
+
+    /// <summary>
+    /// Takes off the bone mesh keyed <paramref name="key"/> (ordinal); nothing without one.
+    /// </summary>
+    public void RemoveBoneMesh(string key)
+    {
+        if (BoneMeshes.All(m => m.Key != key)) return;
+        BoneMeshes = [.. BoneMeshes.Where(m => m.Key != key)];
+    }
+
+    /// <summary>
+    /// The code mods' medical-panel readings by <see cref="Bodies.ModMeter.Index"/> (null: none), set through <see cref="Bodies.ModMeter.Set"/>
+    /// (docs/modding.md "Medical meters"): published for a selected or inspected character, not saved, not hashed and read by no system.
+    /// </summary>
+    public Bodies.MeterReading?[]? Meters { get; internal set; }
+
+    /// <summary>
     /// Whom the <see cref="CharacterTask.PickUp"/>, <see cref="CharacterTask.Loot"/> or <see cref="CharacterTask.StealthKo"/> task is for; meaningful
     /// only while one of those tasks is set.
     /// </summary>
@@ -1327,6 +1359,13 @@ public sealed class CharacterCold
     public WorkEvents? ActionWork { get; set; }
 
     /// <summary>
+    /// The workplace an obedient player slave stands at, at its work clip, for goal 189 or 190 of its Obedient Slave job (Kidnap/ObedientSlave.cs; the
+    /// original runs <c>Task_OperateMachine</c> for both): the production system works its machine for 189, the body takes its <c>hunger rate</c>
+    /// for both. Null: none. Runtime only, not saved, not hashed.
+    /// </summary>
+    public ObedientWork? SlaveWork { get; set; }
+
+    /// <summary>
     /// The replan bit (<see cref="DecisionSystem.Request(CharacterCold)"/>): set by a replan trigger, consumed by the decision step. Player
     /// characters only; not saved (a load sets it); hashed while set.
     /// </summary>
@@ -1445,6 +1484,17 @@ public sealed class CharacterTable
     /// The id of the character in <paramref name="slot"/> as of the last tick.
     /// </summary>
     public CharacterId IdOf(int slot) => new(slot, _previous[slot].Generation);
+
+    /// <summary>
+    /// The name of the character <paramref name="id"/> names, "" when it names none in the world (<see cref="TryResolveNext"/>).
+    /// </summary>
+    public string NameOf(CharacterId id) => TryResolveNext(id, out int slot) && Cold(slot) is { } cold ? cold.Name : "";
+
+    /// <summary>
+    /// The tooltip's robbed owner of a stolen item whose mark names <paramref name="owner"/>: its name, "" when it has left the world, null when the
+    /// mark names no character (a building's owning faction; the tooltip then names the faction).
+    /// </summary>
+    public string? OwnerNameOf(CharacterId owner) => owner.IsNone ? null : NameOf(owner);
 
     /// <summary>
     /// Whether <paramref name="id"/> names a character alive as of the last tick.

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Meitou.Game.Ui;
 using Meitou.Simulation;
+using Meitou.Simulation.Bodies;
 using Meitou.Simulation.Combat;
 using Meitou.Simulation.Items;
 
@@ -58,6 +59,14 @@ sealed class ModRegistrations
     /// The mod jobs, in registration order.
     /// </summary>
     public List<Meitou.Simulation.Production.ModJobKind> Jobs { get; } = [];
+    /// <summary>
+    /// The medical meters, in registration order.
+    /// </summary>
+    public List<ModMeter> Meters { get; } = [];
+    /// <summary>
+    /// The skills, in registration order.
+    /// </summary>
+    public List<ModSkill> Skills { get; } = [];
     /// <summary>
     /// The player interface extensions.
     /// </summary>
@@ -181,6 +190,8 @@ sealed class ModRegistry
         }
         foreach (var slot in r.Slots) ModSlots.Add(slot);
         foreach (var job in r.Jobs) Meitou.Simulation.Production.ModJobs.Add(job);
+        foreach (var meter in r.Meters) ModMeters.Add(meter);
+        foreach (var skill in r.Skills) ModSkills.Add(skill);
         Ui.AddRange(r.Ui);
         DebugCommands.AddRange(r.DebugCommands);
         HitFeeds.AddRange(r.HitFeeds);

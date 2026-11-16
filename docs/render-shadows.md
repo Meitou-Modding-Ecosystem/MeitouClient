@@ -20,8 +20,7 @@ change over one texel each way and a quarter texel. Building parts cast with bot
 **Observed** (a Shek town at 15:10, cascades against the traced sun, pixels lit by more than 25/255
 where the traced sun is dark): 0.182 % with the caster bias of before (in fact 2 texels fixed plus
 2 x the slope capped at 8, with a normal offset of 0.5-2 texels: lit bands under stair treads and cart
-sides), 0.058 % with both sides cast (the bands at wall feet and beside stairs, which no bias changed:
-**Unknown** which open meshes let the sun through), 0.013 % with both. No acne seen on a face close-up,
+sides), 0.058 % with both sides cast, 0.013 % with both. No acne seen on a face close-up,
 dunes, a town from afar under a low sun. Texel grids are anchored at the
 camera's focus point, moved only while the sun turns and the point is 200+ units away (anchored at
 the eye, the first cascade's grid slid boom x sun turn under the squad). Least filter radius 1.5
@@ -77,13 +76,13 @@ Metal: never. `--debug-shadows 4` draws over the scene: blue where the cascades 
 falls; with it the log prints every 120th frame whether the frame traces and why (`LogTraced`). **Observed** (siwa-test6 save, 08:40): traced over every lit surface of the view; against the cascades its mean change is 0.17/255 there, a close-up whose first cascade is already fine.
 
 **Frame.** `kenshiLight` leaves the sun out of the colour of every lit surface but impostors (`atmoReceiver` -1: the quad is not the surface), at every depth
-(`ShadowPass.TracedWhole`), and writes it, shadowless but for clouds, relief, the terrain map and the landmark map (the cascades left out, `msTraced`), to a third scene
+(`ShadowPass.Traced`; with far cascades as far as the handoff, below), and writes it, shadowless but for clouds, relief, the terrain map and the landmark map (the cascades left out, `msTraced`), to a third scene
 attachment (RGBA16F, location 2, `WithAlbedo`), before the haze. Bit 16 of the surface target (RGBA32UI) marks such a pixel, bits 17-18 its receiver (0 solid, 1 grass,
 2 foliage, 3 character). After the characters, before `CaptureScene` (refraction sees the sun), a compute pass traces one ray a pixel into an RGBA16F mask (visibility,
 blocker distance), the penumbra filter softens it, and a fullscreen pass adds term x mask x the haze's multiplier (`atmoApplyCoefficients`).
 
 **No cascades.** Traced, the shadow pass draws no cascade (`ShadowPass.RenderTraced`): it keeps the terrain and landmark maps and publishes the receiver blocks with no cascade.
-What draws no traced pixel reads the **sun map** instead (`Gi.TracedSunVolume`, after the traced scene's update, before the reflection): rays down the sun's direction from a plane, one per texel of three nested squares of 1024 x 1024 (half sides 256, 1536 and at least 4096 units), each snapped to its texels in world space, R32F, the distance to the first caster (solids, characters, both terrain grids; no grass). The nearest square is traced every frame, the second every other frame, the widest every fourth (`ShadowPass.SunMapMask`); a square not traced keeps the basis, the place and the plane it was traced with in its tile matrix, so what it holds stays where it was taken as the eye and the sun move (**Observed**, one session, paused frame, alternated: 0.15 ms of GPU, the pictures differ as two frames of the same setting do; `MEITOU_SUN_MAP_SPREAD=0` traces all three every frame). It sits in the blocker binding (`uShadowBlocker`, unused without cascades), its matrices in the first cascade tiles (`msVolumeOn`, `msVolumeAt`: four texels compared, bilinear; a surface reads it 2 units towards the sun, `msVolumeSurface`). **Observed** (the user, DLSS): a volume of one ray per view froxel, 64 slices exponential in depth, stamped one copy of a caster per slice in the shafts and swam with the camera. Readers: the light shafts (`shaftShadow`), the lit dust (`particleSun`), and through
+What draws no traced pixel reads the **sun map** instead (`Gi.TracedSunVolume`, after the traced scene's update, before the reflection): rays down the sun's direction from a plane, one per texel of three nested squares of 1024 x 1024 (half sides 256, 1536 and at least 4096 units), each snapped to its texels in world space, R32F, the distance to the first caster (solids, characters, both terrain grids; no grass). The nearest square is traced every frame, the second every other frame, the widest every fourth (`ShadowPass.SunMapMask`); a square not traced keeps the basis, the place and the plane it was traced with in its tile matrix, so what it holds stays where it was taken as the eye and the sun move (**Observed**, one session, paused frame, alternated: 0.15 ms of GPU, the pictures differ as two frames of the same setting do; `MEITOU_SUN_MAP_SPREAD=0` traces all three every frame). It has its own binding (`uShadowSunMap`), its matrices and parameters in the top tiles and slices, past any cascade (`ShadowPass.SunMapSlot`, 5 to 7; on while `uMsLandmark.z` is 1: `msVolumeOn`, `msVolumeAt`: four texels compared, bilinear; a surface reads it 2 units towards the sun, `msVolumeSurface`). **Observed** (the user, DLSS): a volume of one ray per view froxel, 64 slices exponential in depth, stamped one copy of a caster per slice in the shafts and swam with the camera. Readers: the light shafts (`shaftShadow`), the lit dust (`particleSun`), and through
 `kenshiShadowMeitou` the water's foam, the skin's light entry, impostors and the reflection (outside the view's volume: lit, but for the terrain and landmark maps).
 
 **Rays** go to the sun's centre, the same every frame (no noise for the upscaler to average, no history to trail). There is no receiver identity as in KenshiNative's
@@ -138,12 +137,23 @@ past the reach, characters past the 128 nearest. Landmarks keep their map.
 
 **Limits.** Blood on surfaces (`RecordSurfaces`) blends before the sun is added. The objects' traced transforms and level are the GI's: rotors and doors are frozen as the
 GI sees them; an object's texture tile is not read in the alpha test. The penumbra filter works on what the screen shows: a blocker's shadow whose taps fall on another
-surface keeps its hard edge there. **Unknown**: the saw-toothed terrain shadows reported on displaced dunes were not reproduced offscreen (dunes round the siwa-test6 save at
-06:00-07:00 and 18:24); the fine grid was 16 apart over the heightmap's 18 (bilinear facets), now 8 apart through a Catmull-Rom surface. **Observed** costs: see Measured.
+surface keeps its hard edge there. **Observed** costs: see Measured.
 
 **Observed** (RTX 4090, 1920 x 1080 with DLSS, the median GPU frame time of 36, a still camera, shafts on). Cascades / traced / Off: the Hub at 17:12
 2.47 / 2.08 / 1.71 ms, the siwa-test6 close-up 2.34 / 2.37 / 1.94, dunes at 06:24 2.04 / 1.62 / 1.34. Traced passes (an earlier run): rays and penumbra 0.07-0.10 ms,
 the volume 0.09-0.11 ms, a close-up character 0.06 ms. With a still camera the frame-to-frame change is DLSS's own (0.09-0.16/255 mean), traced or cascades alike.
+
+## Traced near, cascades far
+
+`TracedFarCascades` (the switch of the sun shadows' fourth position, "Traced near, cascades far": Meitou engine choice, off by default, on in the
+tiers that trace the sun, Ultra and Extreme; `ShadowPass.FarCascades`): the rays take the sun to view depth 2000 (`ShadowPass.TracedHandoff`)
+and four cascades (`HandoffCascades`) from 1600 to the shadow range, split by the practical scheme without the focus rule (`CascadeSplits`), drawn, cached and filtered as the Meitou cascades are (their blocker search included). `atmoTracedShare` falls from 1 to 0 over 1600-2000 (cascade 0's
+first depth to `msHandoff`), the colour taking the cascades' share; past 2000 no pixel is marked traced, so the rays and the grass reach (`TracedDepth` 2000) end there. The
+sun map stays for what draws no traced pixel nearer than cascade 0 (shafts and lit dust switch at its first depth, `msVolumeServes`; `kenshiShadowMeitou` blends map into
+cascades over the band; a traced receiver's other share there reads the cascades alone, `msCascadesOnly`). A set shadow range under 4000 traces every depth
+as without the switch (the set range: the fog cap moves the effective one each frame). Cascade 0 (1600 to about 2800 at range 10000) is redrawn every frame, cascade 1
+every 4th; in a flight only cascade 0 is published, as with the cascades. A change of layout (the switch, 4 or 5 cascades, back from the rays) drops the stored
+cascades, so every one is drawn that frame instead of one far cascade a frame over stale layers (`ForgetCascades`).
 
 ## Soft grazing sun
 

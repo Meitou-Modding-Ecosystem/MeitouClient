@@ -894,8 +894,8 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     }
 
     /// <summary>
-    /// The serial step: prospecting, the sync and the errands, the operator counts and the research bench, the town workers; then the farms, the
-    /// machines' own work and every operator's step, the power, and the touches.
+    /// The serial step: prospecting, the sync and the errands, the operator counts and the research bench, the town workers and obedient slaves; then
+    /// the farms, the machines' own work and every operator's step, the power, and the touches.
     /// </summary>
     public void SlowWorld(World world)
     {
@@ -905,8 +905,9 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         var research = world.Research;
         research.Rate = 0;
         int bench = ResetOperators(world);
-        TownFarms(world);
+        TownMachines(world);
         TownWorkers(world, world.TickSeconds);
+        ObedientWorkers(world, world.TickSeconds);
 
         // Raise-only (FUN_140834390): losing the best bench does not lower the level; it starts at 0 with the research state and on a load.
         if (bench > research.BenchLevel)
@@ -1876,9 +1877,10 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     /// <summary>
     /// Put an item into a container's grid (<see cref="ContainerAccess.ContainerFor"/>): at a free cell, or with X below 0 where it first fits
-    /// (<see cref="PutInMachine.Count"/> units); a bag or limb item is refused like the machine's.
+    /// (<see cref="PutInMachine.Count"/> units); a bag or limb item is refused like the machine's. A worn item re-dresses the character, so a
+    /// weapon put away leaves its hand (#761).
     /// </summary>
-    static void PutInContainer(World world, Locks.Fixture container, CharacterCold cold, PutInMachine put)
+    void PutInContainer(World world, Locks.Fixture container, CharacterCold cold, PutInMachine put)
     {
         // engine choice: a shop's stock is not a place to leave things
         if (ContainerAccess.ShopOf(world, container) is not null) { world.Post("That stock is the shop's."); return; }
@@ -1891,22 +1893,31 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             !InventoryCommands.IsMovableSection(item.Section) || item.Contents is not null && item.Section == "backpack_attach") return;
         var owner = root.Items.Contains(item) ? root : root.Backpack?.Contents;
         if (owner is null) return;
-        if (put.X < 0)
-        {
-            if (InventoryCommands.MoveUnits(owner, item, InventoryCommands.ClickCount(item, put.Count), storage) > 0) world.Machines.Touch();
-            return;
-        }
 
+        bool worn = InventoryCommands.IsEquipmentSection(item.Section);
+        if (!PutInGrid(owner, item, storage, put)) return;
+
+        world.Machines.Touch();
+        if (worn) Assembly?.RefreshEquipment(cold);
+    }
+
+    /// <summary>
+    /// Moves an item from <paramref name="owner"/> into a storage grid: with X below 0 where it first fits (<see cref="PutInMachine.Count"/>
+    /// units), else at the free cell asked for. False when nothing moved.
+    /// </summary>
+    static bool PutInGrid(Inventory owner, ItemInstance item, Inventory storage, PutInMachine put)
+    {
+        if (put.X < 0) return InventoryCommands.MoveUnits(owner, item, InventoryCommands.ClickCount(item, put.Count), storage) > 0;
         if (put.Y < 0 || put.X > storage.Width - item.Width || put.Y > storage.Height - item.Height
             || !storage.IsFree("main", put.X, put.Y, item.Width, item.Height))
-            return;
+            return false;
 
         owner.Remove(item);
         item.Section = "main";
         item.X = put.X;
         item.Y = put.Y;
         storage.Items.Add(item);
-        world.Machines.Touch();
+        return true;
     }
 
     /// <summary>
@@ -1920,18 +1931,36 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         var storage = ContainerAccess.GridOf(world, container, out var region);
         if (take.Index < 0 || take.Index >= storage.Items.Count || !region.Holds(storage.Items[take.Index])) return;
         var item = storage.Items[take.Index];
-        if (world.SystemOf<Crime.CrimeSystem>() is { } crimes && world.Characters.TryResolveNext(take.Character, out int thief)
-            && crimes.Steal(world, thief, container, Crime.CrimeCode.Theft)) return;
         var mark = item.Mark;
         if (container.Owner >= 0 && container.Owner != cold.Faction && Crime.CrimeSystem.IsStealing(world, container)
             && mark == StolenMark.None)
             item.Mark = Crime.CrimeSystem.OwnerMark(world, container.Building, container.Owner);
 
-        int moved = InventoryCommands.MoveInto(storage, item, InventoryCommands.ClickCount(item, take.Count), cold.Inventory!,
-            take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack, out bool worn, cold);
+        bool bagFirst = take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack;
+        if (Caught(world, container, take.Character, InventoryCommands.HasRoomFor(cold.Inventory!, item, bagFirst, cold)))
+        {
+            item.Mark = mark;
+            return;
+        }
+
+        int moved = InventoryCommands.MoveInto(storage, item, InventoryCommands.ClickCount(item, take.Count), cold.Inventory!, bagFirst,
+            out bool worn, cold);
         if (storage.Items.Contains(item)) item.Mark = mark;   // what stayed keeps its mark
         if (worn) Assembly?.RefreshEquipment(cold);
         if (moved > 0) world.Machines.Touch();
+    }
+
+    /// <summary>
+    /// The crime side of a take out of <paramref name="container"/>: the Theft and the steal roll (<see cref="Crime.CrimeSystem.Steal"/>), or the
+    /// Theft alone when the taker has no <paramref name="room"/> (<see cref="Crime.CrimeSystem.PendSteal"/>: no roll, no thievery XP, #796). True:
+    /// caught or no room, nothing moves.
+    /// </summary>
+    static bool Caught(World world, Locks.Fixture container, CharacterId taker, bool room)
+    {
+        if (world.SystemOf<Crime.CrimeSystem>() is not { } crimes || !world.Characters.TryResolveNext(taker, out int thief)) return !room;
+
+        if (!room) crimes.PendSteal(world, thief, container, Crime.CrimeCode.Theft);
+        return !room || crimes.Steal(world, thief, container, Crime.CrimeCode.Theft);
     }
 
     /// <summary>
@@ -1969,43 +1998,46 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             !InventoryCommands.IsMovableSection(item.Section)) return;
         var owner = root.Items.Contains(item) ? root : root.Backpack?.Contents;
         if (owner is null) return;
-        if (put.Slot >= 0)
-        {
-            if (put.Slot >= m.Inputs.Length || m.Inputs[put.Slot] is not { } input || input.Item != item.Record) return;
-            int room = input.Recipe.Capacity - input.Count;
-            int n = Math.Min(room, put.Count > 0 ? Math.Min(put.Count, item.Quantity) : item.Quantity);
-            if (n <= 0) return;
-            input.Count += n;
-            item.Quantity -= n;
-            if (item.Quantity == 0) owner.Remove(item);
-        }
-        else
-        {
-            if (m.Storage is not { } storage || m.Closed || item.Contents is not null && item.Section == "backpack_attach") return;
-            if (m.Data.IsStorage && !m.Data.TakesByHand(item.Record, item.Type))
-            {
-                world.Post($"{m.Data.Name} does not take {item.Name}.");
-                return;
-            }
 
-            if (put.X < 0)
-            {
-                if (InventoryCommands.MoveUnits(owner, item, InventoryCommands.ClickCount(item, put.Count), storage) > 0) world.Machines.Touch();
-                return;
-            }
-
-            if (put.Y < 0 || put.X > storage.Width - item.Width || put.Y > storage.Height - item.Height
-                || !storage.IsFree("main", put.X, put.Y, item.Width, item.Height))
-                return;
-
-            owner.Remove(item);
-            item.Section = "main";
-            item.X = put.X;
-            item.Y = put.Y;
-            storage.Items.Add(item);
-        }
+        // A worn item re-dresses the character, so a weapon put away leaves its hand (#761).
+        bool worn = InventoryCommands.IsEquipmentSection(item.Section);
+        bool moved = put.Slot >= 0 ? PutInInput(m, owner, item, put) : PutInStorage(world, m, owner, item, put);
+        if (!moved) return;
 
         world.Machines.Touch();
+        if (worn) Assembly?.RefreshEquipment(cold);
+    }
+
+    /// <summary>
+    /// Puts units of an item into the machine's input slot of its record, as many as it has room for. False when nothing moved.
+    /// </summary>
+    static bool PutInInput(Machine m, Inventory owner, ItemInstance item, PutInMachine put)
+    {
+        if (put.Slot >= m.Inputs.Length || m.Inputs[put.Slot] is not { } input || input.Item != item.Record) return false;
+        int room = input.Recipe.Capacity - input.Count;
+        int n = Math.Min(room, put.Count > 0 ? Math.Min(put.Count, item.Quantity) : item.Quantity);
+        if (n <= 0) return false;
+
+        input.Count += n;
+        item.Quantity -= n;
+        if (item.Quantity == 0) owner.Remove(item);
+        return true;
+    }
+
+    /// <summary>
+    /// Puts an item into the machine's storage grid (<see cref="PutInGrid"/>); a storage refuses what it does not take by hand. False when nothing
+    /// moved.
+    /// </summary>
+    static bool PutInStorage(World world, Machine m, Inventory owner, ItemInstance item, PutInMachine put)
+    {
+        if (m.Storage is not { } storage || m.Closed || item.Contents is not null && item.Section == "backpack_attach") return false;
+        if (m.Data.IsStorage && !m.Data.TakesByHand(item.Record, item.Type))
+        {
+            world.Post($"{m.Data.Name} does not take {item.Name}.");
+            return false;
+        }
+
+        return PutInGrid(owner, item, storage, put);
     }
 
     /// <summary>
@@ -2022,7 +2054,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (Site(world, take.Site) is not { Complete: true } site || world.Machines.Find(take.Site) is not { } m
             || !Near(world, take.Character, site, out var cold))
             return;
-        if (CaughtTaking(world, TownGoods(take.Site), take.Character, cold, out var mark)) return;
+        if (CaughtTaking(world, TownGoods(take.Site), take.Character, cold, with => RoomFor(world, m, cold, take, with), out var mark)) return;
 
         var root = cold.Inventory!;
         if (take.Slot == -1)
@@ -2048,6 +2080,35 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (take.Slot == -2) m.Output!.Count -= moved;
         else m.Inputs[take.Slot].Count -= moved;
         world.Machines.Touch();
+    }
+
+    /// <summary>
+    /// Whether the take out of town machine <paramref name="m"/> finds room for one unit with the stolen mark <paramref name="mark"/> (a dry run): a
+    /// stored item as <see cref="TakeStored"/> moves it, an output or input unit as <see cref="Placed"/> adds it. A take that moves nothing for other
+    /// reasons (a bad index, a crafted item) counts as room, so its own refusal stands.
+    /// </summary>
+    bool RoomFor(World world, Machine m, CharacterCold cold, TakeFromMachine take, StolenMark mark)
+    {
+        if (take.Slot == -1)
+        {
+            if (m.Storage is not { } storage || take.Index < 0 || take.Index >= storage.Items.Count) return true;
+
+            var item = storage.Items[take.Index];
+            var kept = item.Mark;
+            if (mark != StolenMark.None && kept == StolenMark.None) item.Mark = mark;
+            bool room = InventoryCommands.HasRoomFor(cold.Inventory!, item, take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack, cold);
+            item.Mark = kept;
+            return room;
+        }
+        if (take.Slot == -2 && m.Craft is not null) return true;
+
+        string record = take.Slot == -2 ? m.Output?.Recipe.Item ?? ""
+            : take.Slot >= 0 && take.Slot < m.Inputs.Length ? m.Inputs[take.Slot].Item
+            : "";
+        if (_items.Create(record, 1) is not { } unit) return true;
+
+        unit.Mark = mark;
+        return cold.Inventory!.HasRoomFor(unit);
     }
 
     /// <summary>

@@ -104,6 +104,12 @@ public sealed class PostOptions
     public bool GiCache = true;
 
     /// <summary>
+    /// Whether each GI probe traces <see cref="Gi.GiProbes.MaxRays"/> rays an update instead of <see cref="Gi.GiProbes.DefaultRays"/>: half the
+    /// noise variance at the same response (docs/render-gi.md "Probes"). Off by default.
+    /// </summary>
+    public bool GiMoreRays;
+
+    /// <summary>
     /// Whether the probes are relocated this frame: <see cref="GiHybrid"/> with <see cref="GiRelocate"/>.
     /// </summary>
     public bool GiRelocating => GiHybrid && GiRelocate;
@@ -493,6 +499,12 @@ public sealed class PostOptions
     public bool TracedGrass = true;
 
     /// <summary>
+    /// The traced sun's rays end at <c>ShadowPass.TracedHandoff</c> and cascades take the sun past it (docs/render-shadows.md "Traced near, cascades
+    /// far"); off, the rays take every depth.
+    /// </summary>
+    public bool TracedFarCascades;
+
+    /// <summary>
     /// The <c>gtao</c> switch (docs/render-post.md "GTAO"): with <see cref="Ssao"/> on, the occlusion is the horizon search instead; off by default
     /// in every preset.
     /// </summary>
@@ -667,6 +679,7 @@ public sealed class PostOptions
         GiRelocate = other.GiRelocate;
         GiCloudShadows = other.GiCloudShadows;
         GiCache = other.GiCache;
+        GiMoreRays = other.GiMoreRays;
         CameraEffectsEverywhere = other.CameraEffectsEverywhere;
         DepthOfField = other.DepthOfField;
         DofAperture = other.DofAperture;
@@ -674,6 +687,7 @@ public sealed class PostOptions
         GtaoQuality = other.GtaoQuality;
         LampShadows = other.LampShadows;
         TracedGrass = other.TracedGrass;
+        TracedFarCascades = other.TracedFarCascades;
         CharacterOcclusion = other.CharacterOcclusion;
     }
 
@@ -780,7 +794,9 @@ public sealed class PostOptions
         string lamps = LampShadows ? "on" : "off";
         string contact = ContactShadows ? "on" : "off";
         string reflections = Ssr ? "on" : "off";
-        string traced = TracedSun ? "on" : "off";
+        string traced = !TracedSun ? "off"
+            : TracedFarCascades ? "near, cascades far"
+            : "on";
         return $"{Preset}: aa {aa}, heat haze {heatHaze}, ssao {ssao}, contact {contact}, reflections {reflections}, " +
             $"traced sun {traced}, shafts {shafts}, exposure x{Exposure:0.##}, tonemap {tonemap}{mix}, grade {grade}, night grade {nightGrade}, " +
             $"bloom {bloom}, depth of field {focus}, lamp shadows {lamps}, gi hybrid {(GiHybrid ? GiHybridParts : "off")}, " +

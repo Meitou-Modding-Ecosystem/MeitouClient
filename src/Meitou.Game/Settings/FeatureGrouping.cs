@@ -38,7 +38,7 @@ sealed class FeatureGrouping(SettingsMenu menu)
             "Contact shadows", "Lamp shadows"]),
         new("Soft grazing sun", "Soft grazing sun", []),
         new("Indirect light", "Indirect light", [SettingsMenu.TechniqueKey(WorldFrame.GiChoice), "Indoor GI", WorldFrame.GiRelocateSwitch,
-            WorldFrame.GiCloudShadowsSwitch, WorldFrame.GiCacheSwitch], LauncherHeader: WorldFrame.GiChoice),
+            WorldFrame.GiCloudShadowsSwitch, WorldFrame.GiCacheSwitch, WorldFrame.GiRaysSwitch], LauncherHeader: WorldFrame.GiChoice),
         new("Ambient occlusion", "Ambient occlusion", [SettingsMenu.TechniqueKey(WorldFrame.OcclusionChoice), WorldFrame.GtaoQualitySlider],
             LauncherHeader: WorldFrame.OcclusionChoice),
         new("Light shafts", "Light shafts", [
@@ -75,6 +75,7 @@ sealed class FeatureGrouping(SettingsMenu menu)
             "Object LOD distance x"]),
         new("Mesh welding", "Mesh welding", []),
         new("Metal on buildings", "Metal on buildings", []),
+        new("Glass bottles", "Glass bottles", []),
 
         // Characters: the skin switch, then one row per race (added by Entries)
         new(SkinGroup, "Skin", []),

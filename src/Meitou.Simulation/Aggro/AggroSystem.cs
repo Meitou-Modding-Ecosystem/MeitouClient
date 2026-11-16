@@ -329,7 +329,7 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     /// Of the player's side (the original's <c>isWithThePlayer</c> <c>FUN_140856bc0</c>): the player's faction. Engine: its owner path (a slave's or
     /// pet's) is not modelled.
     /// </summary>
-    static bool PlayerSide(World world, CharacterCold? c) =>
+    internal static bool PlayerSide(World world, CharacterCold? c) =>
         c is not null && (c.IsPlayer || world.Player.Faction >= 0 && c.Faction == world.Player.Faction);
 
     /// <summary>
@@ -1400,25 +1400,11 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     #region Sensing one character
 
     /// <summary>
-    /// The sight ray of the spot meter (<c>FUN_1408533a0</c>, <b>Verified</b> literals): it starts this far over the looker's feet.
-    /// </summary>
-    const float SightRayFrom = 18;
-
-    /// <summary>
-    /// The sight ray ends this far over the target's feet (half of <see cref="SightRayFrom"/>).
-    /// </summary>
-    const float SightRayTo = 9;
-
-    /// <summary>
-    /// A hit of the sight ray nearer than this to the target does not block it.
-    /// </summary>
-    const float SightRaySlack = 2;
-
-    /// <summary>
     /// Whether the looker senses <paramref name="slot"/> now (<c>FUN_1408593d0</c>: seen by <c>FUN_140857b10</c>, else heard by
     /// <c>FUN_140857500</c>). A sneaking target of another side fills the spot meters of a looker that keeps them (<see cref="Scan.Meters"/>,
     /// exposing the sneaker), and counts as seen in view only once its meter was full before this look, or when it is the looker's own fight target
-    /// (engine choice: a chaser does not lose its quarry to the meter).
+    /// (engine choice: a chaser does not lose its quarry to the meter). Any other target is seen by the sight test, ending with the sight ray where
+    /// <see cref="SightRay.Applies"/> asks for it.
     /// </summary>
     static bool SenseOne(ref Scan s, int slot, CharacterCold c, out bool seen, out bool heard)
     {
@@ -1430,7 +1416,7 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
         if (sneaking && c.Faction != s.Faction && !(s.Player && c.IsPlayer))
         {
             float v = s.Sight.Sees(s.Self, slot, s.Eye, other.Position, s.Outdoor, stealth);
-            if (v > 0 && !ClearSight(ref s, other.Position)) v = 0;
+            if (v > 0 && !SightRay.Clear(s.World.Walkability, s.Fights?.Buildings, s.Eye, other.Position)) v = 0;
 
             bool full = SpotOf(s.Spots, slot, other.Generation) > 1;
 
@@ -1448,7 +1434,14 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
 
             seen = v > 0 && (full || slot == s.FightTarget);
         }
-        else seen = s.Sight.Sees(s.Self, slot, s.Eye, other.Position, s.Outdoor, stealth) > 0;
+        else
+        {
+            seen = s.Sight.Sees(s.Self, slot, s.Eye, other.Position, s.Outdoor, stealth) > 0;
+
+            // can-see ends with the sight ray for a pair with one side the player's (FUN_140857b10)
+            if (seen && s.Cold is { } me && SightRay.Applies(me, c))
+                seen = SightRay.Clear(s.World.Walkability, s.Fights?.Buildings, s.Eye, other.Position);
+        }
 
         if (!seen && s.Effects is { } fx)
         {
@@ -1464,21 +1457,6 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
         }
 
         return seen || heard;
-    }
-
-    /// <summary>
-    /// Whether nothing solid stands between the looker and a sneaker at <paramref name="target"/> (the spot meter's line of sight,
-    /// <c>FUN_140856cb0</c> calling <c>FUN_1408533a0</c>): the terrain and the buildings' collision (walls, floors, stairs, furniture and roofs;
-    /// not doors or passable parts, <see cref="SolidHits"/>) on the ray from <see cref="SightRayFrom"/> over the looker's feet to
-    /// <see cref="SightRayTo"/> over the target's, a hit within <see cref="SightRaySlack"/> of the target not counting.
-    /// </summary>
-    static bool ClearSight(ref Scan s, Vector3 target)
-    {
-        var from = s.Eye + new Vector3(0, SightRayFrom, 0);
-        var seg = target + new Vector3(0, SightRayTo, 0) - from;
-        float hit = SolidHits.Hit(s.World.Walkability, s.Fights?.Buildings, from, seg, RangedTuning.TerrainStep, out _);
-
-        return hit < 0 || hit * seg.Length() >= Vector3.Distance(s.Eye, target) - SightRaySlack;
     }
 
     /// <summary>
@@ -1610,8 +1588,8 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
 
     /// <summary>
     /// The tags of a sensed character (<c>FUN_1408580d0</c>, docs/game/perception.md "Sense tags"): KO when down or dead
-    /// (<see cref="CharacterFacts.Down"/>), imprisoned, and ENEMY when the looker regards it an enemy (<see cref="Regards"/>; a campaign force's
-    /// member NEUTRAL instead), else ALLY for its own or an allied faction, else NEUTRAL.
+    /// (<see cref="CharacterFacts.Down"/>), imprisoned, and ENEMY when the looker regards it an enemy (<see cref="Regards"/>; one with diplomatic
+    /// status NEUTRAL instead), else ALLY for its own or an allied faction, else NEUTRAL.
     /// </summary>
     static SenseTag TagOf(ref Scan s, ref SenseEntry e, int slot, CharacterCold c, Vector3 at)
     {
@@ -1624,7 +1602,7 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
         // the look's cost; FullTags).
         if (s.FullTags || e.Base == SenseTag.None)
         {
-            e.Base = Regards(ref s, slot, c, at, out bool force) ? force ? SenseTag.Neutral : SenseTag.Enemy
+            e.Base = Regards(ref s, slot, c, at, out bool diplomat) ? diplomat ? SenseTag.Neutral : SenseTag.Enemy
                 : c.Faction == s.Faction || s.Relations.Contains(c.Faction) && s.Relations.IsAlly(s.Faction, c.Faction)
                     ? SenseTag.Ally
                     : SenseTag.Neutral;
@@ -1651,11 +1629,22 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     /// pit one faction against itself); else never its own faction; hostility from the looker's faction to the one it is seen as (a disguise)
     /// without coexistence, with the freed rule, and for a slave also to its owner's faction, which is not the looker's (both tests); the squad
     /// memory's TEMP_ENEMY makes, TEMP_ALLY unmakes one; a contract's employer never is; a campaign assault's extra target always is.
-    /// <paramref name="force"/>: an enemy that is a campaign force's member, sensed NEUTRAL (<c>FUN_140796240</c>).
+    /// <paramref name="diplomat"/>: an enemy the perception update senses NEUTRAL (<c>FUN_1408580d0</c> over <c>FUN_140796240</c>, <b>Verified</b>
+    /// by disassembly), one with diplomatic status (<see cref="CharacterFacts.DiplomaticStatus"/>): to a looker with the player whenever it is a
+    /// Diplomat, to any other while it stands in its own faction's <c>biomes</c>; a TEMP_ENEMY tag does not change that.
     /// </summary>
-    static bool Regards(ref Scan s, int slot, CharacterCold c, Vector3 at, out bool force)
+    static bool Regards(ref Scan s, int slot, CharacterCold c, Vector3 at, out bool diplomat)
     {
-        force = false;
+        bool enemy = RegardsEnemy(ref s, slot, c, at);
+        diplomat = enemy && CharacterFacts.DiplomaticStatus(c, at, s.Towns, !PlayerSide(s.World, s.Cold));
+        return enemy;
+    }
+
+    /// <summary>
+    /// Slot 125 itself (see <see cref="Regards"/>), before the perception update's diplomatic status test.
+    /// </summary>
+    static bool RegardsEnemy(ref Scan s, int slot, CharacterCold c, Vector3 at)
+    {
         var prev = s.Table.Previous;
         int gen = prev[slot].Generation, selfGen = prev[s.Self].Generation;
         if (c.Faction == s.Faction) return false;
@@ -1670,7 +1659,8 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
         if (c.SlaveState == 1)
             enemy &= c.SlaveOwner != s.Faction && s.Relations.Contains(c.SlaveOwner) && s.Relations.IsHostile(s.Faction, c.SlaveOwner);
 
-        bool tagged = false;
+        // A slave looker sides with its master: the squad memory below still makes an enemy.
+        if (enemy && MasterSpares(ref s, slot, c)) enemy = false;
 
         if (s.Memory is { } memory)
         {
@@ -1680,7 +1670,7 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
                 || s.World.Player.Faction == s.Faction && memory.AnyTempEnemy(c.SquadId) && memory.HasShort(s.World, c.SquadId,
                     new CharacterId(s.Self, selfGen), Dialogue.MemoryTag.TempEnemy))
             {
-                enemy = tagged = true;
+                enemy = true;
             }
             else if (enemy && s.Squad >= 0 && memory.HasShort(s.World, s.Squad, target, Dialogue.MemoryTag.TempAlly))
                 enemy = false;
@@ -1692,13 +1682,37 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
             enemy = false;
         }
 
-        if (enemy && !tagged && c.SquadId >= 0 && s.World.Squads.Find(c.SquadId) is { PlatoonId: >= 0 } squad
-            && s.World.Platoons.Find(squad.PlatoonId)?.Campaign is not null)
+        return enemy;
+    }
+
+    /// <summary>
+    /// A slave looker's side of slot 125 (docs/game/perception.md "Sense tags"): a looker in slave state 1 whose master squad resolves never regards
+    /// one of the master's faction as an enemy (<c>FUN_14079c950</c>), and an obedient player slave (holding job 187) none the master regards as
+    /// friendly (<c>FUN_1408569a0</c> asks slot 126 of the owner, <see cref="MasterRegardsFriendly"/>). Both come after the squad memory's tags.
+    /// </summary>
+    static bool MasterSpares(ref Scan s, int slot, CharacterCold c)
+    {
+        if (s.Cold is not { SlaveState: 1, SlaveMaster: >= 0 } me || s.World.Squads.Find(me.SlaveMaster) is not { } master) return false;
+        if (c.Faction == master.Faction) return true;
+
+        return s.Player && Kidnap.ObedientSlave.HasJob(me) && MasterRegardsFriendly(ref s, master, slot, c);
+    }
+
+    /// <summary>
+    /// Slot 126 of the master (<c>FUN_1407923d0</c>, the rule of <see cref="Dialogue.DialogueSystem"/>'s <c>RegardsFriendly</c> for an NPC owner):
+    /// never when the master squad holds TEMP_ENEMY on the character, always with TEMP_ALLY or a love tag, else the master's faction is allied to the
+    /// character's (the same faction is <see cref="MasterSpares"/>'s first test).
+    /// </summary>
+    static bool MasterRegardsFriendly(ref Scan s, Squad master, int slot, CharacterCold c)
+    {
+        if (s.Memory is { } memory)
         {
-            force = true;
+            var (tags, entry) = memory.Read(s.World, master.Id, new CharacterId(slot, s.Table.Previous[slot].Generation));
+            if ((tags >> Dialogue.MemoryTag.TempEnemy & 1) != 0) return false;
+            if ((tags >> Dialogue.MemoryTag.TempAlly & 1) != 0 || (entry?.Long & Dialogue.MemoryTag.LoveMask) is > 0) return true;
         }
 
-        return enemy;
+        return s.Relations.Contains(master.Faction) && s.Relations.Contains(c.Faction) && s.Relations.IsAlly(master.Faction, c.Faction);
     }
 
     /// <summary>
@@ -2152,8 +2166,9 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     }
 
     /// <summary>
-    /// Whether the finder takes the candidate for an enemy: the relations (a disguise, the freed rule, neutrals for 21), a campaign assault's
-    /// target, a campaign force's member dropped, the squads' temporary tags and a contract's employer.
+    /// Whether the finder takes the candidate for an enemy: tagged ENEMY (for 21 also NEUTRAL) by the relations (a disguise, the freed rule), a
+    /// campaign assault's target, the squads' temporary tags and a contract's employer, an enemy with diplomatic status tagged NEUTRAL; then the
+    /// finders' own campaign and leave-alone gates (<see cref="FinderDrops"/>).
     /// </summary>
     static bool TakenAsEnemy(ref Scan s, int slot, CharacterCold c)
     {
@@ -2167,44 +2182,56 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
         // of a faction that is not real or below -30 by default.
         bool hostile = AttacksOnSight(s.Relations, s.Faction, seenAs) && s.Cold is not { Freed: true }
             && (!c.Freed || s.Relations.Factions[s.Faction] is { } mine && (mine.NotReal || mine.DefaultRelation < FreedHostility));
-        bool warEnemy = s.War.IsSet && WarEnemy(ref s, c, other.Position);
+        bool enemy = hostile || s.War.IsSet && WarEnemy(ref s, c, other.Position);
         bool neutrals = s.Finder == FoeFinder.EnemiesAndNeutrals;
-        bool enemy = hostile || neutrals && IsNeutral(s.Relations, s.Faction, seenAs) || warEnemy;
-
-        // A campaign force's member is sensed as NEUTRAL, not ENEMY (FUN_1408580d0 over FUN_140796240, docs/game/perception.md "Sense tags"): a raid
-        // walks up to talk first. A looker that attacks neutrals too still drops it unless it is hostile to its faction (FUN_1408569a0, Verified);
-        // its own campaign's targets stay, and a TEMP_ENEMY tag (below) makes it an enemy again.
-        if (enemy && (!neutrals || !IsEnemy(s.Relations, s.Faction, seenAs)) && !warEnemy && c.SquadId >= 0
-            && s.World.Squads.Find(c.SquadId) is { PlatoonId: >= 0 } force && s.World.Platoons.Find(force.PlatoonId)?.Campaign is not null)
-        {
-            enemy = false;
-        }
+        bool tempEnemy = false;
 
         // The squads' temporary tags (FUN_14079c950, other faction only): the looker's squad holds TEMP_ENEMY on the target, or, for a player-faction
-        // looker, the target's squad on it, makes an enemy; the looker's squad holding TEMP_ALLY on the target unmakes one.
+        // looker, the target's squad on it, makes an enemy; the looker's squad holding TEMP_ALLY on the target makes it friendly (tagged ALLY, which
+        // no finder takes).
         if (s.Memory is { } memory && c.Faction != s.Faction)
         {
             var target = new CharacterId(slot, other.Generation);
+            tempEnemy = s.Squad >= 0 && memory.HasShort(s.World, s.Squad, target, Dialogue.MemoryTag.TempEnemy);
 
-            if (s.Squad >= 0 && memory.HasShort(s.World, s.Squad, target, Dialogue.MemoryTag.TempEnemy)
-                || s.World.Player.Faction == s.Faction && c.SquadId >= 0 && memory.HasShort(s.World, c.SquadId,
+            if (tempEnemy || s.World.Player.Faction == s.Faction && c.SquadId >= 0 && memory.HasShort(s.World, c.SquadId,
                     new CharacterId(s.Self, s.Table.Previous[s.Self].Generation), Dialogue.MemoryTag.TempEnemy))
             {
                 enemy = true;
             }
-            else if (enemy && s.Squad >= 0 && memory.HasShort(s.World, s.Squad, target, Dialogue.MemoryTag.TempAlly))
-                enemy = false;
+            else if (s.Squad >= 0 && memory.HasShort(s.World, s.Squad, target, Dialogue.MemoryTag.TempAlly))
+                return false;
         }
 
         // A contract's employer (Contract_HiredAlly / Contract_DefendPlayerBase assessNeutral, and HiredAlly's assessEnemy for the employer's allies,
         // Verified): TEMP_ALLY, not an enemy.
-        if (enemy && s.Employer >= 0
-            && (c.Faction == s.Employer || s.EmployerAllies && s.Relations.Contains(c.Faction) && s.Relations.IsAlly(s.Employer, c.Faction)))
-        {
-            enemy = false;
-        }
+        bool employerSide = s.Employer >= 0
+            && (c.Faction == s.Employer || s.EmployerAllies && s.Relations.Contains(c.Faction) && s.Relations.IsAlly(s.Employer, c.Faction));
+        if (employerSide) return false;
 
-        return enemy;
+        // An enemy with diplomatic status is sensed NEUTRAL (Regards): only 21, which takes neutrals too, still finds it.
+        bool diplomat = enemy && CharacterFacts.DiplomaticStatus(c, other.Position, s.Towns, !PlayerSide(s.World, s.Cold));
+        bool taken = neutrals ? enemy || IsNeutral(s.Relations, s.Faction, seenAs) : enemy && !diplomat;
+        return taken && !FinderDrops(ref s, c, tempEnemy);
+    }
+
+    /// <summary>
+    /// The finders' gates after the sense tags (<b>Verified</b> by decompile and disassembly). 16 (<c>FUN_14059f3a0</c>) skips a member of a campaign
+    /// still marching (<see cref="CharacterFacts.MarchingToCampaign"/>; its global override <c>DAT_142133f54</c> has no writer, <b>Observed</b>).
+    /// 21 (<c>FUN_14059f720</c>) and 144 without a home circle (<c>FUN_14059fa70</c>) leave alone (<c>FUN_1408569a0</c>), for a looker not of
+    /// the player's faction, a target its squad holds no TEMP_ENEMY on and whose faction its own is not hostile to (relation above -30) when the
+    /// target has diplomatic status (biome not factored in) or marches in a campaign. The player-faction branch of the leave-alone test is not
+    /// modelled.
+    /// </summary>
+    static bool FinderDrops(ref Scan s, CharacterCold c, bool tempEnemy)
+    {
+        if (s.Finder == FoeFinder.Enemies) return CharacterFacts.MarchingToCampaign(s.World, c);
+
+        bool leavesAlone = s.Finder == FoeFinder.EnemiesAndNeutrals || s.Finder == FoeFinder.Territory && s.Home.R2 == 0;
+        if (!leavesAlone || s.World.Player.Faction == s.Faction || tempEnemy) return false;
+        if (s.Relations.Contains(c.Faction) && s.Relations.IsHostile(s.Faction, c.Faction)) return false;
+
+        return CharacterFacts.DiplomaticStatus(c, default, null, false) || CharacterFacts.MarchingToCampaign(s.World, c);
     }
 
     /// <summary>
@@ -2235,6 +2262,7 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     {
         ref readonly var other = ref s.Table.Previous[slot];
         var fight = s.Combat?.StateOf(new CharacterId(slot, other.Generation)) ?? CombatSlot.Fresh(other.Generation);
+        if (s.Cold is { } chooser && TargetScore.SparesSlave(chooser, c)) return null;
 
         if (s.HoldPost && !Orders.HoldPost(s.Eye, s.HoldPoint, other.Position, other.Velocity, other.Yaw, c.Medical!.Crawling
             || fight.AttackTech >= 0, c.InCombat))
