@@ -11,6 +11,7 @@ using Meitou.Game.Host;
 using Meitou.Simulation;
 using Meitou.Simulation.Ai;
 using Meitou.Simulation.Combat;
+using Meitou.Simulation.Items;
 using Meitou.Simulation.Movement;
 using Meitou.Simulation.Population;
 
@@ -40,14 +41,14 @@ internal sealed class OracleState
         $"hand:{unchecked((uint)hand.Type)}:{unchecked((uint)hand.C)}:{unchecked((uint)hand.Cs)}:{unchecked((uint)hand.I)}:{unchecked((uint)hand.S)}");
 
     /// <summary>The state schemas the adapter writes, oldest first; each adds keys to the one before and never changes them.</summary>
-    internal static readonly string[] SchemaVersions = ["0.1", "0.2", "0.3", "0.4", "0.5"];
-    internal const string DefaultSchemaVersion = "0.5";
+    internal static readonly string[] SchemaVersions = ["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"];
+    internal const string DefaultSchemaVersion = "0.6";
 
     internal JsonObject Capture(WorldSession session, PopulationData data, string schemaVersion = DefaultSchemaVersion)
     {
         int level = Array.IndexOf(SchemaVersions, schemaVersion);
         if (level < 0) throw new ArgumentException("Unsupported oracle state schema", nameof(schemaVersion));
-        bool v02 = level >= 1, v03 = level >= 2, v04 = level >= 3, v05 = level >= 4;
+        bool v02 = level >= 1, v03 = level >= 2, v04 = level >= 3, v05 = level >= 4, v06 = level >= 5;
         if (!ReferenceEquals(_world, session.World))
         {
             _world = session.World;
@@ -151,6 +152,7 @@ internal sealed class OracleState
             }
             if (v04) AddState04(row, cold);
             if (v05) row["goal"] = Goal(cold);
+            if (v06) row["equipment"] = Equipment(cold);
             characters.Add(row);
         }
         var squadRows = new JsonArray();
@@ -305,6 +307,33 @@ internal sealed class OracleState
         row["carrying_id"] = carried;
         row["being_carried"] = cold is null ? null : !cold.CarriedBy.IsNone;
     }
+
+    /// <summary>
+    /// State 0.6's equipment: every item in one of the character's equipment sections (<see cref="InventoryCommands.IsEquipmentSection"/>: the
+    /// original's section names such as <c>hip</c>, <c>back</c>, <c>armour</c>, <c>head</c>), sorted by section then item id. Prosthetic limbs and
+    /// grid items are not equipment. <c>quality</c> is the stored <see cref="ItemInstance.Quality"/> (armour's grade), <c>level</c> the stored
+    /// <see cref="ItemInstance.Level"/> (what a weapon's or crossbow's stats read), <c>maker_id</c> and <c>model_id</c> a weapon's
+    /// WEAPON_MANUFACTURER and MATERIAL_SPECS_WEAPON records. Null without an inventory.
+    /// </summary>
+    internal static JsonArray? Equipment(CharacterCold? cold)
+    {
+        if (cold?.Inventory is not { } inventory) return null;
+
+        var rows = new JsonArray();
+        var worn = inventory.Items
+            .Where(i => InventoryCommands.IsEquipmentSection(i.Section))
+            .OrderBy(i => i.Section, OracleCanonicalJson.ScalarOrder)
+            .ThenBy(i => i.Record, OracleCanonicalJson.ScalarOrder);
+        foreach (var item in worn) rows.Add(EquipmentRow(item));
+        return rows;
+    }
+
+    static JsonObject EquipmentRow(ItemInstance item) => new()
+    {
+        ["section"] = KnownId(item.Section), ["item_id"] = KnownId(item.Record), ["quantity"] = item.Quantity,
+        ["quality"] = Number(item.Quality), ["level"] = item.Level,
+        ["maker_id"] = KnownId(item.CompanyId), ["model_id"] = KnownId(item.MaterialId),
+    };
 
     static string Side(BodySide side) => side switch { BodySide.Left => ":left", BodySide.Right => ":right", _ => ":neither" };
     static string? KnownId(string? value) => !string.IsNullOrEmpty(value) && value.Length <= 512 && !value.Any(c => c < 32 || c == 127) ? value : null;

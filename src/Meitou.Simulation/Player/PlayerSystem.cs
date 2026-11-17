@@ -52,6 +52,11 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
     internal PopulationData? Data => data;
 
     /// <summary>
+    /// The assembly that rebuilds a character's fighter and look from its kit (null without population data).
+    /// </summary>
+    internal CharacterAssembly? Assembly => _assembly;
+
+    /// <summary>
     /// The owner of the pick-up and container orders (row 3) and their act-outs.
     /// </summary>
     internal PickUps PickUps => _pickUps;

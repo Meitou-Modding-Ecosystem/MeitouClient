@@ -446,7 +446,7 @@ public class OracleStateTests
         Assert.Equal(["id", "faction_id", "members", "leader_id", "identity_origin", "template_id", "origin_town_id"],
             v02["squads"]![0]!.AsObject().Select(pair => pair.Key));
         Assert.Equal(v02.ToJsonString(), projection.Capture(session, Data(), "0.2").ToJsonString());
-        Assert.Equal("0.5", projection.Capture(session, Data())["schema_version"]!.GetValue<string>());
+        Assert.Equal("0.6", projection.Capture(session, Data())["schema_version"]!.GetValue<string>());
         var v03 = projection.Capture(session, Data(), "0.3");
         string canonical03 = Encoding.UTF8.GetString(OracleCanonicalJson.Serialize(v03));
         // Canonical scalar key order places the new keys between race_id and squad_id.
@@ -455,7 +455,7 @@ public class OracleStateTests
         stripped["schema_version"] = "0.2";
         foreach (var row in stripped["characters"]!.AsArray()) { row!.AsObject().Remove("slave_state"); row.AsObject().Remove("slave_owner_faction_id"); }
         Assert.Equal(OracleCanonicalJson.Serialize(v02), OracleCanonicalJson.Serialize(stripped));
-        Assert.Throws<ArgumentException>(() => projection.Capture(session, Data(), "0.6"));
+        Assert.Throws<ArgumentException>(() => projection.Capture(session, Data(), "0.7"));
     }
 
     static void SetPrivate(object target, string property, object value) =>

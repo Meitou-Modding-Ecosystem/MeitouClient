@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Meitou.Data.Fcs;
+using Meitou.Data.Gameplay.Bodies;
 using Meitou.Game.Oracle;
 using Meitou.Simulation;
 using Meitou.Simulation.Population;
@@ -14,8 +15,8 @@ using Meitou.Simulation.Population;
 namespace Meitou.Game;
 
 /// <summary>
-/// The oracle's scene-setup commands (KenshiOracle <c>docs/scene-setup.md</c>, adapter 0.11.0): <c>setup_info</c>, <c>setup_area_census</c>, <c>setup_spawn_squad</c>,
-/// <c>setup_set_relation</c> and <c>setup_heal</c>. Every one but <c>setup_info</c> needs a world the oracle's own load_save finished with <c>allow_setup:true</c>; mutations
+/// The oracle's scene-setup commands (KenshiOracle <c>docs/scene-setup.md</c>, adapter 0.11.0; kits 0.14.0): <c>setup_info</c>, <c>setup_area_census</c>, <c>setup_spawn_squad</c>,
+/// <c>setup_set_relation</c>, <c>setup_heal</c>, <c>setup_set_loadout</c> and <c>setup_set_stats</c>. Every one but <c>setup_info</c> needs a world the oracle's own load_save finished with <c>allow_setup:true</c>; mutations
 /// also need a paused world with no run_until. None saves. Heal is the F10 cheat inside a tick bracket (<see cref="World.ApplyPausedOracleDebug"/>), spawns use the same
 /// bracket (<see cref="World.ApplyPausedOracleEdit"/>), relations the swap-aware <see cref="Meitou.Data.Gameplay.FactionRelations.Assign"/>. Replies carry exactly the
 /// contract's keys; Meitou-only facts go to <c>engine_detail</c>.
@@ -52,6 +53,8 @@ sealed partial class GameHost
         "setup_spawn_squad" => OracleSpawnSquad(p),
         "setup_set_relation" => OracleSetRelation(p),
         "setup_heal" => OracleHeal(p),
+        "setup_set_loadout" => OracleSetLoadout(p),
+        "setup_set_stats" => OracleSetStats(p),
         _ => null,
     };
 
@@ -369,6 +372,139 @@ sealed partial class GameHost
         return new JsonObject { ["parts"] = parts, ["blood"] = medical.Blood, ["dead"] = medical.Dead, ["unconscious"] = medical.Unconscious };
     }
 
+    // ---- loadout ----
+
+    /// <summary>
+    /// <c>setup_set_loadout</c> (scene setup 0.12.0): destroys everything the character carries but prosthetic limbs and locked-on items, then makes and
+    /// wears each requested item in order (the F10 strip and give, <see cref="DebugStripItems"/>, <see cref="DebugGiveItem"/> with Equip), so the
+    /// fighter is rebuilt from the new kit. Each requested item must then be worn; replies with the state 0.6 equipment before and after.
+    /// </summary>
+    object OracleSetLoadout(JsonElement p)
+    {
+        SetupKeys(p, "character_id", "items"); RequireOracleSetup(true);
+        string cid = SetupText(p, "character_id", 200);
+        var items = OracleLoadoutItems(SetupField(p, "items"));
+        var (id, cold) = OracleLivingCharacter(cid);
+        if (cold.Inventory is null) throw new OracleHostError("state_unavailable", "inventory unavailable");
+        foreach (var item in items) OracleCheckLoadoutItem(item);
+
+        var worldBefore = OracleWorldStamp();
+        var before = OracleState.Equipment(cold);
+        _oracleWorldMutated = true;
+        Session.World.ApplyPausedOracleDebug(new DebugStripItems(id, false) { Tick = Session.World.Tick });
+        foreach (var item in items) Session.World.ApplyPausedOracleDebug(OracleGive(id, item));
+
+        var after = OracleState.Equipment(Session.World.Characters.Cold(id.Slot));
+        if (OracleSetupPolicy.MissingFromLoadout(items.Select(i => i.ItemId), after) is { } missing)
+            throw new OracleHostError("state_unavailable", "item not equipped; reload the save: " + missing);
+
+        var result = new JsonObject
+        {
+            ["character_id"] = cid, ["before"] = before, ["after"] = after,
+            ["engine_detail"] = new JsonObject
+            {
+                ["call"] = "F10 strip (all but limbs and locked-on items, nothing dropped), then F10 give with Equip per item; CharacterAssembly.RefreshEquipment rebuilds the fighter",
+                ["grade"] = "weapon without maker/model/level: PLAYER_WEAPONS model of its quality; armour: quality and level both set to quality",
+            },
+        };
+        return OracleMutated(result, worldBefore);
+    }
+
+    /// <summary>
+    /// One requested loadout item: the record, its quality (0 to 100, default 0) and a weapon's exact maker, model and level (each optional).
+    /// </summary>
+    internal sealed record OracleLoadoutItem(string ItemId, int Quality, string? MakerId, string? ModelId, int? Level)
+    {
+        public bool HasGrade => MakerId is not null || ModelId is not null || Level is not null;
+    }
+
+    static List<OracleLoadoutItem> OracleLoadoutItems(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > OracleSetupPolicy.MaximumLoadoutItems)
+            throw new ArgumentException("invalid array: items");
+
+        var items = new List<OracleLoadoutItem>();
+        foreach (var item in value.EnumerateArray()) items.Add(OracleParseLoadoutItem(item));
+        return items;
+    }
+
+    static OracleLoadoutItem OracleParseLoadoutItem(JsonElement item)
+    {
+        SetupKeys(item, "item_id", "quality", "maker_id", "model_id", "level");
+        string itemId = SetupText(item, "item_id", 128);
+        int quality = item.TryGetProperty("quality", out _) ? SetupInteger(item, "quality", 0, 100) : 0;
+        string? maker = item.TryGetProperty("maker_id", out _) ? SetupText(item, "maker_id", 128) : null;
+        string? model = item.TryGetProperty("model_id", out _) ? SetupText(item, "model_id", 128) : null;
+        int? level = item.TryGetProperty("level", out _) ? SetupInteger(item, "level", 0, 100) : null;
+        return new OracleLoadoutItem(itemId, quality, maker, model, level);
+    }
+
+    void OracleCheckLoadoutItem(OracleLoadoutItem item)
+    {
+        var db = PopData!.Db;
+        if (db.Find(item.ItemId) is not { } record) throw new OracleHostError("not_found", "item not found");
+        if (record.Type is not (FcsRecordType.Weapon or FcsRecordType.Armour or FcsRecordType.Crossbow))
+            throw new OracleHostError("invalid_request", "item is not a WEAPON, ARMOUR or CROSSBOW record");
+
+        if (!item.HasGrade) return;
+        if (record.Type == FcsRecordType.Armour)
+            throw new OracleHostError("invalid_request", "maker_id, model_id and level apply only to weapons and crossbows");
+        if (item.MakerId is not null && db.Find(item.MakerId)?.Type != FcsRecordType.WeaponManufacturer)
+            throw new OracleHostError("not_found", "weapon maker not found");
+        if (item.ModelId is not null && db.Find(item.ModelId)?.Type != FcsRecordType.MaterialSpecsWeapon)
+            throw new OracleHostError("not_found", "weapon model not found");
+    }
+
+    DebugGiveItem OracleGive(CharacterId id, OracleLoadoutItem item) => new(id, item.ItemId, 1, item.Quality)
+    {
+        Equip = true, Exact = item.HasGrade ? new DebugWeaponGrade(item.MakerId, item.ModelId, item.Level) : null, Tick = Session.World.Tick,
+    };
+
+    // ---- stats ----
+
+    /// <summary>
+    /// <c>setup_set_stats</c> (scene setup 0.12.0): sets the named stored stats (state 0.4 keys) to the given values, 0 to 100 (the F10 set stats,
+    /// <see cref="DebugSetStats"/>); replies with all 34 stats before and after.
+    /// </summary>
+    object OracleSetStats(JsonElement p)
+    {
+        SetupKeys(p, "character_id", "stats"); RequireOracleSetup(true);
+        string cid = SetupText(p, "character_id", 200);
+        var values = OracleSetupPolicy.StatValues(SetupField(p, "stats"));
+        var (id, cold) = OracleLivingCharacter(cid);
+        if (cold.Stats is null) throw new OracleHostError("state_unavailable", "stats unavailable");
+
+        var worldBefore = OracleWorldStamp();
+        var before = OracleStats(cold);
+        _oracleWorldMutated = true;
+        foreach (var (stat, value) in values)
+            Session.World.ApplyPausedOracleDebug(new DebugSetStats([id], [stat], value) { Tick = Session.World.Tick });
+
+        var result = new JsonObject
+        {
+            ["character_id"] = cid, ["before"] = before, ["after"] = OracleStats(Session.World.Characters.Cold(id.Slot)!),
+            ["engine_detail"] = new JsonObject { ["call"] = "F10 set stats per stat: the stored value, no multiplier" },
+        };
+        return OracleMutated(result, worldBefore);
+    }
+
+    static JsonObject OracleStats(CharacterCold cold)
+    {
+        var stats = new JsonObject();
+        foreach (var (key, stat) in OracleState.StatKeys) stats[key] = cold.Stats![stat];
+        return stats;
+    }
+
+    /// <summary>A loaded, living character that is not dead, by its census id; the contract's not_found and dead refusals otherwise.</summary>
+    (CharacterId Id, CharacterCold Cold) OracleLivingCharacter(string cid)
+    {
+        var table = Session.World.Characters;
+        if (!_oracleState!.TryResolveCharacter(cid, out var id) || !table.IsAlive(id) || table.Cold(id.Slot) is not { } cold)
+            throw new OracleHostError("not_found", "character is not loaded");
+        if (cold.Medical is { Dead: true }) throw new OracleHostError("invalid_request", "character is dead");
+        return (id, cold);
+    }
+
     // ---- rows ----
 
     string OracleIdentity(CharacterId id) => _oracleState!.CharacterIdentity(id) ?? throw new OracleHostError("state_unavailable", "character identity unavailable");
@@ -440,12 +576,48 @@ sealed partial class GameHost
 /// <summary>Pure rules of the scene-setup commands, shared with their focused tests.</summary>
 internal static partial class OracleSetupPolicy
 {
-    internal const int MaximumPlayers = 64, MaximumSpawnRows = 32, MaximumRelationRows = 100;
+    internal const int MaximumPlayers = 64, MaximumSpawnRows = 32, MaximumRelationRows = 100, MaximumLoadoutItems = 16;
+
+    /// <summary>
+    /// <c>setup_set_stats</c>'s <c>stats</c>: an object of 1 to 34 state 0.4 stat keys, each a number 0 to 100; in the order given.
+    /// </summary>
+    internal static List<(StatsEnumerated Stat, float Value)> StatValues(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object) throw new ArgumentException("invalid object: stats");
+
+        var values = new List<(StatsEnumerated, float)>();
+        foreach (var entry in value.EnumerateObject())
+        {
+            int row = Array.FindIndex(OracleState.StatKeys, k => k.Key == entry.Name);
+            if (row < 0) throw new ArgumentException("unknown stat: " + entry.Name);
+            if (entry.Value.ValueKind != JsonValueKind.Number || !entry.Value.TryGetDouble(out double n) || !double.IsFinite(n) || n is < 0 or > 100)
+                throw new ArgumentException("invalid number: stats." + entry.Name);
+            values.Add((OracleState.StatKeys[row].Stat, (float)n));
+        }
+
+        return values.Count > 0 ? values : throw new ArgumentException("invalid object: stats");
+    }
+
+    /// <summary>
+    /// The first requested item id with fewer worn copies in <paramref name="equipment"/> (state 0.6 rows) than requested; null when all are worn.
+    /// </summary>
+    internal static string? MissingFromLoadout(IEnumerable<string> requested, JsonArray? equipment)
+    {
+        var worn = (equipment ?? []).Select(row => row?["item_id"]?.GetValue<string>()).ToList();
+        foreach (string id in requested)
+        {
+            int at = worn.IndexOf(id);
+            if (at < 0) return id;
+            worn.RemoveAt(at);
+        }
+
+        return null;
+    }
     internal const string UnknownCommit = "unknown";
     internal static readonly (string Code, string Message) NotReady = ("world_not_ready", "world is unavailable or a save is loading");
 
     /// <summary>The capabilities ping announces.</summary>
-    internal static readonly string[] Capabilities = ["scene_setup"];
+    internal static readonly string[] Capabilities = ["scene_setup", "scene_setup_kits"];
 
     /// <summary>Ping's fixed identity keys; the host adds the live ones.</summary>
     internal static JsonObject PingIdentity() => new()

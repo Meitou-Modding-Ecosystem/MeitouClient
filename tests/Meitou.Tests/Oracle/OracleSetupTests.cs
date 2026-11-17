@@ -1,9 +1,13 @@
 using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Meitou.Data.Gameplay;
 using Meitou.Data.Gameplay.Bodies;
 using Meitou.Game;
 using Meitou.Game.Oracle;
 using Meitou.Simulation;
+using Meitou.Simulation.Bodies;
+using Meitou.Simulation.Items;
 using SimWorld = Meitou.Simulation.World;
 using Meitou.Simulation.Movement;
 using Meitou.Simulation.Player;
@@ -100,11 +104,11 @@ public class OracleSetupTests
     {
         var ping = OracleSetupPolicy.PingIdentity();
         Assert.Equal(OracleProtocol.AdapterVersion, ping["plugin_version"]!.GetValue<string>());
-        Assert.Equal("0.13.0", OracleProtocol.AdapterVersion);
-        Assert.Equal("0.5", ping["state_schema_version"]!.GetValue<string>());
-        Assert.Equal("0.5", ping["schema_version"]!.GetValue<string>());
-        Assert.Equal(["0.1", "0.2", "0.3", "0.4", "0.5"], ping["supported_schema_versions"]!.AsArray().Select(v => v!.GetValue<string>()));
-        Assert.Equal(["scene_setup"], ping["capabilities"]!.AsArray().Select(c => c!.GetValue<string>()));
+        Assert.Equal("0.14.0", OracleProtocol.AdapterVersion);
+        Assert.Equal("0.6", ping["state_schema_version"]!.GetValue<string>());
+        Assert.Equal("0.6", ping["schema_version"]!.GetValue<string>());
+        Assert.Equal(["0.1", "0.2", "0.3", "0.4", "0.5", "0.6"], ping["supported_schema_versions"]!.AsArray().Select(v => v!.GetValue<string>()));
+        Assert.Equal(["scene_setup", "scene_setup_kits"], ping["capabilities"]!.AsArray().Select(c => c!.GetValue<string>()));
     }
 
     [Fact]
@@ -196,4 +200,58 @@ public class OracleSetupTests
         Assert.Equal(new Vector3(9, 0, 9), world.Characters.Previous[spawned.Slot].Position);
         Assert.Equal(0, world.Tick);
     }
+
+    [Fact]
+    public void Paused_set_stats_writes_the_stored_values_without_advancing_the_world()
+    {
+        using var world = new SimWorld(new WorldSettings { Seed = 3, PublishSnapshots = false }, new OpenGroundWalkability(Ground), [new PlayerSystem()]);
+        var stats = new CharacterStats();
+        var a = world.Characters.Spawn(new CharacterHot(), new CharacterCold { Stats = stats }, 0);
+        world.ApplyPausedOracleDebug(new DebugSetStats([a], [StatsEnumerated.Katanas], 73) { Tick = 0 });
+        world.ApplyPausedOracleDebug(new DebugSetStats([a], [StatsEnumerated.Toughness], 12.5f) { Tick = 0 });
+        Assert.Equal((73f, 12.5f), (stats[StatsEnumerated.Katanas], stats[StatsEnumerated.Toughness]));
+        Assert.Equal(0, world.Tick);
+    }
+
+    [Fact]
+    public void Paused_strip_keeps_prosthetic_limbs_and_the_equipment_rows_list_only_worn_items()
+    {
+        using var world = new SimWorld(new WorldSettings { Seed = 3, PublishSnapshots = false }, new OpenGroundWalkability(Ground), [new PlayerSystem()]);
+        var cold = new CharacterCold { Inventory = new Inventory() };
+        cold.Inventory.Items.Add(new ItemInstance { Record = "shirt", Section = "shirt", Quality = 35 });
+        cold.Inventory.Items.Add(new ItemInstance { Record = "katana", Section = "hip", Level = 40, CompanyId = "maker", MaterialId = "model" });
+        cold.Inventory.Items.Add(new ItemInstance { Record = "arm", Section = "left_arm_replace" });
+        cold.Inventory.Items.Add(new ItemInstance { Record = "bread", Section = "main" });
+        var a = world.Characters.Spawn(new CharacterHot(), cold, 0);
+        var rows = OracleState.Equipment(cold)!;
+        Assert.Equal(["hip:katana", "shirt:shirt"], rows.Select(r => r!["section"]!.GetValue<string>() + ":" + r["item_id"]!.GetValue<string>()));
+        Assert.Equal((40, "maker", "model"), (rows[0]!["level"]!.GetValue<int>(), rows[0]!["maker_id"]!.GetValue<string>(),
+            rows[0]!["model_id"]!.GetValue<string>()));
+        Assert.Equal(35, rows[1]!["quality"]!.GetValue<double>());
+        world.ApplyPausedOracleDebug(new DebugStripItems(a, false) { Tick = 0 });
+        Assert.Equal(["arm"], cold.Inventory.Items.Select(i => i.Record));
+        Assert.Empty(OracleState.Equipment(cold)!);
+        Assert.Null(OracleState.Equipment(new CharacterCold()));
+    }
+
+    [Fact]
+    public void Set_stats_takes_state_04_keys_in_range_and_refuses_the_rest_with_the_contract_texts()
+    {
+        var values = OracleSetupPolicy.StatValues(Json("""{"katanas":60,"strength":0,"dodge":100}"""));
+        Assert.Equal([(StatsEnumerated.Katanas, 60f), (StatsEnumerated.Strength, 0f), (StatsEnumerated.Dodge, 100f)], values);
+        Assert.Equal("unknown stat: weapons", Assert.Throws<ArgumentException>(() => OracleSetupPolicy.StatValues(Json("""{"weapons":5}"""))).Message);
+        Assert.Equal("invalid number: stats.dodge", Assert.Throws<ArgumentException>(() => OracleSetupPolicy.StatValues(Json("""{"dodge":101}"""))).Message);
+        Assert.Equal("invalid object: stats", Assert.Throws<ArgumentException>(() => OracleSetupPolicy.StatValues(Json("{}"))).Message);
+    }
+
+    [Fact]
+    public void A_loadout_is_complete_only_when_every_requested_copy_is_worn()
+    {
+        var worn = new JsonArray(new JsonObject { ["item_id"] = "katana" }, new JsonObject { ["item_id"] = "shirt" });
+        Assert.Null(OracleSetupPolicy.MissingFromLoadout(["shirt", "katana"], worn));
+        Assert.Equal("katana", OracleSetupPolicy.MissingFromLoadout(["katana", "katana"], worn));
+        Assert.Equal("hat", OracleSetupPolicy.MissingFromLoadout(["hat"], null));
+    }
+
+    static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 }
