@@ -19,6 +19,7 @@ sealed partial class GameHost
     OracleState? _oracleState;
     readonly string _oracleInstance = g.Oracle ? Guid.NewGuid().ToString("N") : "";
     string _oracleOutput = "", _oracleSaveRoot = "";
+    string[] _oracleSaveRoots = [];
     ulong _oracleSeed;
     string _oracleSeedSource = "default";
     bool _oracleSeedApplied, _oracleLoadPending;
@@ -59,6 +60,7 @@ sealed partial class GameHost
         _oracleSaveRoot = GameOptions.Load is { } folder
             ? Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)))!
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "kenshi", "save");
+        _oracleSaveRoots = OracleHostPolicy.SaveRoots(QuickSave.DefaultRoot, _oracleSaveRoot);
         _oracleLoadPending = GameOptions.Load is not null;
         _oracleState = new OracleState();
         StartOracleSetup();
@@ -195,7 +197,8 @@ sealed partial class GameHost
                 ping["instance_id"] = _oracleInstance; ping["process_id"] = Environment.ProcessId; ping["oracle_available"] = true;
                 ping["world_ready"] = OracleReady; ping["frame"] = _oracleFrame; ping["timestamp_ms"] = RealTime.Elapsed.TotalMilliseconds;
                 ping["paused"] = Session.Simulation.IsPaused; ping["load_pause_pending"] = _oracleLoadPending || Covered;
-                ping["current_save"] = OracleCurrentSave; ping["save_root"] = _oracleSaveRoot; ping["saved_origins_required"] = false; ping["rekenshi_settings_available"] = false;
+                ping["current_save"] = OracleCurrentSave; ping["save_root"] = _oracleSaveRoot;
+                ping["save_roots"] = new JsonArray([.. _oracleSaveRoots.Select(root => (JsonNode?)root)]); ping["saved_origins_required"] = false; ping["rekenshi_settings_available"] = false;
                 ping["seed"] = _oracleSeed.ToString(CultureInfo.InvariantCulture); ping["seed_source"] = _oracleSeedSource;
                 ping["seed_applied_before_load"] = _oracleSeedApplied; ping["load_error"] = _oracleLoadError;
                 ping["startup_boundary"] = "population_prepared_without_simulation_tick";
@@ -268,9 +271,9 @@ sealed partial class GameHost
         ulong seed = p.TryGetProperty("seed", out var seedJson) ? OracleHostPolicy.ReadSeed(seedJson) : _oracleSeed;
         bool allowSetup = p.TryGetProperty("allow_setup", out _) && OracleBool(p, "allow_setup");
         if (!Saves.SavesAvailable(out string why) || Saves.Busy()) throw new OracleHostError("busy", why.Length > 0 ? why : "a save or load is in progress");
-        string folder = Path.Combine(_oracleSaveRoot, name);
+        string folder = OracleHostPolicy.FindSave(_oracleSaveRoots, name)
+            ?? throw new OracleHostError("not_found", $"no save folder {name} with a quick.save under {string.Join(" or ", _oracleSaveRoots)}");
         OracleHostPolicy.EnsureNoLinks(folder);
-        if (!File.Exists(Path.Combine(folder, SaveFolder.QuickSaveName))) throw new OracleHostError("not_found", "save folder contains no quick.save");
         StopOracleRun("cancelled");
         Session.Simulation.SetSpeed(0);
         _oracleSeed = seed;
@@ -552,6 +555,27 @@ internal static class OracleHostPolicy
         session.World.Daytime = session.Clock.IsDaytime;
         if (oracle) session.World.PreparePopulation(focus);
         else session.World.RunTick();
+    }
+
+    /// <summary>
+    /// The folders a named oracle load looks in, in order: Meitou's own saves, then <paramref name="kenshiRoot"/> (the original's saves, or the
+    /// parent of a <c>--load</c> folder), once each.
+    /// </summary>
+    internal static string[] SaveRoots(string meitouRoot, string kenshiRoot)
+    {
+        string meitou = Path.GetFullPath(meitouRoot);
+        string kenshi = Path.GetFullPath(kenshiRoot);
+        return string.Equals(meitou, kenshi, StringComparison.OrdinalIgnoreCase) ? [meitou] : [meitou, kenshi];
+    }
+
+    /// <summary>
+    /// The folder of save <paramref name="name"/> under the first of <paramref name="roots"/> that holds it with a quick.save, or null.
+    /// </summary>
+    internal static string? FindSave(IEnumerable<string> roots, string name)
+    {
+        return roots
+            .Select(root => Path.Combine(root, name))
+            .FirstOrDefault(folder => File.Exists(Path.Combine(folder, SaveFolder.QuickSaveName)));
     }
 
     internal static void ValidateSaveName(string value)
