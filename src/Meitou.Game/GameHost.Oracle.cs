@@ -153,6 +153,7 @@ sealed partial class GameHost
             else if (OracleSeconds >= _oracleRun.Target) StopOracleRun("completed");
             else if (RealTime.Elapsed.TotalSeconds >= _oracleRun.Deadline) StopOracleRun("timed_out");
         }
+        OracleCombatLogFrame();
         int drained = 0;
         while (drained++ < 64 && _oracleServer.TryDequeue(out var request))
         {
@@ -274,6 +275,7 @@ sealed partial class GameHost
         string folder = OracleHostPolicy.FindSave(_oracleSaveRoots, name)
             ?? throw new OracleHostError("not_found", $"no save folder {name} with a quick.save under {string.Join(" or ", _oracleSaveRoots)}");
         OracleHostPolicy.EnsureNoLinks(folder);
+        OracleStopCombatLog();
         StopOracleRun("cancelled");
         Session.Simulation.SetSpeed(0);
         _oracleSeed = seed;

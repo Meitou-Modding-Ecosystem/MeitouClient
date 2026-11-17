@@ -55,6 +55,7 @@ sealed partial class GameHost
         "setup_heal" => OracleHeal(p),
         "setup_set_loadout" => OracleSetLoadout(p),
         "setup_set_stats" => OracleSetStats(p),
+        "combat_log" => OracleCombatLogCommand(p),
         _ => null,
     };
 
@@ -182,17 +183,78 @@ sealed partial class GameHost
             ["alive_count"] = alive, ["dead_count"] = dead, ["unconscious_count"] = unconscious, ["player_count"] = players, ["gate"] = OracleGate(), ["world"] = OracleWorldStamp() };
     }
 
+    // ---- combat log ----
+
+    /// <summary>
+    /// The running combat log, or null.
+    /// </summary>
+    OracleCombatLog? _oracleCombatLog;
+
+    /// <summary>
+    /// <c>combat_log</c>: <c>action</c> "start" (with <c>filename</c>, a JSON lines file in the oracle output folder) or "stop"; replies the path and the
+    /// counts written. A load stops a running log.
+    /// </summary>
+    object OracleCombatLogCommand(JsonElement p)
+    {
+        SetupKeys(p, "action", "filename");
+        string action = SetupText(p, "action", 8);
+        if (action == "stop") return OracleStopCombatLog() ?? new JsonObject { ["running"] = false, ["path"] = null };
+        if (action != "start") throw new ArgumentException("action must be start or stop");
+
+        RequireOracleWorld();
+        string filename = SetupText(p, "filename", 128);
+        OracleHostPolicy.ValidateFilename(filename);
+        OracleStopCombatLog();
+        OracleHostPolicy.EnsureNoLinks(_oracleOutput);
+        Directory.CreateDirectory(_oracleOutput);
+        var log = new OracleCombatLog(Session.World, Path.Combine(_oracleOutput, filename), _oracleState!.CharacterIdentity, OracleFactionId);
+        _oracleCombatLog = log;
+        return OracleCombatLogResult(log, true);
+    }
+
+    /// <summary>
+    /// Closes the running combat log; its result, or null when none runs.
+    /// </summary>
+    JsonObject? OracleStopCombatLog()
+    {
+        if (_oracleCombatLog is not { } log) return null;
+
+        log.Frame(OracleSeconds);
+        log.Dispose();
+        _oracleCombatLog = null;
+        return OracleCombatLogResult(log, false);
+    }
+
+    /// <summary>
+    /// Writes the running combat log's lines for this frame.
+    /// </summary>
+    void OracleCombatLogFrame() => _oracleCombatLog?.Frame(OracleSeconds);
+
+    /// <summary>
+    /// The faction id at an index of the population's factions, or null.
+    /// </summary>
+    string? OracleFactionId(int index) => PopData?.Factions is { } factions && (uint)index < (uint)factions.Count ? factions[index].Id : null;
+
+    /// <summary>
+    /// The combat log reply: whether it still runs, its path and the hit and state lines written.
+    /// </summary>
+    static JsonObject OracleCombatLogResult(OracleCombatLog log, bool running) => new()
+    {
+        ["running"] = running, ["path"] = log.Path, ["hits"] = log.Hits, ["events"] = log.Events,
+    };
+
     // ---- spawn ----
 
     PopulationSystem OracleSpawner() => Session.World.Systems.OfType<PopulationSystem>().FirstOrDefault() ?? throw new OracleHostError("state_unavailable", "the world has no population system");
 
     object OracleSpawnSquad(JsonElement p)
     {
-        SetupKeys(p, "template_id", "faction_id", "position", "max_count", "permanent"); RequireOracleSetup(true);
+        SetupKeys(p, "template_id", "faction_id", "position", "max_count", "permanent", "aggro"); RequireOracleSetup(true);
         string sid = SetupText(p, "template_id", 128), fid = SetupText(p, "faction_id", 128);
         Vector3 at = SetupPosition(p, "position");
         int count = SetupInteger(p, "max_count", 1, 16);
         bool permanent = p.TryGetProperty("permanent", out _) && SetupBool(p, "permanent");
+        bool aggro = p.TryGetProperty("aggro", out _) && SetupBool(p, "aggro");
         var record = PopData!.Db.Find(sid);
         bool squadTemplate = record?.Type == FcsRecordType.SquadTemplate;
         // Each lookup runs only once the refusals before it passed, so an engine failure in a later one never hides an earlier refusal.
@@ -217,6 +279,9 @@ sealed partial class GameHost
         var loaded = OracleLoaded(); loaded.ExceptWith(loadedBefore);
         if (loaded.Any(id => table.Cold(id.Slot) is { IsPlayer: true })) throw new OracleHostError("state_unavailable", "unexpected player enlistment; reload the save");
         var squad = made.Count > 0 ? Session.World.Squads.Find(table.Cold(made[0].Slot)!.SquadId) : null;
+
+        // As the F10 menu's hostile spawn: the members get the "Attack enemies" goal, so the squad fights every enemy it sees until none stands.
+        if (aggro && squad is not null) squad.DebugAggro = true;
         var members = new JsonArray();
         foreach (var id in made)
         {
@@ -224,7 +289,7 @@ sealed partial class GameHost
         }
         var result = new JsonObject
         {
-            ["template_id"] = sid, ["faction_id"] = fid, ["position"] = OracleVector(at), ["max_count"] = count, ["permanent"] = permanent,
+            ["template_id"] = sid, ["faction_id"] = fid, ["position"] = OracleVector(at), ["max_count"] = count, ["permanent"] = permanent, ["aggro"] = aggro,
             ["size_multiplier"] = multiplier, ["squad_type"] = null,
             ["returned_squad_id"] = squad is null ? null : _oracleState.SquadIdentity(squad.Id), ["returned_members"] = members,
             ["new_loaded_count"] = loaded.Count, ["new_loaded_truncated"] = loaded.Count > OracleSetupPolicy.MaximumSpawnRows,
@@ -617,7 +682,7 @@ internal static partial class OracleSetupPolicy
     internal static readonly (string Code, string Message) NotReady = ("world_not_ready", "world is unavailable or a save is loading");
 
     /// <summary>The capabilities ping announces.</summary>
-    internal static readonly string[] Capabilities = ["scene_setup", "scene_setup_kits"];
+    internal static readonly string[] Capabilities = ["scene_setup", "scene_setup_kits", "scene_setup_aggro", "combat_log"];
 
     /// <summary>Ping's fixed identity keys; the host adds the live ones.</summary>
     internal static JsonObject PingIdentity() => new()
