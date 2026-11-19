@@ -68,6 +68,10 @@ sealed class ModRegistrations
     /// </summary>
     public List<ModSlot> Slots { get; } = [];
     /// <summary>
+    /// The mod jobs, in registration order.
+    /// </summary>
+    public List<Meitou.Simulation.Production.ModJobKind> Jobs { get; } = [];
+    /// <summary>
     /// The wear rules, in registration order.
     /// </summary>
     public List<Data.Gameplay.WearRule> WearRules { get; } = [];
@@ -277,6 +281,7 @@ sealed class ModRegistry
             Simulation.TaskOwners[type] = mod;
         }
         foreach (var slot in r.Slots) ModSlots.Add(slot);
+        foreach (var job in r.Jobs) Meitou.Simulation.Production.ModJobs.Add(job);
         foreach (var rule in r.WearRules) Data.Gameplay.WearRules.Add(mod, rule);
         foreach (var meter in r.Meters) ModMeters.Add(meter);
         foreach (var skill in r.Skills) ModSkills.Add(skill);
