@@ -62,8 +62,15 @@ as a cause of ghosting in high-contrast scenes.
 
 ## Frame generation
 
-The `FrameGeneration` setting (off by default, read at start-up) picks whose by `FrameGenerationVendor` (FSR 3 by default, or DLSS: "DLSS frame
-generation" below). FSR 3 presents through AMD's frame-interpolation swapchain
+The `FrameGeneration` setting (off by default) picks whose by `FrameGenerationVendor` (FSR 3 by default, or DLSS: "DLSS frame
+generation" below). It is followed while the game runs, without a restart (`GameLoop.FollowFrameGeneration`, `VulkanDisplay.ApplyFrameGeneration`):
+both vendors are made ready at start-up where they can be (Streamline with DLSS-G, Reflex and PCL; AMD's library loaded and its queues
+reserved after Streamline's), and a change of the setting, between two frames, drops the generator and the swapchain
+(`VulkanPresenter.DropSwapchain`), makes or destroys AMD's layer, loads or unloads DLSS-G (`Streamline.SetFrameGenerationLoaded`, Reflex on
+with it), and the next frame makes the swapchain anew through the right one. A method that cannot be had leaves the plain swapchain. HDR output
+(read at start-up) keeps frame generation off. **Verified** (2026-11-17, RTX 4090, a window, console `framegen`): off, FSR 3 and DLSS in every
+order, each active at once (x2 shown); the picture with FSR 3 or DLSS against off at the same-state floor; FSR 3 for 96 s with the game running:
+no memory growth, frame time stable. FSR 3 presents through AMD's frame-interpolation swapchain
 (`Upscalers/FfxSwapchain.cs`) and interpolates one frame between each two rendered ones (`Upscalers/FrameGeneration.cs`), on top
 of TAA, FSR or DLSS. Library: `amd_fidelityfx_vk.dll` (AMD's prebuilt, Windows/Proton) or `libamd_fidelityfx_vk.so` (Linux:
 `tools/scripts/build-ffx-linux.sh`, AMD's SDK 1.1.4 source plus `tools/patches/fidelityfx-sdk-1.1.4-linux.patch`; AMD's
@@ -88,9 +95,10 @@ swapchain code needs Vulkan headers 1.3.237+, so the script uses Khronos' 1.3.29
   family and need at least 3. **Observed** (Iris Xe, Windows, 2026-10-30): the family has 1 queue, so frame generation stays off
   with a log line. Typical AMD and Intel drivers also expose one graphics queue; AMD's samples take
   present and async compute from other families.
-- **DLSS:** Streamline must see every present, which AMD's swapchain owns, so on Windows with frame generation on DLSS goes through
-  NGX (`meitou_ngx.dll`, the SDK's static `nvsdk_ngx_s.lib` linked into a DLL by `package-release.ps1` or
-  `tools/scripts/build-ngx-shim-win.sh`) and Streamline is not loaded; without the FidelityFX library Streamline stays.
+- **DLSS:** on Windows DLSS goes through Streamline whichever frame generation runs (NGX, `meitou_ngx.dll`, only where Streamline does not
+  load). Under AMD's swapchain Streamline does not see the presents: it logs once "presentCommon() was not observed", and DLSS goes on
+  working (**Observed**, 2026-11-17: the picture at the same-state floor, no growth over 96 s). Before the runtime switch, FSR 3 took NGX and
+  left Streamline out.
 - **AMD SDK bugs** the validation layer reports, fixed in the Linux patch only (AMD's Windows DLL keeps them): line width 0 in the
   swapchain's pipelines, a descriptor pool size list that drops `STORAGE_BUFFER` (**Observed**, PR #133).
 - **Performance** (**Observed**, single runs, RTX 3070, PR #133): about 1.4 ms more per rendered frame (Proton, TAA),
@@ -100,7 +108,7 @@ swapchain code needs Vulkan headers 1.3.237+, so the script uses Khronos' 1.3.29
 
 NVIDIA's DLSS-G through Streamline 2.14.16 (Windows; `Upscalers/DlssFrameGeneration.cs`, guide: Streamline's `ProgrammingGuideDLSS_G.md`,
 `ProgrammingGuideManualHooking.md`, `ProgrammingGuideReflex.md`). One generated frame per rendered one: multi-frame generation is D3D12 only.
-- **Loading:** with the switch on and DLSS as the vendor (read at start-up; a change in the settings waits for a restart) `slInit` loads DLSS, DLSS-G, Reflex and PCL (`sl.dlss_g.dll`, `nvngx_dlssg.dll`, `sl.reflex.dll`, `sl.pcl.dll` beside
+- **Loading:** on Windows `slInit` always asks for DLSS, DLSS-G, Reflex and PCL (DLSS-G then unloaded until the setting asks for it, above) (`sl.dlss_g.dll`, `nvngx_dlssg.dll`, `sl.reflex.dll`, `sl.pcl.dll` beside
   the interposer; missing ones are logged and frame generation stays off). Each feature's `slGetFeatureRequirements` is unioned: extensions,
   1.2/1.3 features, graphics and compute queues (created after ours in the graphics family; `VulkanInfo` gets the first index after ours). Where
   `slIsFeatureSupported` fails for DLSS-G, Reflex or PCL, DLSS-G is unloaded (`slSetFeatureLoaded`): loaded, it makes the swapchain render off-screen
@@ -142,7 +150,8 @@ transparent water/particles require explicit exclusion/compositing rules. The wa
 water plane fades out of the occlusion over the water's last 2 units along the ray, as the water's edge does
 ([water](render-water.md) "Edges"). Passes rebuild view depth through `DepthConvention.Glsl` (`depthViewZ`, `depthIsSky`):
 reversed on Vulkan, conventional on Metal; no shader hand-writes the mapping.
-SSAO: radius 6 units or 3 % of the distance, fade from 1600 to 6600 units.
+SSAO: radius 6 units or 3 % of the distance, fade from 1600 to 6600 units, 8, 12 or 20 taps by the ambient occlusion quality (`PostOptions.SsaoTaps`,
+the same row as GTAO's, 12 at the default; the taps are a loop over the `uSsaoTaps` uniform, so one program serves all three, on Vulkan and Metal).
 `layer-merge`, `fog-half`, `shafts-half`, `layers-lean` combine shafts apply, placed fog and SSAO,
 using reduced targets plus depth-aware reconstruction/mask fallback. A texel that does not fit
 must use the full-resolution path. [Fog volumes](formats/fogfeatures.md), [shafts](render-shafts.md).
@@ -189,7 +198,7 @@ The Display page's `HDR output` row (the launcher and the in-game menu), `--hdr`
 Limits: no HDR metadata; pictures presented without the interface layer (the first loading screen) show gamma values as PQ. **Observed** (2026-11-12, AOC CQ27G2S over DisplayPort, Windows HDR on, RTX 4090): the swapchain takes `A2B10G10R10` HDR10 and the picture shows.
 ### GTAO
 
-The `gtao` switch (`PostOptions.Gtao`, off by default, off in every preset) replaces the SSAO gather while `ao` is on; with it off `Ssao` runs unchanged.
+The `gtao` switch (`PostOptions.Gtao`, off by default, on from the High tier) replaces the SSAO gather while `ao` is on; with it off `Ssao` runs unchanged.
 Port of KenshiNative's `fx_gtao_ps` (Jimenez et al. 2016), adapted to a forward scene. Own programs (`GtaoShaders`, `PostProcess.Gtao.cs`); Vulkan only, the Metal chain ignores the switch.
 
 - **Gather** (`Gather`): per pixel, slices through the view ray, each searching both ways along the screen for the horizon, with the closed-form integral.
@@ -197,14 +206,14 @@ Port of KenshiNative's `fx_gtao_ps` (Jimenez et al. 2016), adapted to a forward 
   Horizons start at the surface's own (a faded tap cannot fall below it) and decay after an occluder is passed (`GtaoThickness`).
 - **Normals**: the lit fragment's shading normal from the surface target when the GI resolve is on, for the fragments that wrote it (terrain, objects, buildings);
   else from depth (foliage, grass, characters, impostors, or no GI resolve).
-- **Traced occlusion on characters** (`PostOptions.CharacterOcclusion`, **off**, no setting; `Gi.CharacterOcclusionPass`, `PostProcess.RunCharacterOcclusion`; needs GTAO, the GI resolve and the characters in the traced scene). The screen's occlusion sees no surface the picture does not show and no probe ray sees a character, so the inside of a hood keeps the open skin's ambient light. On each pixel a character drew as a receiver (the surface target's bit 19, hair excluded) 8 cosine-weighted rays go over the hemisphere of its normal against the characters and what moves, up to 8 units; between the body and what it wears (bit 20, the record's tint 204) every hit counts, the body's own parts on the body only from 0.4 units (in full from 1.5). Each pixel of a 4 x 4 block turns the set and the apply takes the block's mean on the pixel's own surface. The apply takes back the ambient light alone (albedo x the probes' or the sky's irradiance, as `kenshiLight`'s in-shader branch) times 1 - the visibility after Jimenez's multi-bounce fit: each light is cut by its own shadow. **Observed** (a hooded character outdoors at 10:00 and in the editor's bar, 2560 x 1440): the luminance of the face against the pass off is 0.5-0.6 on the forehead, cheek and chin outdoors, 0.1 on a temple, 0.2 on a cheek in the bar, with dark patches round the eyes: too dark to ship. Multiplying the whole pixel instead (through GTAO's apply) looked painted.
+- **Characters' gathered light** (`PostOptions.CharacterOcclusion`, **on**, the GI traced on characters switch; needs GTAO, the GI resolve, a probe trace this frame and the characters in the traced scene; `PostProcess.RunCharacterOcclusion`, `Gi.CharacterOcclusionPass.Apply`): rays gather the indirect light each character pixel (surface bit 19, hair excluded) takes from the scene and from the character itself, and the apply replaces the ambient light `kenshiLight` gave it by that gather, the sky's gloss included. The method, the apply and the measurements are in [render-gi](render-gi.md#characters). The apply is full size over the scene colour, with the haze's transmittance and `CharacterOcclusionStrength` 1.
 - **Same rules as SSAO**: character occluder share and mask, `SsaoBlur`, distance fade, air and water visibility, 1 on the sky.
 - **Depth** (`Pack`): a pass at the render size writes each pixel's view depth, 0 on the sky, negative on a character's pixel (the scene's alpha), and the gather's taps read that alone: the character mask was a second, filtered lookup of the half-size mask at every tap (36 a pixel at 3 x 6). The occluder share is now by the tap's own pixel, not the mask's blur. **Observed** (desert close-up, 2560x1440, quality 2): the occlusion 0.945 -> 0.840 ms of GPU; the ground of a paused view unchanged.
 - **Depth levels** (`DepthLevel`, XeGTAO's depth filter): four coarser levels of that depth, each texel the average of the four below weighted by how near they are to the farthest (none a radius nearer: a level holds the surface behind), the sky when one is the sky. A tap whose reach is r pixels reads level log2(r) - 3.3, rounded, so the far taps' texels lie together. **Observed** (2560x1440, quality 2, one session, paused, alternated): the occlusion 0.87 -> 0.70 ms on the desert close-up, 0.88 -> 0.80 in the town; the pictures differ as two frames of the same setting do (mean 0.25 to 0.67 / 255 against 0.36 to 0.47). `MEITOU_GTAO_LEVELS=0`: every tap reads the pixels.
 - **Apply** (`Apply`): full size, after the merged layers: the merged pass's factor is grey, so `layer-merge` runs with its occlusion off and this pass multiplies over it,
   which is the old order (shafts, fog, occlusion). Four nearest occlusion texels by depth, none near: open. Then KenshiNative's curve (power 1.6, strength 0.55) and the multi-bounce fit
   per channel of the surface target's albedo (`GtaoAlbedo` where none was written). A caller without `ApplySsao` gets the grey blurred occlusion in the composite.
-- **Quality** (`--gtao-quality`, Tab slider): 0 half size, 2 x 4; 1 half size, 3 x 6 (default); 2 render size, 3 x 6. Full size remakes the occlusion's targets at that size.
+- **Quality** (`--gtao-quality`, the "Ambient occlusion quality" slider, also the SSAO's taps; GTAO is Vulkan-only): 0 half size, 2 x 4; 1 half size, 3 x 6 (default); 2 render size, 3 x 6. Full size remakes the occlusion's targets at that size.
   With a temporal upscaler the noise moves per frame.
 
 Shading normals may darken normal-mapped ground
@@ -241,14 +250,19 @@ The Metal chain has no copy: its sprites stay hard-edged.
 
 Fog shading rate (`FogShadingRate`): build tile rates from completed scene depth/fog; frame N's
 R8_UINT rate image drives frame N+1 opaque scene shading. Requires device fragment-shading-rate
-support; absent support uses normal shading. Excludes reflection, shadow, particles and post.
-Coarse rates can alter fine cut-outs and temporal output; it is a quality/performance tradeoff.
+support; absent support uses normal shading. Excludes reflection, shadow, particles and post, and every
+pipeline whose fragment stage can discard (`VulkanProgram.FragmentDiscards`: OpKill, OpTerminateInvocation or
+OpDemoteToHelperInvocation in its SPIR-V), which keeps its own 1x1 rate: a coarse fragment takes one alpha test
+for its block, so reeds, grass and ruins' windows were cut in steps of 2 and 4 pixels in a heavy fog
+(**Observed**, save fog-pixelated, a mod's green gas weather: blocky against the fogged sky with it, smooth without).
 
 ## Colour, night and particles
 
 Game HDR exposure is the reference; tone mapping/grading are Meitou controls, not original facts.
 Both auto-exposure ping-pong targets are seeded before smoothing starts, and the adaptation reads
 the previous frame's output rather than the target it is writing; either mistake flickers dark/bright.
+**Indoor exposure** (`PostProcess.IndoorExposure`, Meitou, with Indoor GI): the game's band minimum is set for a room lit evenly by its ambient. While GI is active, Indoor GI is on and the interior view is not empty (`WorldFrame.Draw`), the adaptation's lower bound is the smoothed mean luminance times `IndoorExposureScale` 2.9, kept within `IndoorExposureFloor` 1/3 of the minimum and the minimum (`PostProcessShaders.Adapt` `uIndoor`, `MergedKernels` `ExposurePush`); a held exposure is left alone. The lower bound goes no lower than the night's minimum times 1/3 whatever the hour (`IndoorExposureMin`: a room's lamps are the same by day, when a third of the day's minimum left the room 2.4 times darker than at midnight). In the merged kernel the rooms are exposed apart: taps on a room's pixel (below) make the rooms' mean, the others alone set the adapted luminance by the game's rule (held when next to none is in view), and the rooms' pixels are scaled by `adapted / rooms' adapted`, at most `IndoorExposureMaxGain` 8, in the scene colour before the upscaler (`MergedKernels.InteriorGain`; the gain lives in the exposure state buffer: kept while no room is in view, taken at once by a room coming into view, then eased with the adaptation). Looking into a building no longer changes the exposure of what is outside (the user: "je n'aime pas que l'exposition change a l'exterieur quand on regarde a l'interieur"). The unmerged passes keep one exposure for the picture. **Observed** (the editor's bar at night, 4 lamps: minimum 1 x night darkness 0.42, mean before exposure 0.14, so the exposure was fixed at the minimum): the minimum no longer pins a lamp-lit room to one exposure; the scale 2.9 is the minimum over the mean the room had under the game's ambient (0.1435). **Unknown**: other interiors, a lit room by day.
+- A room's pixel (`Gi.RoomMaskPass`, `PostProcess.RunRoomMask`, an R32F mask at the render size, made while an interior is in view and the traced scene exists): lit as an interior (surface bit 9) and under a part the floor view hides. One ray straight up from the pixel, 0.3 units off its drawn plane (from the depth), against the objects of the traced scene, which keeps the hidden floors; it goes through up to 4 shown parts (a slab over a lower floor seen down a stairwell) and stops at a record with `GeometryRecord.Interior` bit 1 (`WorldObjectRenderer.RayHidden`: `InteriorHidden` or `StandsAbove`). So what stands on an open roof or terrace, furniture in a building seen from outside and a building held open with every floor shown (the 10 s after its last occupant left) are no rooms. With the eye itself inside a viewed building and under its cover (`WorldObjectRenderer.EyeIndoors`: the character editor's bar, whose every floor is shown) every interior pixel is a room's, no ray asked. The own shell of a building in the interior view (`WorldObjectRenderer.ViewedShell`, the instance's half in its fourth value) is split by its triangles' planes (`atmoStreet`, `BuildingLodShaders`; not the shading normal: a smooth bevel and a rough stone's normal map left lines and speckles): a steep face that does not face the upright through the building's origin (an outer wall) and every face turned up (a plinth, a ledge, the top of a wall the view cuts) are the street's, lit as the outside (no bit 9, surface bit 30 set: the traced sun's rays pass what the view hides, `TracedSunShaders`) and so no room's pixel. **Observed** (saves The boys 123, lamp, grass-through interior): lit as the room these took the room's gain (light squares and rims on the outside, the user's images 98 and 99); lit as the outside under the hidden floors they were black. A building whose rooms are its shell (`InteriorVolume.ShellHoldsRooms`: a mask mesh and an `interior` list that draws nothing; the Ash Dome, the Ash Dome Ruin and the Ancient Factory, **Verified** by a scan of the merged records) keeps its faces turned up in the room (the instance's three quarters): **Observed** (issue #1027, the Ash Dome at floor 0) as the street's, its floor took the dark dome's outdoor probes in full and was black at any hour, lit with Indirect light off. **Observed** (save lamp, the Hub's tower by day, `door.sh`; Squin's square, `squin.sh`): with bit 9 alone as the test the furniture and characters on every roof were scaled by the room's gain (blown white on the tower's terrace, awnings 2.8 times the street's level in Squin) while any interior was in view or held; the tops of the walls the view cuts were black (now the room's). Cost: 1.06 ms at 2560x1440 with a room over the whole picture (save heavy-scene, RTX 4090).
 Night grading weights scotopic luminance (Jensen2001 night-sky model evaluated at sRGB primaries)
 using measured scene luminance/adaptation; daylight contribution must fade to zero. Night red
 terrain can be original ambient-map colour rather than lamp/emissive input. Haze follows weather
@@ -349,7 +363,7 @@ gather, near gather (premultiplied), full-size composite: far field by the full-
 
 The CoC is a thin lens's, not a slider's radius (KenshiNative's). A full-frame sensor, 24 mm high (`ThinLens`), and the camera's vertical field of view give the focal length f;
 with f-number N and focus s, the disc's diameter on the sensor at depth z is `f^2 / (N (s - f)) * |z - s| / z`, the sky at infinity, in half-size pixels at most 1.5 % of the
-height and 24. 10 world units are a metre (see "Fog" above). Radius at infinity at 1080p and f/1, half-size pixels:
+height and 24 (times `PostOptions.PictureScale` in a photo-mode picture drawn larger than the window). 10 world units are a metre (see "Fog" above). Radius at infinity at 1080p and f/1, half-size pixels:
 
 | lens | focus 5 m | focus 20 m |
 |---|---|---|
@@ -364,6 +378,19 @@ Focus and aperture come from the key the cinema holds (`Focus`, `Aperture`, [vie
 (3 % of its height each way), eased from the last frame's in log distance over 0.15 s (snapped after half a second without a frame); the prepare and composite passes
 compute the lens from it. On sky alone it falls back to the camera target's distance. The target's distance alone focused behind a close face (the head's bone), **Observed**. A sharp zone (`PostOptions.LensSharpZone`, photo mode's Sharp zone, world units each side of the focus) is taken out of the distance from the focus before the CoC: what lies in it is wholly sharp. The far gather weighs each sample by one over its own disc's area (its light is spread over that disc); weighed alike, a blurred figure before a more blurred background kept a sharp outline (**Observed** in play). A 5 x 5 binomial (`DofFarFilter`, step a quarter texel in focus to one texel from a CoC of 4, taps weighed by their blur) then removes the grain the gather's few taps leave. Water writes no depth, so it takes the CoC of what lies under it. Particles take the surface's behind them.
 The depth is jittered: the composite shifts its tap by the jitter, and an edge may still shimmer a render pixel.
+
+## Vignette and film grain
+
+Optional Meitou switches `vignette` and `grain` (Post FX tab, off in every look; `PostOptions.Vignette`, `VignetteStrength` 0.35, `FilmGrain`, `GrainStrength` 0.3);
+the game has neither. Photo mode's Look tab shows these same settings (no second copy: a change there is the setting's and is saved with it). In the composite, after the
+grade and photo mode's filter, before the dither, in every camera of a whole scene view (not a tiled screenshot's tile, not over the title):
+
+- **Vignette:** the colour times `1 - strength x smoothstep(0.2, 1, r)`, r the distance from the window's centre over the distance to its corner. The window is the
+  picture, or photo mode's frame (`VignetteAspect`), so a cropped picture keeps its vignette.
+- **Grain:** a value noise of the interleaved gradient noise, cells of 1.5 pixels (times `PictureScale` in a larger photo), a new offset each frame, added with amplitude
+  `0.2 x strength x (0.3 + 2.8 l (1 - l))`, l the pixel's luminance: strongest in the mid-tones.
+
+**Observed** (`t_desert_gold`, photo mode): the corners darken at strength 0.8; the grain shows over sepia and noir pictures.
 
 ## SMAA
 

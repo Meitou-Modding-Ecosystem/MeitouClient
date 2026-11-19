@@ -103,6 +103,12 @@ public sealed class NavSystem : IDisposable
     public Task<NavZoneReady> LoadZone(ZoneCoordinate zone) => _service.Request(zone);
 
     /// <summary>
+    /// Has the builder serve the asked-for zones in the order <paramref name="world"/>'s player characters reach them: those their paths enter,
+    /// nearest along the path first, then the others by distance (<see cref="NavBuildQueue"/>). Call between ticks.
+    /// </summary>
+    public void Favour(World world) => _service.Favour(world);
+
+    /// <summary>
     /// Asks for a zone and its neighbours within <paramref name="radius"/> (1 = the 3 × 3 ring around the player), nearest first.
     /// </summary>
     public void LoadRing(ZoneCoordinate centre, int radius = 1)
@@ -175,6 +181,24 @@ public sealed class NavSystem : IDisposable
             RebuildZone(zone);
 
         UpdatePlayerRoute();
+    }
+
+    /// <summary>
+    /// Several buildings at once (<see cref="AddRuntimeBuilding"/>), with one rebuild of each loaded zone they reach; the task completes when all of
+    /// those are live again (a tool's load that wants the save's buildings in before its first tick).
+    /// </summary>
+    public Task AddRuntimeBuildings(IReadOnlyCollection<BuildingPlacement> placements)
+    {
+        foreach (var placement in placements) Runtime.Add(placement);
+        var rebuilds = placements
+            .SelectMany(p => NavRuntimeBuildings.ZonesReached(p.Position))
+            .Distinct()
+            .Where(zone => Walkability.World.Find(zone) is not null)
+            .Select(zone => (Task)_service.Rebuild(zone))
+            .ToList();
+
+        UpdatePlayerRoute();
+        return Task.WhenAll(rebuilds);
     }
 
     /// <summary>

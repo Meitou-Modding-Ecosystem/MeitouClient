@@ -93,7 +93,10 @@ public class AiTests(ITestOutputHelper output)
                 Relations = Data.Gameplay.FactionRelations.Build([]) });
         using var world = new SimWorld(new WorldSettings { Seed = 1, PublishSnapshots = false }, new OpenGroundWalkability((_, _) => 150), []);
         world.Player.Faction = 1;
-        ItemInstance Weapon(string record, FcsRecordType type) => new() { Record = record, Type = type, Section = "main", Width = 1, Height = 2 };
+        ItemInstance Weapon(string record, FcsRecordType type) => new()
+        {
+            Record = record, Type = type, AttachSlot = type == FcsRecordType.Item ? 7 : 0, Section = "main", Width = 1, Height = 2,
+        };
         CharacterCold Make(int faction, params ItemInstance[] items)
         {
             var cold = new Combat.Combatant { Name = "c" }.MakeCold();
@@ -177,6 +180,47 @@ public class AiTests(ITestOutputHelper output)
         board.Update();
 
         Assert.Null(board.Current);
+    }
+
+    /// <summary>
+    /// docs/game/ai.md "Package classes", GoOutOnPatrol (<c>FUN_140288890</c>, <c>FUN_1402870a0</c>): a patrol package above the town package
+    /// waits until its squad has been 8 game hours in the town, is finished 12 hours after it started (and sets out again), and starts at once
+    /// for a squad standing outside every town.
+    /// </summary>
+    [Fact]
+    public void A_patrol_package_waits_eight_hours_in_town_ends_after_twelve_and_starts_at_once_outside()
+    {
+        using var world = Town(1, out _, WithHomes(Database(1, ("111-t", 0), ("113-t", 1)), out _, out _), null);
+        world.RunTicks(90);
+        var board = Assert.Single(world.Squads.All, s => s.TemplateId == "10-t").Ai!;
+
+        Assert.Equal("111-t", board.Current?.Id);
+
+        world.GameHours += 8.5;
+        world.RunTicks(60);
+
+        Assert.Equal("113-t", board.Current?.Id);
+
+        double started = board.PatrolStart;
+        world.GameHours += 11;
+        world.RunTicks(60);
+
+        Assert.Equal(started, board.PatrolStart);
+
+        world.GameHours += 2;
+        world.RunTicks(90);
+
+        Assert.True(board.PatrolStart > started);
+
+        using var away = Town(1, out _, WithHomes(Database(1, ("111-t", 0), ("113-t", 1)), out _, out _), null);
+        away.RunTicks(30);
+        var squad = Assert.Single(away.Squads.All, s => s.TemplateId == "10-t");
+
+        // 1.7 town radii out: past the 1.5 a town keeps a character it held.
+        foreach (var m in squad.Members) away.Characters.Place(m.Slot, Centre + new Vector3(0, 0, 4250), 0);
+        away.RunTicks(60);
+
+        Assert.Equal("113-t", squad.Ai!.Current?.Id);
     }
 
     static SimWorld Town(int threads, out PopulationData data) => Town(threads, out data, null, null);
@@ -917,11 +961,11 @@ public class AiTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// Every loaded platoon runs its blackboard in the original (<c>FUN_1402732b0</c>), a roaming one too; no town building is claimed, and the
-    /// population still moves a package that does not travel.
+    /// Every loaded platoon runs its blackboard in the original (<c>FUN_1402732b0</c>), a roaming one too; no town building is claimed, and its
+    /// members act out the package's goals with full minds, also one that does not travel.
     /// </summary>
     [Fact]
-    public void A_loaded_roaming_platoons_squad_runs_a_blackboard_without_claiming_a_home_and_keeps_its_engine_routine()
+    public void A_loaded_roaming_platoons_squad_runs_a_blackboard_without_claiming_a_home_and_its_members_act_out_its_package()
     {
         var near = Rec("116-t", FcsRecordType.AiPackage, "Patrol near home");
         near.Ints["unloaded func"] = 2;
@@ -941,7 +985,7 @@ public class AiTests(ITestOutputHelper output)
             Assert.Equal("116-t", squad.Ai?.Current?.Id);
             Assert.Null(squad.Ai!.OwnHome);
             Assert.False(AiSystem.BoardMoves(squad.Ai));
-            Assert.All(squad.Members, m => Assert.True(world.Characters.Cold(world.Characters.TryResolveNext(m, out int s) ? s : -1)!.Ai!.Engine));
+            Assert.All(squad.Members, m => Assert.False(world.Characters.Cold(world.Characters.TryResolveNext(m, out int s) ? s : -1)!.Ai!.Engine));
         }
     }
 

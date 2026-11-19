@@ -83,7 +83,8 @@ sealed class GameSaves(GameHost host)
             BeginImport(import.Folder, import.Options);
         }
 
-        if (PreparedBase is null && SavesAvailable(out _) && host.Session.World.Player.Exists)
+        // Once the loading screen is gone: a large save's copy is seconds of a worker, which the warm-up wants (nothing saves under the screen).
+        if (PreparedBase is null && !host.Warming && host.ActiveSceneLoad is null && SavesAvailable(out _) && host.Session.World.Player.Exists)
         {
             var (data, from, options) = (host.PopData!, LoadedSave, CaptureOptions());
             (PreparedBase, _preparedFor) = (Task.Run(() => SaveCapture.PrepareBase(data, from, options)), from);
@@ -428,7 +429,11 @@ sealed class GameSaves(GameHost host)
     /// <summary>
     /// The worker's hand-off of the save's hour to the sky arrival (GameHost.Transition.cs).
     /// </summary>
-    void ReadArrivalHour(SaveCamera saved) => Volatile.Write(ref host.ReadHour, saved.Hour + saved.Minute / 60f);
+    void ReadArrivalHour(SaveCamera saved)
+    {
+        Volatile.Write(ref host.ReadHour, saved.Hour + saved.Minute / 60f);
+        if (saved.HasView) Volatile.Write(ref host.ReadView, new System.Runtime.CompilerServices.StrongBox<Vector3>(saved.Position));
+    }
 
     /// <summary>
     /// The systems of the world the save will be loaded into, with its difficulty: made apart from the swap, so a load builds them while the old
@@ -473,6 +478,8 @@ sealed class GameSaves(GameHost host)
             {
                 loaded = SaveLoader.Load(world, read.Result, data, loadOptions ?? new SaveLoadOptions { Appearances = data.Appearances });
                 host.Modding.RestoreModData(world, read.Result);
+                host.Modding.DropUnownedAutonomy(world);
+                world.TellReady(fromSave: true);
                 if (world.Squads.Find(world.Player.Squad) is { Members.Count: > 0 } squad)
                 {
                     world.Player.Selection.Clear();
@@ -660,6 +667,8 @@ sealed class GameSaves(GameHost host)
             population.Settings.FastZoneHopping = gameplay.FastZoneHopping;
         foreach (var ai in host.Session.World.Systems.OfType<Simulation.Ai.AiSystem>()) ai.Settings.TownAttacks = gameplay.TownAttacks;
         foreach (var combat in host.Session.World.Systems.OfType<Simulation.Combat.CombatSystem>()) combat.StuckLimit = gameplay.HarpoonLimit;
+        foreach (var captives in host.Session.World.Systems.OfType<Simulation.Kidnap.CaptiveSystem>())
+            captives.Settings.SpareOwnFaction = host.Config.CagesSpareOwn;
     }
 
     /// <summary>
@@ -693,6 +702,7 @@ sealed class GameSaves(GameHost host)
                 FastZoneHopping = Gameplay.FastZoneHopping,
             },
             Ai = new Simulation.Ai.AiSettings { TownAttacks = Gameplay.TownAttacks },
+            Captives = new Simulation.Kidnap.CaptiveSettings { SpareOwnFaction = host.Config.CagesSpareOwn },
             Construction = new Simulation.Construction.ConstructionSettings { BuildingSpeed = (settings ?? Difficulty)[5], EdgeGap = SiteEdgeGap },
             Production = new Simulation.Production.ProductionSettings { ProductionOption = (settings ?? Difficulty)[3],
                 ResearchOption = (settings ?? Difficulty)[4], EdgeGap = SiteEdgeGap, UnloadedProduction = host.Config.UnloadedProduction },
@@ -701,8 +711,8 @@ sealed class GameSaves(GameHost host)
             // The duel prints what its measured lap holds (MeasureLap).
             Combat = new Simulation.Combat.CombatOptions { SelfApproach = false, TickMedical = false, RecordLog = host.Duel.IsDuel,
                 AttackSlots = host.Config.AttackSlotsOption, StuckLimit = Gameplay.HarpoonLimit, LateDefences = host.Config.LateDefences,
-                GunnerFacesBarrel = host.Config.FixGunnerFacing, PunchReachFix = host.Config.FixPunchReach },
-            DoorsCloseBehind = host.Config.DoorsCloseBehind,
+                GunnerFacesBarrel = host.Config.FixGunnerFacing, PunchReachFix = host.Config.FixPunchReach,
+                AnimalMovesFix = host.Config.FixAnimalMoves },
             AnimalsPickUp = host.Config.AnimalsPickUp,
             AnimationLengths = host.AnimationLengths,
             AnimationLibrary = host.AnimationLibrary,

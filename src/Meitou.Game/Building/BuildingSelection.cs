@@ -33,6 +33,11 @@ sealed class BuildingSelection(PlayerInterface player)
     internal UseableLines Useable { get; } = new(player);
 
     /// <summary>
+    /// The code mods' buttons on the panel.
+    /// </summary>
+    internal BuildingModButtons ModButtons { get; } = new(player);
+
+    /// <summary>
     /// A left click on the ground ends the building's selection (Advanced settings "Click away deselects"); false: it stays, as in the game.
     /// </summary>
     public bool DeselectBuildings { get; set; } = true;
@@ -192,7 +197,7 @@ sealed class BuildingSelection(PlayerInterface player)
             return (SiteBuilding(site), hit.T);
 
         var name = player.Build.Services?.ItemName(hit.Record) ?? hit.Record;
-        var owner = player.FactionName?.Invoke(hit.Owner);
+        var owner = OwnerOf(hit.Owner, hit.Town);
         var town = TownOf(hit.House, hit.Position);
         return (new SelectedBuilding(name, null, owner, town, null, hit.Id, hit.Position, null, Record: hit.Record), hit.T);
     }
@@ -254,8 +259,14 @@ sealed class BuildingSelection(PlayerInterface player)
 
         var c = hit.Camp;
         var name = c.Name.Length > 0 ? c.Name : host.ItemName(c.Record);
-        return (new SelectedBuilding(name, null, player.FactionName?.Invoke(c.Owner), null, null, c.Id, c.Position, null, Record: c.Record), hit.T);
+        return (new SelectedBuilding(name, null, OwnerOf(c.Owner, c.CampTown), null, null, c.Id, c.Position, null, Record: c.Record), hit.T);
     }
+
+    /// <summary>
+    /// The owner the name bar shows for <paramref name="faction"/> in <paramref name="town"/> (<see cref="PlayerInterface.OwnerName"/>).
+    /// </summary>
+    string? OwnerOf(int faction, Simulation.Locks.FixtureTown town) =>
+        player.OwnerName is { } shown ? shown(faction, town) : player.FactionName?.Invoke(faction);
 
     /// <summary>
     /// Where the ray meets the camp building <paramref name="camp"/> before <paramref name="ground"/>; null when it misses, it is a bed, or a
@@ -295,25 +306,27 @@ sealed class BuildingSelection(PlayerInterface player)
 
     /// <summary>
     /// The nearest of the bed, container, cage and seat under the pixel: its fixture id, BUILDING record, place, owner faction, the house it stands
-    /// in and ray distance. A container, cage or seat that is a level building of its own (a town's standalone cage, safe, bench or throne) is left
-    /// to the level buildings' pick, which gives its Type, Town and outline. A bed names no house: its panel takes the town from the bed itself.
+    /// in, its town and ray distance. A container, cage or seat that is a level building of its own (a town's standalone cage, safe, bench or
+    /// throne) is left to the level buildings' pick, which gives its Type, Town and outline. A bed names no house: its panel takes the town from the
+    /// bed itself.
     /// </summary>
-    (string Id, string Record, Vector3 Position, int Owner, string? House, float T)? NearestFurnitureAt(Vector2 pixel)
+    (string Id, string Record, Vector3 Position, int Owner, string? House, Simulation.Locks.FixtureTown Town, float T)? NearestFurnitureAt(
+        Vector2 pixel)
     {
-        (string Id, string Record, Vector3 Position, int Owner, string? House, float T)? best = null;
-        void Offer(string id, string record, Vector3 position, int owner, string? house, float t)
+        (string Id, string Record, Vector3 Position, int Owner, string? House, Simulation.Locks.FixtureTown Town, float T)? best = null;
+        void Offer(string id, string record, Vector3 position, int owner, string? house, Simulation.Locks.FixtureTown town, float t)
         {
-            if (best is not { } b || t < b.T) best = (id, record, position, owner, house, t);
+            if (best is not { } b || t < b.T) best = (id, record, position, owner, house, town, t);
         }
 
         if (player.Furniture.PickBedAt(pixel) is ({ } bed, var bedT))
-            Offer(bed.Id, bed.Record, bed.Position, bed.Owner, null, bedT);
+            Offer(bed.Id, bed.Record, bed.Position, bed.Owner, null, bed.Town, bedT);
         if (player.Furniture.PickContainerAt(pixel) is ({ } box, var boxT) && !IsLevelBuilding(box.Id, box.Position))
-            Offer(box.Id, box.Record, box.Position, box.Owner, HouseOf(box.Id), boxT);
+            Offer(box.Id, box.Record, box.Position, box.Owner, HouseOf(box.Id), box.Town, boxT);
         if (player.Furniture.PickCageAt(pixel) is ({ } cage, var cageT) && !IsLevelBuilding(cage.Id, cage.Position))
-            Offer(cage.Id, cage.Record, cage.Position, cage.Owner, HouseOf(cage.Id), cageT);
+            Offer(cage.Id, cage.Record, cage.Position, cage.Owner, HouseOf(cage.Id), cage.Town, cageT);
         if (player.Furniture.PickSeatAt(pixel) is ({ } seat, var seatT) && !StandsAlone(seat))
-            Offer(seat.Id, seat.Record, seat.Position, seat.Owner, seat.Building, seatT);
+            Offer(seat.Id, seat.Record, seat.Position, seat.Owner, seat.Building, new(seat.Site, -1), seatT);
         return best;
     }
 
@@ -404,7 +417,11 @@ sealed class BuildingSelection(PlayerInterface player)
         var stats = new List<PlayerInterface.HudLine>();
         var extended = new List<PlayerInterface.HudLine>();
         bool own = focus.SiteId is not null;
-        bool playerSite = focus.SiteId is { } siteId && !Simulation.Production.ProductionSystem.IsNatural(siteId);
+        bool rock = focus.SiteId is { } siteId && Simulation.Production.ProductionSystem.IsNatural(siteId);
+
+        // A town machine's site (townwork:, its Loot window's) is its town's, not the player's.
+        bool playerSite = own && !rock && !Simulation.Production.ProductionSystem.IsTownWork(focus.SiteId!);
+
         var site = player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == focus.Instance);
         // A town building the player owns (bought, or the player's in the save) gets the buttons of a building of the player's
         // (the original's slot 79: the owner is the player's faction).
@@ -422,11 +439,11 @@ sealed class BuildingSelection(PlayerInterface player)
         }
         else
         {
-            AddWorkLines(focus, detail, own, mine, stats, extended, ref status, ref bad);
+            AddWorkLines(focus, detail, mine, stats, extended, ref status, ref bad);
         }
 
         AddPublicLines(focus, site, detail, mine, playerSite, stats);
-        var header = HeaderLine(focus, detail, own, playerSite, mine, inspected);
+        var header = HeaderLine(focus, detail, rock, mine, inspected);
         return (header, [.. state], [.. stats], status, bad, [.. extended]);
     }
 
@@ -441,7 +458,7 @@ sealed class BuildingSelection(PlayerInterface player)
         var inspected = player.Session.CurrentSnapshot.InspectedRichness is { } ir && ir.Instance == focus.Instance
             ? ir : (Simulation.Production.RichnessView?)null;
         if ((focus.Town ?? site?.TownName ?? detail?.Bed?.Town ?? inspected?.TownName) is { Length: > 0 } town) state.Add(new("Town:", town));
-        Useable.AddEmptyLine(focus, site?.Record ?? focus.Record, state);
+        Useable.AddEmptyLine(focus, site?.Record ?? focus.Record, detail, state);
         Useable.AddStateLine(site?.Record ?? focus.Record, state);
         if (own && player.Session.CurrentSnapshot.InspectedTurret is { } turret && turret.Instance == focus.Instance)
             AddHeightLines(turret, state);
@@ -485,10 +502,10 @@ sealed class BuildingSelection(PlayerInterface player)
     }
 
     /// <summary>
-    /// The stats lines of what the building does: its first door, a rock's richness, a machine's lines (or an unmined rock's), which may change
-    /// the status word.
+    /// The stats lines of what the building does: its first door, a rock's richness, a machine's lines (<see cref="PanelMachine"/>, or an unmined
+    /// rock's), which may change the status word.
     /// </summary>
-    void AddWorkLines(SelectedBuilding focus, Simulation.Locks.BuildingDetail? detail, bool own, bool mine, List<PlayerInterface.HudLine> stats,
+    void AddWorkLines(SelectedBuilding focus, Simulation.Locks.BuildingDetail? detail, bool mine, List<PlayerInterface.HudLine> stats,
         List<PlayerInterface.HudLine> extended, ref string status, ref bool bad)
     {
         if (FirstDoor(focus) is { } door)
@@ -506,15 +523,17 @@ sealed class BuildingSelection(PlayerInterface player)
 
         var rich = player.Session.CurrentSnapshot.InspectedRichness is { } r && r.Instance == focus.Instance
             ? r : (Simulation.Production.RichnessView?)null;
-        if (rich is { } richness && player.Production.Machine(focus.SiteId)?.Farm is null)
-            ProductionWindows.AddRichnessLine(richness, stats);
+        var panelMachine = PanelMachine(focus);
+        if (rich is { } richness && panelMachine?.Farm is null) ProductionWindows.AddRichnessLine(richness, stats);
 
-        bool bedLines = detail?.Bed is not null && !Useable.IsSkeletonBed(focus.Record ?? player.Production.Machine(focus.SiteId)?.Record);
-        if (!bedLines && own && player.Production.Machine(focus.SiteId) is { } machine)
+        bool bedLines = detail?.Bed is not null && !Useable.IsSkeletonBed(focus.Record ?? panelMachine?.Record);
+        if (!bedLines && panelMachine is { } machine)
         {
             Simulation.Combat.TurretPanelView? turretPanel =
                 player.Session.CurrentSnapshot.InspectedTurret is { } tp && tp.Instance == focus.Instance ? tp : null;
-            player.Production.AddMachineLines(machine, stats, extended, ref status, ref bad, rich, turretPanel, mine);
+            // The buttons act on the selection's site (SiteAction): a town machine selected without one shows its lines alone.
+            bool buttons = mine && focus.SiteId is not null;
+            player.Production.AddMachineLines(machine, stats, extended, ref status, ref bad, rich, turretPanel, buttons);
         }
         else if (rich is { Efficiency: { } e } unmined)
         {
@@ -565,15 +584,16 @@ sealed class BuildingSelection(PlayerInterface player)
     }
 
     /// <summary>
-    /// The name bar: the building's (or bed's) name and its owner, the player's faction for the player's own building.
+    /// The name bar: the building's (or bed's) name and its owner, the player's faction for the player's own building; a town machine's, its level
+    /// building's (<see cref="WorldBuildingInfo.Owner"/>).
     /// </summary>
-    PlayerInterface.HudLine HeaderLine(SelectedBuilding focus, Simulation.Locks.BuildingDetail? detail, bool own, bool playerSite, bool mine,
+    PlayerInterface.HudLine HeaderLine(SelectedBuilding focus, Simulation.Locks.BuildingDetail? detail, bool rock, bool mine,
         Simulation.Production.RichnessView? inspected)
     {
         // A rock (slot 113): the player's faction once a player character has worked it, else its owner nofac's name ("No Faction"; its town
         // NO_TOWN is explored, not secret).
         string? owner = focus.Owner;
-        if (own && !playerSite)
+        if (rock)
         {
             owner = inspected is { Owner: >= 0 and var by } ? player.FactionName?.Invoke(by)
                 : player.RecordName?.Invoke(Simulation.Factions.SquadManagement.DismissFallbackFaction);
@@ -738,6 +758,26 @@ sealed class BuildingSelection(PlayerInterface player)
             : null;
 
     /// <summary>
+    /// The machine the selected building's panels show: its site's (the player's, a mined rock's, a town machine's selected by its Loot order),
+    /// else a town's farm or producer that a left click selected (its <c>townwork:</c> machine): the original's farm and production sections
+    /// (slot 40) test no owner. Null for none. The machine's window still opens only by the Loot order.
+    /// </summary>
+    internal Simulation.Production.MachineSnapshot? PanelMachine(SelectedBuilding focus) =>
+        player.Production.Machine(focus.SiteId) ?? TownMachine(focus);
+
+    /// <summary>
+    /// The machine of a town building or layout object selected without a site, when it is a farm or has an output (a well, a mine, a refinery);
+    /// null for any other, whose lines stay the UseableStuff ones (<see cref="UseableLines.AddStatsLines"/>).
+    /// </summary>
+    Simulation.Production.MachineSnapshot? TownMachine(SelectedBuilding focus)
+    {
+        if (focus.SiteId is not null) return null;
+
+        var machine = player.Production.Machine(Simulation.Production.ProductionSystem.TownWorkPrefix + focus.Instance);
+        return machine is { Farm: not null } or { Output: not null } ? machine : null;
+    }
+
+    /// <summary>
     /// The medical panel's rows of a selected building (its section 4, docs/game/ui-screens.md "Selected building"): the first door's <c>Door
     /// Condition</c>, then <c>Building Condition</c> (<c>Condition</c> without doors), each the construction progress as the number and its fraction
     /// of the target as the bar, then while unfinished a row per material, delivered over required. Meitou models no building damage, so a finished
@@ -765,7 +805,7 @@ sealed class BuildingSelection(PlayerInterface player)
         var progressValue = ((int)progress).ToString(CultureInfo.InvariantCulture);
         rows.Add(Bar(Loc.Tr(door is null ? "Condition" : "Building Condition"), fraction, progressValue, tip));
 
-        if (complete && player.Production.Machine(focus.SiteId)?.Farm is { } farm) FarmPanel.AddRows(farm, rows);
+        if (complete && PanelMachine(focus)?.Farm is { } farm) FarmPanel.AddRows(farm, rows);
 
         // A wind generator's rows (WindGeneratorBuilding::getGUIPower section 4): Wind, its share as a whole percent and the bar; Power Output,
         // the output as an int over the rated.

@@ -92,10 +92,26 @@ public enum SoundKind : byte
     ReleasedFromPrison,
     /// <summary>
     /// A carried body was fed into a machine (<c>Task_FeedCorpseIntoMachine</c>, <c>FUN_1403567a0</c>; the subject is the body, gone from the world
-    /// by the time it is played): <c>Character_Drop_Person</c> on the body with its <c>Armor_Worn</c>.
+    /// by the time it is played): <c>Character_Drop_Person</c> on the body with its <c>Armor_Worn</c>, <see cref="SoundEvent.Armour"/>.
     /// </summary>
     FedToMachine,
+    /// <summary>
+    /// A code mod's named event (<see cref="World.PostSound(string, CharacterId, string?, string?)"/>, <see cref="SoundEvent.Posted"/>): on the
+    /// subject when there is one (the host keeps a switch off the subject's own object), else at <see cref="SoundEvent.Position"/>.
+    /// </summary>
+    Posted,
+    /// <summary>
+    /// A code mod's named event on the interface's object (<see cref="World.PostInterfaceSound"/>, <see cref="SoundEvent.Posted"/>), heard the
+    /// same wherever the camera is.
+    /// </summary>
+    PostedInterface,
 }
+
+/// <summary>
+/// A named sound event a code mod posts (<see cref="World.PostSound(string, CharacterId, string?, string?)"/>): the event's name in the loaded
+/// banks (the game's, or a bank a mod's <c>RE_Kenshi.json</c> <c>SoundBanks</c> loads), and a switch set on the object first (both null: none).
+/// </summary>
+public sealed record PostedSound(string Event, string? SwitchGroup = null, string? SwitchValue = null);
 
 /// <summary>
 /// One sound-worthy happening for the host. Display only like <see cref="Floater"/>: the host decides what it sounds like, nothing in the simulation
@@ -110,14 +126,28 @@ public enum SoundKind : byte
 /// <param name="Armoured">A bolt: some armour covers the part it hit.</param>
 /// <param name="Fatal">A <see cref="SoundKind.Down"/> that is a death, not a knock-out.</param>
 /// <param name="Item">An item's record id (<see cref="SoundKind.ShacklesOn"/>: the shackles).</param>
+/// <param name="Armour">The subject's body armour <c>material type</c> (0 cloth .. 3 plate) when it happened
+/// (<see cref="SoundKind.FedToMachine"/>).</param>
 public readonly record struct SoundEvent(SoundKind Kind, CharacterId Subject, CharacterId Other, Vector3 Position,
-    bool Heavy = false, bool AttackerUnarmed = false, bool AttackerRobot = false, bool Armoured = false, bool Fatal = false, string? Item = null);
+    bool Heavy = false, bool AttackerUnarmed = false, bool AttackerRobot = false, bool Armoured = false, bool Fatal = false, string? Item = null,
+    int Armour = 0)
+{
+    /// <summary>
+    /// A code mod's event (<see cref="SoundKind.Posted"/>, <see cref="SoundKind.PostedInterface"/>); null for the game's own kinds.
+    /// </summary>
+    public PostedSound? Posted { get; init; }
+}
 
 /// <summary>
 /// The world's sound events for the host.
 /// </summary>
 public sealed partial class World
 {
+    /// <summary>
+    /// ARMOUR <c>slot</c> of body armour (ATTACH_BODY), the slot <c>FUN_1405d28b0</c> reads.
+    /// </summary>
+    const int BodyArmourSlot = 5;
+
     /// <summary>
     /// The sound events' queue (see <see cref="Sounds"/>).
     /// </summary>
@@ -139,9 +169,71 @@ public sealed partial class World
     /// Queues a sound-worthy happening for the host (nothing while <see cref="Sounds"/> is null); <paramref name="slot"/> is the character it happens
     /// to (-1 none). Display only.
     /// </summary>
-    public void EmitSound(SoundKind kind, int slot, Vector3 at, string? item = null)
+    public void EmitSound(SoundKind kind, int slot, Vector3 at, string? item = null, int armour = 0)
     {
-        if (_sounds is { } queue)
-            queue.Enqueue(new SoundEvent(kind, slot >= 0 ? Characters.IdOf(slot) : CharacterId.None, CharacterId.None, at, Item: item));
+        if (_sounds is not { } queue) return;
+
+        var subject = slot >= 0 ? Characters.IdOf(slot) : CharacterId.None;
+        queue.Enqueue(new SoundEvent(kind, subject, CharacterId.None, at, Item: item, Armour: armour));
+    }
+
+    /// <summary>
+    /// A code mod plays the named event <paramref name="eventName"/> on the character <paramref name="on"/> (docs/modding.md "Sounds"), with the
+    /// switch <paramref name="switchGroup"/> at <paramref name="switchValue"/> when both are given (set on an object of the mods' own at the
+    /// character's place, never on the character's). Display only: queued for the host like the game's own sounds (nothing while
+    /// <see cref="Sounds"/> is null, as without audio), never read by the simulation; the host plays it while the character is near enough to have
+    /// a sound object. Callable from any thread. Throws for an empty name; an empty <paramref name="on"/> plays nothing.
+    /// </summary>
+    public void PostSound(string eventName, CharacterId on, string? switchGroup = null, string? switchValue = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(eventName);
+        if (on.IsNone) return;
+
+        PostModSound(SoundKind.Posted, eventName, on, Vector3.Zero, switchGroup, switchValue);
+    }
+
+    /// <summary>
+    /// A code mod plays the named event <paramref name="eventName"/> at the world point <paramref name="at"/>, on a pooled object placed there,
+    /// with an optional switch; otherwise as <see cref="PostSound(string, CharacterId, string?, string?)"/>.
+    /// </summary>
+    public void PostSound(string eventName, Vector3 at, string? switchGroup = null, string? switchValue = null) =>
+        PostModSound(SoundKind.Posted, eventName, CharacterId.None, at, switchGroup, switchValue);
+
+    /// <summary>
+    /// A code mod plays the named event <paramref name="eventName"/> on the interface's object (heard alike wherever the camera is), with an
+    /// optional switch; otherwise as <see cref="PostSound(string, CharacterId, string?, string?)"/>.
+    /// </summary>
+    public void PostInterfaceSound(string eventName, string? switchGroup = null, string? switchValue = null) =>
+        PostModSound(SoundKind.PostedInterface, eventName, CharacterId.None, Vector3.Zero, switchGroup, switchValue);
+
+    /// <summary>
+    /// Queues a code mod's event (<see cref="SoundKind.Posted"/> or <see cref="SoundKind.PostedInterface"/>); a switch with only one of its two
+    /// names is left out. Throws for an empty name or a point that is not finite.
+    /// </summary>
+    void PostModSound(SoundKind kind, string eventName, CharacterId on, Vector3 at, string? switchGroup, string? switchValue)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(eventName);
+        if (!float.IsFinite(at.X + at.Y + at.Z)) throw new ArgumentOutOfRangeException(nameof(at), at, "A sound's point must be finite.");
+        if (_sounds is not { } queue) return;
+
+        bool hasSwitch = !string.IsNullOrEmpty(switchGroup) && !string.IsNullOrEmpty(switchValue);
+        var posted = hasSwitch ? new PostedSound(eventName, switchGroup, switchValue) : new PostedSound(eventName);
+        queue.Enqueue(new SoundEvent(kind, on, CharacterId.None, at) { Posted = posted });
+    }
+
+    /// <summary>
+    /// The <c>material type</c> of the heaviest worn body armour (ARMOUR <c>slot</c> 5) of the character in <paramref name="slot"/>, 0 (cloth) with
+    /// none: the <c>Armor_Worn</c> value the exe keeps on the character (<c>+0x68c</c>, refreshed by <c>FUN_1405d28b0</c> whenever an item is put
+    /// on or taken off, Character slots 51 and 52). Display only.
+    /// </summary>
+    public int BodyArmourMaterial(int slot)
+    {
+        if (Characters.Cold(slot)?.Fighter is not { } fighter) return 0;
+
+        int material = 0;
+        foreach (var piece in fighter.Armour)
+            if (piece.Data.Slot == BodyArmourSlot) material = Math.Max(material, (int)piece.Data.Material);
+
+        return material;
     }
 }

@@ -16,11 +16,13 @@ public sealed partial class PopulationSystem
     /// <summary>
     /// Takes the squad's characters out of the world into <paramref name="stored"/> (serial phase): each living member's cold state, cleared of what
     /// referred to the world, with its place; the dead are kept too, apart (<see cref="StoredSquad.Dead"/>), and their bodies leave the world with
-    /// the others. Returns where the leader (else the first member) stood.
+    /// the others. A carry a member is in is let go, its link kept for when both are back (<see cref="Carrying.CarrySystem.DropForUnload"/>).
+    /// Returns where the leader (else the first member) stood.
     /// </summary>
     static Vector2 Store(World world, Squad squad, StoredSquad stored)
     {
         var table = world.Characters;
+        var carry = world.SystemOf<Carrying.CarrySystem>();
         var at = new Vector2(squad.Position.X, squad.Position.Z);
         bool placed = false;
         stored.Members.Clear();
@@ -31,9 +33,12 @@ public sealed partial class PopulationSystem
 
             var hot = table.Previous[slot];
             bool dead = cold.DiedTick >= 0 || cold.Medical is { Dead: true };
+
+            // Its carry is let go and the link kept (FUN_1404ff410 writes it, then FUN_1404feed0's destroy unlinks).
+            if (hot.Alive) carry?.DropForUnload(world, slot);
             if (!dead && hot.Alive)
             {
-                Detach(cold);
+                Detach(world, slot, cold);
                 bool leads = id == squad.Leader;
                 stored.Members.Add(new StoredMember(cold, hot.Position, hot.Yaw, leads));
                 if (leads || !placed) at = new Vector2(hot.Position.X, hot.Position.Z);
@@ -42,7 +47,7 @@ public sealed partial class PopulationSystem
             else if (hot.Alive)
             {
                 // FUN_1404ff410 writes the whole list, the dead with it; FUN_1404feed0 then destroys every member.
-                Detach(cold);
+                Detach(world, slot, cold);
                 stored.Dead.Add(new StoredMember(cold, hot.Position, hot.Yaw, false));
             }
 
@@ -65,9 +70,9 @@ public sealed partial class PopulationSystem
 
     /// <summary>
     /// Clears what a character's cold state holds only while it is in the world: paths, AI, carrying, treatment, combat and stealth state, a pending
-    /// crime, jobs.
+    /// crime (reported as lapsed, <see cref="Crime.CrimeSystem.DropPending"/>), jobs.
     /// </summary>
-    static void Detach(CharacterCold c)
+    static void Detach(World world, int slot, CharacterCold c)
     {
         c.Path = [];
         c.PathExact = int.MaxValue;
@@ -79,6 +84,7 @@ public sealed partial class PopulationSystem
         c.DrawnWeapon = default;
         c.ModeOverride = null;
         c.SpeedOverride = 0;
+        Bodies.TopSpeedDelay.Forget(c);
         c.PaceCap = null;
         c.Ordered = false;
         c.InCombat = false;
@@ -96,7 +102,7 @@ public sealed partial class PopulationSystem
         c.CarriedBy = CharacterId.None;
         c.CarryTarget = CharacterId.None;
         c.LiftTime = -1;
-        c.Pending = null;
+        Crime.CrimeSystem.DropPending(world, slot, c);
         c.Ai = null;
         c.PickingLock = null;
         c.BuildSite = null;

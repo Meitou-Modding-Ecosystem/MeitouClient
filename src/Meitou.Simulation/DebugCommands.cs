@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using Meitou.Data;
 using Meitou.Data.Fcs;
@@ -50,9 +51,28 @@ public sealed record DebugHeal(IReadOnlyList<CharacterId> Characters, bool Limbs
 public sealed record DebugMaxSkills(IReadOnlyList<CharacterId> Characters) : DebugCommand;
 
 /// <summary>
-/// Sets the given stats of the characters to <see cref="Value"/> (the debug menu's Edit character sub-view).
+/// Reports each animal's age, or sets it to the given fraction (0 to 1.5) through the growth path, refreshing its drawn size immediately.
+/// Non-animals are skipped with a message; null queries without changing anything.
+/// </summary>
+public sealed record DebugAnimalAge(IReadOnlyList<CharacterId> Characters, float? Age = null) : DebugCommand;
+
+/// <summary>
+/// Sets the given stats of the characters to <see cref="Value"/> (the debug menu's Edit characters window).
 /// </summary>
 public sealed record DebugSetStats(IReadOnlyList<CharacterId> Characters, IReadOnlyList<StatsEnumerated> Stats, float Value) : DebugCommand;
+
+/// <summary>
+/// Sets the levels of the code mods' skills with the given ids (<see cref="ModSkill.Id"/>; an unknown id is skipped) of the characters to
+/// <see cref="Value"/> (the debug menu's Edit characters window).
+/// </summary>
+public sealed record DebugSetModSkills(IReadOnlyList<CharacterId> Characters, IReadOnlyList<string> Skills, float Value) : DebugCommand;
+
+/// <summary>
+/// Sets each of the given stats of the characters to its own value, and each code mod's skill with the given ids (an unknown id is skipped) to its
+/// own (the Edit characters window's Paste values).
+/// </summary>
+public sealed record DebugSetStatValues(IReadOnlyList<CharacterId> Characters, IReadOnlyDictionary<StatsEnumerated, float> Stats,
+    IReadOnlyDictionary<string, float> ModSkills) : DebugCommand;
 
 /// <summary>
 /// Recruits the character into the player's faction and active squad (the debug menu's Recruit row): refused when it has no dialogue line that makes
@@ -217,6 +237,17 @@ public sealed record DebugGiveItem(CharacterId Character, string Record, int Qua
         FcsRecordType.LimbReplacement];
 
     /// <summary>
+    /// A new item of <paramref name="record"/> at <paramref name="quality"/> (0 to 100; a weapon's exact grade <paramref name="exact"/> instead),
+    /// made as giving it makes it; null for an unknown record or an exact grade that is not in the data.
+    /// </summary>
+    public static Items.ItemInstance? Make(PopulationData data, string record, int quantity, int quality, DebugWeaponGrade? exact = null)
+    {
+        if (data.Items.Create(record, quantity) is not { } item) return null;
+
+        return DebugCheats.ApplyQuality(data, exact, quality, item, out _) ? item : null;
+    }
+
+    /// <summary>
     /// The <c>PLAYER_WEAPONS</c> models a weapon can be given (model record, name, level), in record order.
     /// </summary>
     public static IReadOnlyList<(string Model, string Name, int Level)> Grades(GameDatabase db) =>
@@ -357,7 +388,7 @@ public sealed record DebugWeaponGrade(string? Maker, string? Model, int? Level)
 
 /// <summary>
 /// Lays a loose item of record <see cref="Record"/> (<see cref="Quantity"/> in a stack) on the ground at <see cref="At"/> turned <see cref="Yaw"/>
-/// radians (agent-playtest control channel: place-item; the debug menu's Drop item row).
+/// radians (agent-playtest control channel: place-item; the debug menu's Items window).
 /// </summary>
 public sealed record DebugPlaceItem(string Record, int Quantity, Vector3 At, float Yaw) : DebugCommand
 {
@@ -705,8 +736,17 @@ static class DebugCheats
             case DebugMaxSkills max:
                 MaxSkills(world, max);
                 break;
+            case DebugAnimalAge age:
+                AnimalAge(world, age);
+                break;
             case DebugSetStats set:
                 SetStats(world, set);
+                break;
+            case DebugSetModSkills modSkills:
+                SetModSkills(world, modSkills);
+                break;
+            case DebugSetStatValues values:
+                SetStatValues(world, values);
                 break;
             case DebugRecruit recruit when data is not null:
                 Recruit(world, data, recruit);
@@ -793,8 +833,8 @@ static class DebugCheats
     }
 
     /// <summary>
-    /// The debug menu's Recruit row: the character joins the player's faction and active squad when <see cref="DialogueSystem.RecruitRefusal"/> allows
-    /// it, and the result reaches the message log.
+    /// The debug menu's Recruit row: the character joins the player's faction and active squad when <see cref="DialogueSystem.RecruitRefusal"/>
+    /// allows it, and the result reaches the message log.
     /// </summary>
     static void Recruit(World world, PopulationData data, DebugRecruit recruit)
     {
@@ -861,6 +901,43 @@ static class DebugCheats
     }
 
     /// <summary>
+    /// Reads or edits animal ages and posts the trader-style age row for each target. A stale id never falls back to another character.
+    /// </summary>
+    static void AnimalAge(World world, DebugAnimalAge command)
+    {
+        if (command.Age is { } value && (!float.IsFinite(value) || value < 0 || value > 1.5f))
+        {
+            world.Post("animalage: age must be a fraction from 0 to 1.5 (adult = 1)");
+            return;
+        }
+
+        var table = world.Characters;
+        foreach (var id in command.Characters)
+        {
+            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot) is not { } cold)
+            {
+                world.Post($"animalage: no character c:{id.Slot}.{id.Generation}");
+                continue;
+            }
+            if (cold.Animal is null)
+            {
+                world.Post($"animalage: {cold.Name}: skipped (not an animal)");
+                continue;
+            }
+            if (cold.Stats is null || cold.Medical is null)
+            {
+                world.Post($"animalage: {cold.Name}: skipped (animal body unavailable)");
+                continue;
+            }
+
+            if (command.Age is { } age) BodySystem.SetAnimalAge(cold, age, refreshLook: true);
+            string word = Loc.Tr(AnimalData.AgeWord(cold.Age));
+            string number = ((int)(cold.Age * 100)).ToString(CultureInfo.InvariantCulture);
+            world.Post($"animalage: {cold.Name}: {word} ({number})");
+        }
+    }
+
+    /// <summary>
     /// Sets the given stats of the characters to the value.
     /// </summary>
     static void SetStats(World world, DebugSetStats set)
@@ -870,6 +947,39 @@ static class DebugCheats
         {
             if (table.TryResolveNext(id, out int slot) && table.Cold(slot)?.Stats is { } stats)
                 foreach (var stat in set.Stats) stats[stat] = set.Value;
+        }
+    }
+
+    /// <summary>
+    /// Sets the given code mods' skills of the characters to the value.
+    /// </summary>
+    static void SetModSkills(World world, DebugSetModSkills set)
+    {
+        var skills = ModSkills.All.Where(s => set.Skills.Contains(s.Id)).ToArray();
+        if (skills.Length == 0) return;
+
+        var table = world.Characters;
+        foreach (var id in set.Characters)
+        {
+            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot)?.Stats is not { } stats) continue;
+
+            foreach (var skill in skills) skill.Set(stats, set.Value);
+        }
+    }
+
+    /// <summary>
+    /// Sets each of the given stats and code mods' skills of the characters to its own value.
+    /// </summary>
+    static void SetStatValues(World world, DebugSetStatValues set)
+    {
+        var skills = ModSkills.All.Where(s => set.ModSkills.ContainsKey(s.Id)).ToArray();
+        var table = world.Characters;
+        foreach (var id in set.Characters)
+        {
+            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot)?.Stats is not { } stats) continue;
+
+            foreach (var (stat, value) in set.Stats) stats[stat] = value;
+            foreach (var skill in skills) skill.Set(stats, set.ModSkills[skill.Id]);
         }
     }
 
@@ -983,13 +1093,20 @@ static class DebugCheats
     /// </summary>
     static bool SetQuality(World world, PopulationData data, DebugWeaponGrade? exact, int quality, Items.ItemInstance item)
     {
-        if (exact is not null && item.Type is FcsRecordType.Weapon or FcsRecordType.Crossbow)
-        {
-            if (exact.Apply(data.Db, item, out string bad)) return true;
+        if (ApplyQuality(data, exact, quality, item, out string bad)) return true;
 
-            world.Post(bad);
-            return false;
-        }
+        world.Post(bad);
+        return false;
+    }
+
+    /// <summary>
+    /// <see cref="SetQuality"/> without a world: false with the reason in <paramref name="error"/> when the exact grade names a record that is not
+    /// there.
+    /// </summary>
+    internal static bool ApplyQuality(PopulationData data, DebugWeaponGrade? exact, int quality, Items.ItemInstance item, out string error)
+    {
+        error = "";
+        if (exact is not null && item.Type is FcsRecordType.Weapon or FcsRecordType.Crossbow) return exact.Apply(data.Db, item, out error);
 
         if (item.Type == FcsRecordType.Armour)
             (item.Quality, item.Level) = (Math.Clamp(quality, 0, 100), Math.Clamp(quality, 0, 100));
@@ -1042,8 +1159,8 @@ static class DebugCheats
         for (int b = 0; b < relations.Count; b++)
         {
             if (b == set.A || (set.B is { } only && b != only)) continue;
-            PlayerRelations.Add(world, relations, set.A, b, value - relations.Get(set.A, b));
-            PlayerRelations.Add(world, relations, b, set.A, value - relations.Get(b, set.A));
+            PlayerRelations.Add(world, relations, set.A, b, value - relations.Get(set.A, b), new(RelationCauseType.Debug));
+            PlayerRelations.Add(world, relations, b, set.A, value - relations.Get(b, set.A), new(RelationCauseType.Debug));
         }
     }
 
@@ -1053,14 +1170,14 @@ static class DebugCheats
     static int ClearBounties(World world, DebugClearBounties clear)
     {
         int removed = 0;
-        foreach (var c in BountyTargets(world, clear.Characters))
+        foreach (var (slot, c) in BountyTargets(world, clear.Characters))
         {
             if (c.Bounties is not { } ledger) continue;
             for (int k = ledger.Count - 1; k >= 0; k--)
             {
                 var e = ledger.Entries[k];
                 if (clear.Faction is { } only && e.Faction != only) continue;
-                ledger.Remove(e);
+                Crime.CrimeSystem.ClearBounty(world, slot, c, ledger, e);
                 removed++;
             }
 
@@ -1075,18 +1192,18 @@ static class DebugCheats
     /// <summary>
     /// The characters <paramref name="ids"/> names, else every player character.
     /// </summary>
-    static IEnumerable<CharacterCold> BountyTargets(World world, IReadOnlyList<CharacterId> ids)
+    static IEnumerable<(int Slot, CharacterCold Cold)> BountyTargets(World world, IReadOnlyList<CharacterId> ids)
     {
         var table = world.Characters;
         if (ids.Count > 0)
         {
             foreach (var id in ids)
-                if (table.TryResolveNext(id, out int slot) && table.Cold(slot) is { } c) yield return c;
+                if (table.TryResolveNext(id, out int slot) && table.Cold(slot) is { } c) yield return (slot, c);
             yield break;
         }
 
         for (int s = 0; s < table.HighWater; s++)
-            if (table.Next[s].Alive && table.Cold(s) is { IsPlayer: true } c) yield return c;
+            if (table.Next[s].Alive && table.Cold(s) is { IsPlayer: true } c) yield return (s, c);
     }
 
     /// <summary>

@@ -95,6 +95,11 @@ public enum StartResult : byte
     /// The character's <see cref="Repertoire"/> does not register the row; nothing changed.
     /// </summary>
     NotEligible,
+    /// <summary>
+    /// An engine walk into a building shut to the walker (<see cref="DestinationAccess.WalkRefused"/>): its plan fails; the walk counts as one that
+    /// ended short.
+    /// </summary>
+    Inaccessible,
 }
 
 /// <summary>
@@ -246,17 +251,119 @@ public sealed class TaskHandlers
     /// The handlers of rows that have one of their own.
     /// </summary>
     readonly Dictionary<TaskType, ITaskHandler> _rows = [];
+    /// <summary>
+    /// The handlers of rows whose starts on a site (a fixture or building id) have one of their own.
+    /// </summary>
+    readonly Dictionary<TaskType, ITaskHandler> _siteRows = [];
+
+    /// <summary>
+    /// The mod whose system registers now (<see cref="RegisterMod"/>; null for an engine system's, or outside registration).
+    /// </summary>
+    string? _mod;
+
+    /// <summary>
+    /// The task numbers the mods claimed (job and NPC goal types) and the mod of each, while a mod registers.
+    /// </summary>
+    IReadOnlyDictionary<TaskType, string>? _claimed;
+
+    /// <summary>
+    /// The mod that registered each row handler from 1000 up (null until a mod does).
+    /// </summary>
+    Dictionary<TaskType, string>? _rowOwners;
+
+    /// <summary>
+    /// The undo of the registering mod's registrations, replayed in reverse when its <see cref="ITaskOwner.RegisterTasks"/> throws.
+    /// </summary>
+    List<Action>? _undo;
 
     /// <summary>
     /// Registers the handler of <paramref name="task"/>.
     /// </summary>
-    public void Register(CharacterTask task, ITaskHandler handler) =>
-        _handlers[(byte)task] = handler ?? throw new ArgumentNullException(nameof(handler));
+    public void Register(CharacterTask task, ITaskHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_undo is not null)
+        {
+            var before = _handlers[(byte)task];
+            _undo.Add(() => _handlers[(byte)task] = before);
+        }
+
+        _handlers[(byte)task] = handler;
+    }
 
     /// <summary>
-    /// Registers the handler of the starts of <paramref name="row"/>, whatever their act-out.
+    /// Registers the handler of the starts of <paramref name="row"/>, whatever their act-out. A mod's system may not register a row from 1000 up that
+    /// another mod claimed (a job or NPC goal type) or registered first: one mod owns a row (docs/modding.md "Task handlers").
     /// </summary>
-    public void Register(TaskType row, ITaskHandler handler) => _rows[row] = handler ?? throw new ArgumentNullException(nameof(handler));
+    public void Register(TaskType row, ITaskHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_mod is not null) Own(row, _rows);
+
+        _rows[row] = handler;
+    }
+
+    /// <summary>
+    /// Registers the handler of the starts of <paramref name="row"/> on a site, whatever their act-out; its other starts keep the row's or the
+    /// task's handler. A mod's rows from 1000 up are owned as by <see cref="Register(TaskType, ITaskHandler)"/>.
+    /// </summary>
+    public void RegisterOnSite(TaskType row, ITaskHandler handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_mod is not null) Own(row, _siteRows);
+
+        _siteRows[row] = handler;
+    }
+
+    /// <summary>
+    /// A mod system's <see cref="ITaskOwner.RegisterTasks"/>, with its rows from 1000 up checked against <paramref name="claimed"/> and the rows
+    /// other mods registered; a throw (a refused row among them) undoes that system's registrations and is logged, and the world is made without them.
+    /// </summary>
+    internal void RegisterMod(ITaskOwner owner, string mod, IReadOnlyDictionary<TaskType, string>? claimed)
+    {
+        (_mod, _claimed, _undo) = (mod, claimed, []);
+        try
+        {
+            owner.RegisterTasks(this);
+        }
+        catch (Exception e)
+        {
+            for (int i = _undo.Count - 1; i >= 0; i--) _undo[i]();
+            Console.Error.WriteLine($"mod       {mod}: task handlers not registered for this world: {e}");
+        }
+        finally
+        {
+            (_mod, _claimed, _undo) = (null, null, null);
+        }
+    }
+
+    /// <summary>
+    /// The registering mod takes <paramref name="row"/> in <paramref name="table"/>: a row from 1000 up another mod claimed or registered is refused
+    /// (a throw); the change is noted for the undo.
+    /// </summary>
+    void Own(TaskType row, Dictionary<TaskType, ITaskHandler> table)
+    {
+        string mod = _mod!;
+        if ((int)row >= SimulationExtensions.FirstModCode)
+        {
+            if (_claimed?.TryGetValue(row, out var claimant) == true && claimant != mod)
+                throw new InvalidOperationException($"Task row {(int)row} is claimed by mod '{claimant}'.");
+            if (_rowOwners?.TryGetValue(row, out var owner) == true && owner != mod)
+                throw new InvalidOperationException($"Task row {(int)row} has a handler of mod '{owner}'.");
+
+            var owners = _rowOwners ??= [];
+            bool owned = owners.ContainsKey(row);
+            owners[row] = mod;
+            if (!owned) _undo!.Add(() => owners.Remove(row));
+        }
+
+        bool had = table.TryGetValue(row, out var before);
+        _undo!.Add(() =>
+        {
+            if (had) table[row] = before!;
+            else table.Remove(row);
+        });
+    }
 
     /// <summary>
     /// The handler of <paramref name="task"/>; null: none (the start just sets the task).
@@ -264,15 +371,22 @@ public sealed class TaskHandlers
     public ITaskHandler? Of(CharacterTask task) => _handlers[(byte)task];
 
     /// <summary>
-    /// The handler of a start of <paramref name="row"/> acting out <paramref name="task"/>: the row's own, else the task's.
+    /// The handler of a start of <paramref name="row"/> acting out <paramref name="task"/>, on <paramref name="site"/> (null: none): the row's own on
+    /// a site, else the row's own, else the task's.
     /// </summary>
-    public ITaskHandler? Of(CharacterTask task, TaskType row) => _rows.TryGetValue(row, out var own) ? own : _handlers[(byte)task];
+    public ITaskHandler? Of(CharacterTask task, TaskType row, string? site = null)
+    {
+        if (site is not null && _siteRows.TryGetValue(row, out var onSite)) return onSite;
+
+        return _rows.TryGetValue(row, out var own) ? own : _handlers[(byte)task];
+    }
 
     /// <summary>
     /// The handler of the character's task <paramref name="task"/>: the one of its running row when its provenance runs it
     /// (<see cref="RunningTask.Runs"/>), else the task's.
     /// </summary>
-    public ITaskHandler? Of(CharacterCold cold, CharacterTask task) => cold.Running is { } run && run.Runs(task) ? Of(task, run.Row) : Of(task);
+    public ITaskHandler? Of(CharacterCold cold, CharacterTask task) =>
+        cold.Running is { } run && run.Runs(task) ? Of(task, run.Row, run.Site) : Of(task);
 }
 
 /// <summary>
@@ -303,8 +417,8 @@ public static class TaskStart
         var cold = table.Cold(slot)!;
         if (!Eligible(world, cold, request.Row)) return StartResult.NotEligible;
         var current = (CharacterTask)table.Next[slot].Task;
-        var handler = world.Tasks.Of(request.Task, request.Row);
-        bool step = cold.Running is { } kept && Step(kept, current, request);
+        var handler = world.Tasks.Of(request.Task, request.Row, request.Site);
+        bool step = cold.Running is { } kept && Step(cold, kept, current, request);
         PlayerOrders.Replacing(world, slot, request, step);
         if (request.Task != CharacterTask.Attack) world.Tasks.Of(CharacterTask.Attack)?.End(world, slot, CharacterTask.Attack, TaskEnd.Replaced);
         if (current != CharacterTask.Attack && world.Tasks.Of(cold, current) is { } before
@@ -334,15 +448,36 @@ public static class TaskStart
     /// Starts an engine walk to <paramref name="goal"/> at <paramref name="mode"/> as row <paramref name="row"/> (<see cref="Start"/> of a
     /// <see cref="CharacterTask.GoTo"/> with <see cref="TaskRequest.Goal"/>).
     /// </summary>
-    public static StartResult Walk(World world, int slot, System.Numerics.Vector2 goal, byte mode, TaskType row, TaskSource source) =>
-        Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Goal = goal, Mode = mode });
+    public static StartResult Walk(World world, int slot, System.Numerics.Vector2 goal, byte mode, TaskType row, TaskSource source)
+    {
+        var point = new System.Numerics.Vector3(goal.X, float.NaN, goal.Y);
+        if (DestinationAccess.WalkRefused(world, slot, row, point)) return Refuse(world, slot);
+
+        return Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Goal = goal, Mode = mode });
+    }
 
     /// <summary>
     /// Starts an engine walk onto the floor at <paramref name="at"/> (<see cref="MovementSystem.GoToFloor"/>), as
     /// <see cref="Walk(World, int, System.Numerics.Vector2, byte, TaskType, TaskSource)"/>.
     /// </summary>
-    public static StartResult Walk(World world, int slot, System.Numerics.Vector3 at, byte mode, TaskType row, TaskSource source) =>
-        Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Point = at, Mode = mode });
+    public static StartResult Walk(World world, int slot, System.Numerics.Vector3 at, byte mode, TaskType row, TaskSource source)
+    {
+        if (DestinationAccess.WalkRefused(world, slot, row, at)) return Refuse(world, slot);
+
+        return Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Point = at, Mode = mode });
+    }
+
+    /// <summary>
+    /// An engine walk refused by its destination's doors (docs/game/locks.md "Locked doors on the way"): it counts as a walk that ended short, as one
+    /// stopped at a locked door; a walk under way stops, its provenance kept.
+    /// </summary>
+    static StartResult Refuse(World world, int slot)
+    {
+        var table = world.Characters;
+        if (table.Next[slot].Task == (byte)CharacterTask.GoTo) Stand(table, slot);
+        table.Cold(slot)!.WalkEnd = WalkEnd.Failed;
+        return StartResult.Inaccessible;
+    }
 
     /// <summary>
     /// Starts an engine standing task (<see cref="CharacterTask.Idle"/>, <see cref="CharacterTask.Wander"/>, or a <see cref="CharacterTask.Follow"/>
@@ -447,11 +582,12 @@ public static class TaskStart
         !DecisionSystem.Decides(cold) && task is CharacterTask.Wander or CharacterTask.Follow ? task : CharacterTask.Idle;
 
     /// <summary>
-    /// Whether the request is a step of the running task: a goal's or reaction's attack while a following job runs its follow or attack.
+    /// Whether the request is a step of the running task: a goal's or reaction's attack while a follow row runs its follow or attack, unless it is
+    /// a follow order running its own row (<see cref="PlayerOrders.FollowRowRuns"/>), which a threat ends instead.
     /// </summary>
-    static bool Step(RunningTask running, CharacterTask current, in TaskRequest request) =>
+    static bool Step(CharacterCold cold, RunningTask running, CharacterTask current, in TaskRequest request) =>
         request.Task == CharacterTask.Attack && request.Source is TaskSource.Goal or TaskSource.Reaction && Production.PermaJobs.Follows(running.Row)
-        && running.Runs(current) && current is CharacterTask.Follow or CharacterTask.Attack;
+        && running.Runs(current) && current is CharacterTask.Follow or CharacterTask.Attack && !PlayerOrders.FollowRowRuns(cold);
 
     /// <summary>
     /// The act-out a task is a step of: a builder's delivering, fetching and dismantling are steps of its work (<see cref="CharacterTask.Build"/>;
@@ -515,6 +651,7 @@ public static class TaskStart
         }
 
         cold.Running = null;
+        (cold.EndedTick, cold.Ended) = (table.Ticks, reason);   // the action log's
         DecisionSystem.Request(cold);   // the plan finished or was stopped: the character is decided again
         Stamp(table, slot);
     }

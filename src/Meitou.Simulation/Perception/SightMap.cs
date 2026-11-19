@@ -29,6 +29,21 @@ public interface ISightSource
     /// <b>Verified</b>).
     /// </summary>
     bool EnforcesCeiling(TownBuilding building) => false;
+    /// <summary>
+    /// Where a ground ray cast straight down over <paramref name="at"/> (X, Z) meets the building's group-9 surfaces first, as it stands or as a ruin
+    /// (<see cref="BuildingShape.GroundTriangles"/>); null when none lies over it (and by default).
+    /// </summary>
+    GroundHit? TopAt(TownBuilding building, bool destroyed, System.Numerics.Vector2 at) => null;
+    /// <summary>
+    /// As <see cref="TopAt(TownBuilding, bool, System.Numerics.Vector2)"/> for any placed BUILDING <paramref name="record"/> (a player's site, a
+    /// camp piece), cached by <paramref name="id"/>; null by default.
+    /// </summary>
+    GroundHit? TopAt(string record, string id, System.Numerics.Vector3 position, System.Numerics.Quaternion rotation, bool destroyed,
+        System.Numerics.Vector2 at) => null;
+    /// <summary>
+    /// The radius of the building's bounding box, as it stands or as a ruin (<see cref="BuildingShape.BoundsRadius"/>); 0 by default.
+    /// </summary>
+    float BoundsRadius(TownBuilding building, bool destroyed) => 0;
 }
 
 /// <summary>
@@ -80,9 +95,9 @@ public sealed class SightMap
     /// </summary>
     readonly record struct Room(string Key, InteriorVolume Volume, bool EnforcesCeiling);
     /// <summary>
-    /// A lamp and the room it lights (-1: outdoors or not an interior lamp).
+    /// A lamp, the room it lights (-1: outdoors or not an interior lamp) and its floor there.
     /// </summary>
-    readonly record struct Lamp(WorldLight Light, int Room);
+    readonly record struct Lamp(WorldLight Light, int Room, int Floor);
 
     /// <summary>
     /// The keys of the buildings added.
@@ -181,7 +196,7 @@ public sealed class SightMap
         {
             if (!(l.Intensity > 0) || !(l.Radius > 0)) continue;
             own.Add(_lamps.Count);
-            _lamps.Add(new Lamp(l, l.Interior ? room : -1));
+            _lamps.Add(new Lamp(l, l.Interior ? room : -1, LampFloor(l, l.Interior ? room : -1)));
             LampCells(_lamps.Count - 1, add: true);
         }
         _entries[building.Key] = (room, own);
@@ -215,6 +230,12 @@ public sealed class SightMap
         _entries.Remove(building.Key);
         Add(source, building);
     }
+
+    /// <summary>
+    /// The floor a lamp lights in <paramref name="room"/>: a furniture light's that of the spot its furniture stands on, as an object's
+    /// <c>getFloor</c> (<see cref="FloorAt"/>), else its part's (<see cref="WorldLight.Floor"/>).
+    /// </summary>
+    int LampFloor(WorldLight l, int room) => l.FloorAnchor is { } at && room >= 0 ? _rooms[room].Volume.FloorAt(at) : l.Floor;
 
     /// <summary>
     /// A ruin stands again: the room and lamps it had come back, or are added now when it was a ruin when its town registered.
@@ -332,6 +353,7 @@ public sealed class SightMap
         Array.Resize(ref _floorOf, size);
         Array.Resize(ref _probed, size);
         Array.Resize(ref _low, size);
+        Array.Resize(ref _player, size);
         Array.Resize(ref _facing, size);
     }
 
@@ -346,6 +368,7 @@ public sealed class SightMap
         int was = _place[s];
         _place[s] = -1;
         _low[s] = prev[s].Alive && table.Cold(s)?.Medical is { Prone: true };
+        _player[s] = prev[s].Alive && table.Cold(s) is { IsPlayer: true };
         _facing[s] = table.Cold(s)?.Animation is { HasDrawYaw: true } drawn ? drawn.DrawYaw : prev[s].Yaw;
         if (!prev[s].Alive || _rooms.Count == 0)
         {
@@ -446,6 +469,10 @@ public sealed class SightMap
     /// </summary>
     bool[] _low = [];
     /// <summary>
+    /// Each character of the player's faction at the last update (its sight has no view cone, <see cref="AllRound"/>).
+    /// </summary>
+    bool[] _player = [];
+    /// <summary>
     /// Each character's sight-cone forward: its drawn facing (<see cref="CharacterAnimation.DrawYaw"/>), else its facing.
     /// </summary>
     float[] _facing = [];
@@ -533,14 +560,28 @@ public sealed class SightMap
     }
 
     /// <summary>
+    /// The town and player-building lamps of the cell <paramref name="at"/> lies in, each with the room and floor it lights and its share of
+    /// <paramref name="slot"/>'s light there (the probe's <c>light</c> mode).
+    /// </summary>
+    internal IEnumerable<(WorldLight Light, int Room, int Floor, float Gain)> LampsAt(int slot, Vector3 at)
+    {
+        var cell = (CellOf(at.X), CellOf(at.Z));
+        bool inside = Inside(slot);
+        int floor = FloorOf(slot, at);
+        var lamps = (_lampCells.GetValueOrDefault(cell) ?? []).Select(k => _lamps[k]);
+        var sites = (_siteCells.GetValueOrDefault(cell) ?? []).Select(k => _siteLamps[k]);
+        foreach (var lamp in lamps.Concat(sites)) yield return (lamp.Light, lamp.Room, lamp.Floor, Gain(lamp, slot, at, inside, floor));
+    }
+
+    /// <summary>
     /// One lamp's share of a character's light (0 when it is off, of the other indoor state or floor, or out of reach).
     /// </summary>
     float Gain(Lamp lamp, int slot, Vector3 at, bool inside, int floor)
     {
-        var (l, room) = lamp;
+        var (l, room, lampFloor) = lamp;
         if (!WorldLights.IsLit(l, l.Interior && InteriorLampsAllDay ? 0 : Daylight) || l.Interior != inside) return 0;
         // The original also matches the light's floor when both are inside; a lamp of another building's interior is taken as on another floor.
-        if (inside && (room != _place[slot] || l.Floor != floor)) return 0;
+        if (inside && (room != _place[slot] || lampFloor != floor)) return 0;
         float d2 = Vector3.DistanceSquared(l.Position, at), r2 = l.Radius * l.Radius;
         if (d2 > r2) return 0;
         float f = 1 - d2 / r2;
@@ -572,7 +613,7 @@ public sealed class SightMap
             {
                 if (!(l.Intensity > 0) || !(l.Radius > 0)) continue;
                 int lamp = _siteLamps.Count;
-                _siteLamps.Add(new Lamp(l, -1));
+                _siteLamps.Add(new Lamp(l, -1, l.Floor));
                 for (int x = CellOf(l.Position.X - l.Radius); x <= CellOf(l.Position.X + l.Radius); x++)
                     for (int z = CellOf(l.Position.Z - l.Radius); z <= CellOf(l.Position.Z + l.Radius); z++)
                         Into(_siteCells, (x, z), lamp);
@@ -612,6 +653,12 @@ public sealed class SightMap
     /// The floor of <paramref name="building"/> at <paramref name="at"/> (an object's <c>getFloor</c>); 0 for a building the map does not hold.
     /// </summary>
     public int FloorAt(string building, Vector3 at) => _roomOf.TryGetValue(building, out int r) ? _rooms[r].Volume.FloorAt(at) : 0;
+
+    /// <summary>
+    /// Whether the ground point (<paramref name="x"/>, <paramref name="z"/>) lies under or in <paramref name="building"/>'s indoor volume; false for
+    /// a building the map does not hold.
+    /// </summary>
+    public bool Covers(string building, float x, float z) => _roomOf.TryGetValue(building, out int r) && _rooms[r].Volume.ContainsGround(x, z);
 
     /// <summary>
     /// Whether the map holds an indoor volume for <paramref name="building"/> (the key of a fixture's building): its <c>isIndoors</c> handle is then
@@ -664,11 +711,10 @@ public sealed class SightMap
     /// </summary>
     public float Range(int looker, int target, float outdoor)
     {
-        int lp = Known(looker) ? _place[looker] : -1, tp = Known(target) ? _place[target] : -1;
-        bool lTop = Known(looker) && _onTop[looker], tTop = Known(target) && _onTop[target];
-        if (lp != tp && !lTop && !tTop) return 0;
-        float range = Inside(looker) ? IndoorSight : outdoor;
-        range *= 0.5f + 0.5f * Daylight;
+        if (!SharePlace(looker, target)) return 0;
+        int lp = Known(looker) ? _place[looker] : -1;
+        bool lTop = Known(looker) && _onTop[looker];
+        float range = BareRange(looker, outdoor);
         if (lTop) range *= 2;
         float ll = Light(looker), tl = Light(target);
         float contrast = Math.Clamp(tl - ll + 1, 0, 2);
@@ -681,10 +727,11 @@ public sealed class SightMap
     /// The whole sight test of a looker at <paramref name="eye"/>, its cone along its drawn facing as the schedule phase found it (FUN_140852f70
     /// reads the drawn node), on the character in <paramref name="target"/> at <paramref name="at"/>: the view factor
     /// (<see cref="AggroSystem.Visibility"/>, or <see cref="AggroSystem.SneakVisibility"/> with the target's <paramref name="stealth"/> when it
-    /// sneaks) within <see cref="Range"/>.
+    /// sneaks) within <see cref="Range"/>. A looker of the player's faction has no cone (<see cref="AllRound"/>).
     /// </summary>
     public float Sees(int looker, int target, Vector3 eye, Vector3 at, float outdoor, float stealth = -1)
     {
+        if (Known(looker) && _player[looker]) return AllRound(looker, target, eye, at, outdoor);
         float range = Range(looker, target, outdoor);
         if (!(range > 0)) return 0;
         // A target crawling or staying low is half as visible (FUN_140852f70: ground posture x0.5, before the sneaking factors).
@@ -694,5 +741,35 @@ public sealed class SightMap
         return stealth >= 0
             ? AggroSystem.SneakVisibility(eye, yaw, at, range, stealth, posture)
             : AggroSystem.Visibility(eye, yaw, at, range, posture);
+    }
+
+    /// <summary>
+    /// The places rule of the sight test (<c>FUN_140857b10</c>): looker and target share a place (outdoors, or one building), or either stands on
+    /// top.
+    /// </summary>
+    bool SharePlace(int looker, int target)
+    {
+        int lp = Known(looker) ? _place[looker] : -1, tp = Known(target) ? _place[target] : -1;
+        bool lTop = Known(looker) && _onTop[looker], tTop = Known(target) && _onTop[target];
+        return lp == tp || lTop || tTop;
+    }
+
+    /// <summary>
+    /// The looker's sight range R (<c>FUN_140851bc0</c>): 500 inside a building, else <paramref name="outdoor"/> (race multiplier and weather
+    /// applied), times lerp(daylight, 0.5, 1).
+    /// </summary>
+    float BareRange(int looker, float outdoor) => (Inside(looker) ? IndoorSight : outdoor) * (0.5f + 0.5f * Daylight);
+
+    /// <summary>
+    /// The sight test of a looker of the player's faction (<c>FUN_140857b10</c>, <b>Verified</b> in the running original: the view-cone test
+    /// <c>FUN_140852f70</c> runs only for a looker whose faction has no player flag, <c>+0x250</c>): seen (1) when they share a place
+    /// (<see cref="SharePlace"/>) and the target is within R (<see cref="BareRange"/>, 3D); no cone, light, posture, on-top or stealth factor. A
+    /// sneaker still has to fill the looker's spot meter, and the sight ray still ends the test (<see cref="SightRay"/>).
+    /// </summary>
+    float AllRound(int looker, int target, Vector3 eye, Vector3 at, float outdoor)
+    {
+        if (!SharePlace(looker, target)) return 0;
+        float range = BareRange(looker, outdoor);
+        return Vector3.DistanceSquared(eye, at) <= range * range ? 1 : 0;
     }
 }

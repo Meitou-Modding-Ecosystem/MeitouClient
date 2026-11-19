@@ -13,12 +13,14 @@ along the view; k is strength (default0.8) times sun/(sun+sky) luminance share. 
 horizon; do not darken night ambient or double-apply haze over the sky.
 
 Froxel injection samples cascaded sun visibility; integration/air scatter share a compute scan
-walking each column once. Distances and projection must match the scene depth's reconstruction (`depthViewZ`).
+walking each column once, on both backends (the fragment passes looped over every nearer slice per cell: slices squared reads).
+**Verified** (Metal, with weather particles off, M6): the picture is bit-identical to the fragment passes';
+**Observed** (Metal System Trace, 1080p scene, High): integrate + scatter 0.36 + 0.86 ms became 0.12 ms for the kernel and its 1 x 1 sky pass. Distances and projection must match the scene depth's reconstruction (`depthViewZ`).
 Prepared depth/shadow/global constants and barriers precede compute/apply. Half-resolution
 scene-layer integration needs depth-aware fallback at discontinuities.
 
-**Quality** (`Light shafts quality`, High by default): High uses 160 cells across, 64 depth
-slices and 2 shadow samples per cell; Medium 128 x 48 x 2; Low 96 x 32 x 1. The apply pass stays
+**Quality** (`Light shafts quality`, High by default): Ultra uses 192 cells across, 80 depth slices and 3 shadow samples per cell
+(about 2.7 times High's samples in the injection); High 160 x 64 x 2; Medium 128 x 48 x 2; Low 96 x 32 x 1. The apply pass stays
 at the render size; the setting changes the froxel grid and sample count, not the effect's
 strength. The Low quality preset turns the shafts off (the `Light shafts` switch) rather than
 relying on the low tier. `--ab shafts-half` is a separate experiment for the merged apply pass,

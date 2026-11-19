@@ -42,6 +42,11 @@ public sealed record AttackOrder(IReadOnlyList<CharacterId> Attackers, Character
     /// The job of the attackers' lists the fight runs (<see cref="TaskRequest.Job"/>; -1: none).
     /// </summary>
     public int Job { get; init; } = -1;
+
+    /// <summary>
+    /// Why the fight starts, for the event log (<see cref="EventLog.Fight"/>: "a crime alarm"); null: told from the row and source.
+    /// </summary>
+    public string? Cause { get; init; }
 }
 
 /// <summary>
@@ -124,6 +129,12 @@ public sealed record CombatOptions
     /// A fist attack with a small negative attack distance ("ma badpunch") reads it as positive (Meitou fix); false: as written, as the game does.
     /// </summary>
     public bool PunchReachFix { get; init; }
+
+    /// <summary>
+    /// An animal fighting with a weapon drawn from its manufacturer (the Swamp Turtle) picks the elephant creature techniques (Meitou fix); false:
+    /// its weapon's own, whose clips its skeleton lacks, as the game does.
+    /// </summary>
+    public bool AnimalMovesFix { get; init; }
 
     /// <summary>
     /// Most bolts left stuck in the world per bolt mesh (the original's <c>harpoonLimit</c> setting, 10 to 10000).

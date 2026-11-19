@@ -14,6 +14,11 @@ public sealed partial class World
     readonly System.Collections.Concurrent.ConcurrentDictionary<Type, object?> _systemsByType = new();
 
     /// <summary>
+    /// The character under the pointer when the last snapshot was published (<see cref="PlayerState.Pointed"/>).
+    /// </summary>
+    CharacterId _publishedPointed;
+
+    /// <summary>
     /// Applies the interface's commands between ticks while paused, without advancing time or running simulation phases:
     /// selection, order toggles, job lists, crafting and research queues, squads, inventory, open-shop transactions, building settings,
     /// the Stop order and every order (<see cref="OrderCommand"/>: each goes into its characters' queues through the one order path,
@@ -38,17 +43,29 @@ public sealed partial class World
             or Dialogue.EndConversation or Dialogue.ConfirmCharacterTrade or Dialogue.CloseCharacterTrade
             or Construction.PlaceBuildings or Construction.CancelSite or Construction.ConfirmDismantle or Construction.PauseSite
             or Editing.EditCharacter or Editing.FinishCreation or Editing.InPlayEditorOpened
-            or Locks.ToggleDoorsOrder or Locks.ToggleDoorLocksOrder or DebugGiveItem or DebugPlaceItem);
-        if (due.Count == 0) return;
+            or Locks.ToggleDoorsOrder or Locks.ToggleDoorLocksOrder or DebugGiveItem or DebugPlaceItem or DebugAnimalAge);
+        if (due.Count == 0)
+        {
+            // The pointer moved onto another character: publish again, as what its menu offers with a chance (stealth KO, kidnap) is published only
+            // for the character pointed at, selected or inspected (#878).
+            if (Player.Pointed != _publishedPointed) PublishPaused();
+            return;
+        }
 
         Characters.BeginTick();
         Characters.Phase = TablePhase.Inputs;
         try
         {
             // The systems that take these commands: every order's owner, and the others' handlers.
-            foreach (var system in _systems)
+            for (int k = 0; k < _systems.Count; k++)
             {
-                if (system is IOrderOwner or PlayerSystem or Trading.TradeSystem or Dialogue.DialogueSystem or Combat.CombatSystem)
+                var system = _systems[k];
+                bool takesCommands = system is IOrderOwner or PlayerSystem or Trading.TradeSystem or Dialogue.DialogueSystem or Combat.CombatSystem;
+                if (!takesCommands) continue;
+
+                if (ModFaults.IsMod(k))
+                    ModFaults.Run(k, "inputs", system, this, due, static (s, w, d) => s.Inputs(w, d));
+                else
                     system.Inputs(this, due);
             }
 
@@ -60,14 +77,23 @@ public sealed partial class World
             Characters.EndTick();
         }
 
+        Events.EndTick(this);
+        ActionLog?.Observe(this);
         foreach (var trade in _systems.OfType<Trading.TradeSystem>()) trade.RefreshView(this);
         foreach (var talk in _systems.OfType<Dialogue.DialogueSystem>()) talk.RefreshView(this);
-        if (Settings.PublishSnapshots)
-        {
-            var (previous, buffer) = (PreviousSnapshot, _previousBuffer);
-            Publish();
-            KeepPrevious(previous, buffer);
-        }
+        PublishPaused();
+    }
+
+    /// <summary>
+    /// Publishes the snapshot between ticks while paused, keeping the previous one the renderer interpolates from.
+    /// </summary>
+    void PublishPaused()
+    {
+        if (!Settings.PublishSnapshots) return;
+
+        var (previous, buffer) = (PreviousSnapshot, _previousBuffer);
+        Publish();
+        KeepPrevious(previous, buffer);
     }
 
     /// <summary>
@@ -76,6 +102,19 @@ public sealed partial class World
     /// </summary>
     internal T? SystemOf<T>() where T : class =>
         (T?)_systemsByType.GetOrAdd(typeof(T), static (_, list) => list.OfType<T>().FirstOrDefault(), _systems);
+
+    /// <summary>
+    /// Closes every inventory window, as the original's close-all (<c>FUN_1406e5740</c>, after a town alarm against the player's or an item move
+    /// caught stealing, selling stolen goods or smuggling; docs/game/economy.md "Trading range"): the open container, loot and trade now, the
+    /// interface's windows when it sees <see cref="PlayerState.InventoriesClosed"/> change. A walk to open one goes on. Serial phases only.
+    /// </summary>
+    internal void CloseInventories()
+    {
+        Player.OpenContainer = null;
+        Player.OpenLoot = CharacterId.None;
+        SystemOf<Trading.TradeSystem>()?.EndTrade(this);
+        Player.InventoriesClosed++;
+    }
 
     /// <summary>
     /// Puts the item on the mouse back where it came from (<see cref="PlayerState.Held"/>, <see cref="PlayerSystem.ReturnHeldItem"/>):

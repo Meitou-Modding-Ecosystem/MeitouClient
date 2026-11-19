@@ -927,13 +927,15 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
             }
         }
 
-        // Under the loading screen (Covered) eight times the zones and resolves a frame.
-        int scale = Covered ? 8 : 1;
+        // Under the loading screen (Covered) eight times the zones a frame, and 64 times the resolves: a save's first covered frames take up to a
+        // second each, and at eight times its 11 000 instances took 3 s more.
+        int scale = Covered ? 8 : 1, resolves = Covered ? 64 * 40 : 40;
         _streamer.Update(eye, streamRange, unlimited ? 64 : scale, Covered);
         ResolveTowns(eye);
-        _unresolvedInRange = _streamer.Scan(eye, RealRange, DistantReach, NoDistant, Resolve, unlimited ? int.MaxValue : 40 * scale);
+        _unresolvedInRange = _streamer.Scan(eye, RealRange, DistantReach, NoDistant, Resolve, unlimited ? int.MaxValue : resolves);
         _unresolvedInRange += _streamer.ScanLandmarks(eye, LandmarkReach, Resolve, unlimited ? int.MaxValue : 10 * scale);
         _unresolvedInRange += _streamer.ScanLoose(_streamer.Loose, eye, RealRange, Resolve, unlimited ? int.MaxValue : 10 * scale);
+        _meshes.Covered = Covered;
         _meshes.Pump();
         MarkInRange(eye, force: unlimited);
         _meshes.Trim();
@@ -1281,7 +1283,7 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
 
     /// <summary>
     /// The instances the GI traces (what the global illumination's acceleration structures hold, docs/render-gi.md): the resolved real instances of
-    /// the zones and landmarks, not the distant stand-ins, whose bounds come within <paramref name="range"/> of <paramref name="eye"/>, without the
+    /// the zones, the landmarks and the loose ones, not the distant stand-ins, whose bounds come within <paramref name="range"/> of <paramref name="eye"/>, without the
     /// construction sites, whose parts are drawn clipped at the scaffold (the rays would meet the whole building, the roof of a half-built or ruined
     /// one included, and light the open site as a closed room).
     /// </summary>
@@ -1299,6 +1301,11 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
             foreach (var inst in landmarks.Real)
                 if (inst.Gpu is not null && inst.Materials is not null && Vector3.Distance(inst.Centre,
                         eye) - inst.Radius <= range && !LeftOutOfRays(inst.Placed) && !ClosedAround(inst)) yield return inst;
+
+        // The loose instances (the farms' plants, FarmPlants): left out, the crops cast no shadow where the sun's shadows are traced.
+        foreach (var inst in _streamer.Loose.Real)
+            if (inst.Gpu is not null && inst.Materials is not null && Vector3.Distance(inst.Centre, eye) - inst.Radius <= range
+                && !LeftOutOfRays(inst.Placed)) yield return inst;
     }
 
     /// <summary>
@@ -1320,6 +1327,11 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     /// </summary>
     internal string? FindRecordFile(string recordPath) =>
         Data.Physics.CollisionPaths.Resolve(_objects.Install, recordPath) ?? _assets.Find(Path.GetFileName(recordPath.Replace('\\', '/')));
+
+    /// <summary>
+    /// Finds a collision file a record names the way the walking map does (<see cref="Data.Physics.CollisionPaths.ResolveCollision"/>), or null.
+    /// </summary>
+    internal string? FindCollisionFile(string recordPath) => Data.Physics.CollisionPaths.ResolveCollision(_objects.Install, recordPath);
 
     /// <summary>
     /// What cuts a ray-traced part as the draws cut it, for the traced sun: its map's bindless index (0: none or not resident) and threshold.
@@ -1411,7 +1423,7 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
         foreach (var zone in _streamer.AllZones)
             foreach (var room in zone.Interiors)
             {
-                if (room.Contains(ground, CutMargin) && room.CutsGround(origin, direction, distance)
+                if (MaskUsed(room) && room.Contains(ground, CutMargin) && room.CutsGround(origin, direction, distance)
                     && room.BoxExit(origin, direction) is { } exit && exit > (reach ?? 0))
                     reach = exit;
             }
@@ -1562,6 +1574,11 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     }
 
     /// <summary>
+    /// Whether a building's mask meshes cut: it has some, and they do not hold its own ground while <see cref="KeepHeldGround"/>.
+    /// </summary>
+    bool MaskUsed(InteriorVolume v) => v.MaskMeshes.Count > 0 && !(KeepHeldGround && v.MaskHoldsGround);
+
+    /// <summary>
     /// The loaded buildings with interior mask meshes whose footprint comes within <paramref name="range"/> of <paramref name="eye"/> (X/Z), into
     /// <paramref name="into"/>.
     /// </summary>
@@ -1574,7 +1591,7 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
             if (zone.Interiors.Length == 0 || ObjectStreamer.ZoneDistance(zone.X0, zone.Z0, eye) > range + 200) continue;
             foreach (var v in zone.Interiors)
             {
-                if (v.MaskMeshes.Count == 0 || v.Footprint.Length == 0) continue;
+                if (!MaskUsed(v) || v.Footprint.Length == 0) continue;
                 float nearest = float.MaxValue;
                 foreach (var p in v.Footprint) nearest = MathF.Min(nearest, Vector2.DistanceSquared(p, q));
                 if (nearest <= range * range || v.ContainsGround(eye.X, eye.Z)) into.Add(v);
@@ -1612,6 +1629,43 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     /// place change: every view (the camera's, each shadow cascade's, the reflection's) asks it of each piece of furniture.
     /// </summary>
     bool InInterior(ObjectStreamer.Instance inst) => InteriorOf(inst).Inside;
+
+    /// <summary>
+    /// Whether a ray's hit on the instance is lit as an interior (<see cref="IndoorFurniture"/>), for the traced scene's records.
+    /// </summary>
+    internal bool RayInterior(ObjectStreamer.Instance inst) => IndoorFurniture(inst);
+
+    /// <summary>
+    /// Whether the eye stands inside a building of the interior view, under its cover (<see cref="InteriorVolume.Covered"/>): it then sees
+    /// the rooms from inside, with no floor hidden between it and them (the character editor's bar, a camera brought down into a room).
+    /// </summary>
+    internal bool EyeIndoors(Vector3 eye) =>
+        InteriorView.Count > 0 && InteriorAt(eye) is { } room && InteriorView.ContainsKey(room.PlacementId) && room.Covered(eye);
+
+    /// <summary>
+    /// Whether the floor view leaves the instance out of the picture while the rays still hold it (<see cref="LeftOutOfRays"/>): a part or an
+    /// object above the viewed floor of a building in the interior view. What lies under one is a room seen through the cut
+    /// (<c>Gi.RoomMaskPass</c>).
+    /// </summary>
+    internal bool RayHidden(ObjectStreamer.Instance inst) => InteriorHidden(inst.Placed) || StandsAbove(inst);
+
+    /// <summary>
+    /// An outer part (walls, roof, walkways, doors) of a building in the interior view that the view shows: lit as the room is
+    /// (<see cref="IndoorFurniture"/>), though most of it is seen from the street.
+    /// </summary>
+    bool ViewedShell(PlacedMesh p) =>
+        p.Kind == PlacedKind.BuildingPart && !p.Interior && p.ParentPlacementId is null
+        && InteriorView.TryGetValue(p.PlacementId, out int shown) && (p.Floor <= shown || p.DoorIndex >= 0);
+
+    /// <summary>
+    /// Whether the instance's building keeps its rooms in its shell (<see cref="InteriorVolume.ShellHoldsRooms"/>): its faces turned up are the
+    /// rooms' floors, not the street's ledges. False when its own volume is not found round the instance.
+    /// </summary>
+    bool ShellHoldsRooms(ObjectStreamer.Instance inst)
+    {
+        var p = inst.Placed;
+        return InteriorAt(inst.Transform.Translation, 2, p.PlacementId) is { ShellHoldsRooms: true } own && own.PlacementId == p.PlacementId;
+    }
 
     /// <summary>
     /// Whether the instance takes the indoor GI (docs/render-gi.md): a building's interior part, its layout furniture inside a hull, or a building of
@@ -2102,8 +2156,13 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
 
         // Spare instance-matrix component: room GI gain without splitting shared furniture batches (1), plus 2 when its building's lights are off,
         // which darkens its EMISSIVE materials (BuildingLodShaders).
+        // Plus a half for the own shell of a building whose inside is viewed (ViewedShell): its walls turned to the street are no room's
+        // pixels (BuildingLodShaders atmoStreet); three quarters when that shell holds the rooms, whose floors face up.
         m.M34 = (IndoorFurniture(inst) ? 1 : 0)
-            + (!_depthPass && EmissiveDark is { } dark && dark(inst.Placed.ParentPlacementId ?? inst.Placed.PlacementId) ? 2 : 0);
+            + (!_depthPass && EmissiveDark is { } dark && dark(inst.Placed.ParentPlacementId ?? inst.Placed.PlacementId) ? 2 : 0)
+            + (_depthPass || !ViewedShell(inst.Placed) ? 0
+                : ShellHoldsRooms(inst) ? 0.75f
+                : 0.5f);
 
         // Another spare component, M44: 1, or for a construction site BuildingLodShaders.ScaffoldBase + its look's f, or a negative packed tint
         // (FarmPlants.PackTint). A site's M34 also carries its part's mesh top and the scaffold tiling (BuildingLodShaders.PackSite).
@@ -2117,6 +2176,9 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
             site = true;
         }
         else if (inst.Tint < 0) m.M44 = inst.Tint;
+
+        // A viewed shell's part carries its mesh top as a site does (BuildingLodShaders vTopGap: the top of a wall the view cuts).
+        if (!site && !_depthPass && ViewedShell(inst.Placed)) m.M34 += BuildingLodShaders.PackSite(gpu.Top, 1);
 
         // A map feature (CLIP_INTERIOR, docs/render-interior-cut.md) over a building's interior mask takes the cut, and so does another building's
         // part over the mask of a building in the interior view (CutsIntoViewed); the rest keep the programs without it. In a shadow pass such a part
@@ -2354,6 +2416,19 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     /// floors and interior), nor doors, layout objects or buildings placed inside another.
     /// </summary>
     public bool CutIntoViewed { get; set; } = true;
+
+    /// <summary>
+    /// Meitou (Fixes settings, <c>Rain in open buildings</c>): the rain and the other <c>CLIP_INTERIOR</c> particles are also cut in front of a
+    /// building in the interior view, over its mask (docs/render-interior-cut.md); off, only inside it, as the game does.
+    /// </summary>
+    public bool CutRainOverViewed { get; set; } = true;
+
+    /// <summary>
+    /// Meitou (Fixes settings, <c>Ground in buried ruins</c>): the mask of a building that holds its own ground
+    /// (<see cref="InteriorVolume.MaskHoldsGround"/>) is not used, so nothing is cut in it and a move pick stops on its terrain
+    /// (docs/render-interior-cut.md "Interior terrain"); off, it cuts as the game's does.
+    /// </summary>
+    public bool KeepHeldGround { get; set; } = true;
 
     /// <summary>
     /// The interior masks last drawn (the main view's), whose owners a shadow pass leaves uncut as the colour pass does.

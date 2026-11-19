@@ -42,7 +42,7 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
     readonly ItemUses _itemUses = new();
 
     /// <summary>
-    /// The pick-ups of loose items and the walks to containers (row 3 "Collecting item").
+    /// The pick-ups of loose items (row 3 "Collecting item") and the walks to containers (26 "Looting" on a site).
     /// </summary>
     readonly PickUps _pickUps = new();
 
@@ -52,7 +52,7 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
     internal PopulationData? Data => data;
 
     /// <summary>
-    /// The owner of the pick-up and container orders (row 3) and their act-outs.
+    /// The owner of the pick-up (row 3) and container (26, 76) orders and their act-outs.
     /// </summary>
     internal PickUps PickUps => _pickUps;
 
@@ -317,7 +317,7 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
         var table = world.Characters;
         var player = world.Player;
         var candidates = select.Characters.Where(id =>
-            table.TryResolveNext(id, out int slot) && table.Cold(slot)!.IsPlayer).ToArray();
+            table.TryResolveNext(id, out int slot) && table.Cold(slot) is { IsPlayer: true } c && !world.Squads.IsIndependent(c.SquadId)).ToArray();
         if (candidates.Length == 0)
         {
             if (select.Clear && !select.Additive && select.Characters.Count == 0) player.Selection.Clear();
@@ -370,9 +370,14 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
     #region Upkeep
 
     /// <summary>
-    /// Registers the act-out of row 3 "Collecting item" (<see cref="PickUps"/>).
+    /// Registers the act-outs of row 3 "Collecting item" and of 26 "Looting" on a site (<see cref="PickUps"/>; 26 on a character is the carry
+    /// system's loot).
     /// </summary>
-    public void RegisterTasks(TaskHandlers tasks) => tasks.Register(Meitou.Data.Gameplay.Ai.TaskType.Pickup, _pickUps);
+    public void RegisterTasks(TaskHandlers tasks)
+    {
+        tasks.Register(Meitou.Data.Gameplay.Ai.TaskType.Pickup, _pickUps);
+        tasks.RegisterOnSite(Meitou.Data.Gameplay.Ai.TaskType.LootTarget, _pickUps);
+    }
 
     /// <summary>
     /// The serial upkeep: the debug cheats, burying the dead, the selection's and the active squad's upkeep, the pick-up and container walks and the
@@ -384,7 +389,7 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
         DebugCheats.HealTick(world, data, _assembly);
         DebugCheats.GuardTick(world, data, _assembly);
         SquadManagement.BuryDead(world, data?.Db);
-        world.Player.Prune(world.Characters);
+        world.Player.Prune(world.Characters, world.Squads);
         SquadManagement.KeepActive(world);
         PickUps.PickUpWorkers(world, _assembly);
         ContainerAccess.ContainerWorkers(world);
@@ -440,6 +445,7 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
         }
         foreach (int site in sites) world.Player.Know(site, TownKnowledge.Discovered | TownKnowledge.Recent);
         inventory.RemoveOne(item);
+        ItemUseObservers.Report(world, ItemUseKind.Map, item.Record, table.IdOf(owner), null, 1, true);
         world.Post($"{sites.Count} location(s) added to the map.");
     }
 

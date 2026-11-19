@@ -38,6 +38,18 @@ public enum TaskDataFlags : byte
     /// A failed plan for it keeps the queue (+0x23).
     /// </summary>
     KeepsQueue = 32,
+    /// <summary>
+    /// Never finished (+0x15, on the rows whose task class keeps the base Tasker's slot 4, <c>FUN_14032dee0</c>, which then answers false,
+    /// <see cref="TaskFinish.Base"/>): its list A neither skips it as done nor ends it as a running step, and the scorer raises a current goal running
+    /// it once more (docs/game/ai-tasks.md "Finished tests").
+    /// </summary>
+    NeverDone = 64,
+    /// <summary>
+    /// The job pass keeps it when it can run with neither an act nor an effect (+0x14, <b>Verified</b>: the registrations that write the short
+    /// <c>0x101</c> at +0x14, rows 20, 22, 36, 37, 38, 39, 47, 62, 97, 147, 150, 157, 258 and 268, <c>FUN_140319a60</c>; read by <c>FUN_14050e5b0</c>).
+    /// A job without it that can run, acts not and has no effect is skipped (docs/game/ai-tasks.md "Perma-jobs").
+    /// </summary>
+    KeepsJob = 128,
 }
 
 /// <summary>
@@ -73,7 +85,7 @@ public static class TaskDataTable
         R(83, "Moving to current door", 0x41, Acts, "58", "27 !24 !83"),
         R(199, "Moving to door outside", 0x41, Acts, "126", "27 !24 !83 90 60"),
         R(104, "null", 0x77, 0, "", "20"),
-        R(180, "Gate guard", 0x1, Acts, "", "91 52"),
+        R(180, "Gate guard", 0x1, Acts | NeverDone, "", "91 52"),
         R(121, "Moving to gate", 0x61, Acts | NeedsTarget, "91", "27 !26 60"),
         R(122, "Open gate", 0x61, Finder | Restricted, "90", "!54", "52"),
         R(123, "Bashing gate", 0x21, Acts | NeedsTarget, "!54 56", "!70 !158 165 5 91 !52"),
@@ -151,21 +163,21 @@ public static class TaskDataTable
         R(28, "Standing", 0x25, Acts, "!24 !25 !26", "!83"),
         R(65, "Getting up", 0x25, Acts, "!162", "45"),
         R(52, "Waking up", 0x65, Acts, "", "45"),
-        R(147, "Stumbling", 0x21, Acts, "", "45"),
+        R(147, "Stumbling", 0x21, Acts | KeepsJob, "", "45"),
         R(6, "Equipping weapon", 0x65, Acts, "5", "!139 38"),
         R(264, "Equipping crossbow", 0x65, Acts, "156", "!139 38"),
         R(7, "Sheathing weapon", 0x65, Acts, "!5 !157 !156", ""),
-        R(269, "Fixing Legs", 0x45, Acts, "!103", "38 23 !139 !39 !157"),
-        R(25, "First aid", 0x45, Acts | NeedsTarget, "!22", "38 23 !140 42 46 !157"),
-        R(249, "Splinting", 0x45, Acts | NeedsTarget, "!152", "38 151 !140 42 46 !157"),
-        R(60, "Repairing", 0x45, Acts | NeedsTarget, "!133", "38 132 !140 42 46 !157"),
+        R(269, "Fixing Legs", 0x45, Acts | NeverDone, "!103", "38 23 !139 !39 !157"),
+        R(25, "First aid", 0x45, Acts | NeedsTarget | NeverDone, "!22", "38 23 !140 42 46 !157"),
+        R(249, "Splinting", 0x45, Acts | NeedsTarget | NeverDone, "!152", "38 151 !140 42 46 !157"),
+        R(60, "Repairing", 0x45, Acts | NeedsTarget | NeverDone, "!133", "38 132 !140 42 46 !157"),
         R(58, "Medic", 0x45, Finder, "", "", "!22"),
         R(250, "Splint Rigging", 0x5, Finder, "", "", "!152"),
         R(57, "Robotics", 0x45, Finder, "", "!39", "!133"),
-        R(62, "Standing still", 0x75, Acts, "", "!139 !39"),
+        R(62, "Standing still", 0x75, Acts | NeverDone | KeepsJob, "", "!139 !39"),
         R(64, "Stand still dammit!", 0x45, Acts, "42", "!140 !16"),
         R(237, "Worshiping", 0x41, Finder, "", "", "146"),
-        R(236, "Worshiping", 0x41, Acts | NeedsTarget, "146", "!5 !47"),
+        R(236, "Worshiping", 0x41, Acts | NeedsTarget | NeverDone, "146", "!5 !47"),
         R(131, "Looting food", 0x1, Finder, "", "", "68"),
         R(259, "Picking up food", 0x71, Finder, "149", "", "3"),
         R(277, "Fetch", 0x20, Finder, "149", "", "3"),
@@ -193,11 +205,11 @@ public static class TaskDataTable
         R(227, "Attacking", 0x20, Acts | NeedsTarget, "6 7", "27 !78 60 90 59 37 !69 5 41"),
         R(13, "Attacking attackers of", 0x61, NeedsTarget | Finder, "!16 !39 !12", "", "7"),
         R(34, "Attacking trouble makers", 0x21, Finder, "!29", "", "7"),
-        R(149, "Turret guard", 0x1, Finder, "6", "38", "104"),
-        R(222, "Turret home guard", 0x1, Finder, "6", "", "104"),
-        R(146, "Turret gunner", 0x1, Acts | NeedsTarget, "104 145", "38 !47 !158 2 93 !157 1"),
+        R(149, "Turret guard", 0x1, Finder | NeverDone, "6", "38", "104"),
+        R(222, "Turret home guard", 0x1, Finder | NeverDone, "6", "", "104"),
+        R(146, "Turret gunner", 0x1, Acts | NeedsTarget | NeverDone, "104 145", "38 !47 !158 2 93 !157 1"),
         R(235, "Turret gunner", 0x1, Acts | NeedsTarget | NotProvider, "7", "145"),
-        R(234, "Turret guard", 0x1, Finder, "6 !39 !12", "38", "104"),
+        R(234, "Turret guard", 0x1, Finder | NeverDone, "6 !39 !12", "38", "104"),
         R(101, "Assault", 0x61, NeedsTarget | Finder, "", "!47", "7"),
         R(248, "Attacking Squad", 0x61, NeedsTarget | Finder, "", "!159 !47", "7"),
         R(165, "Stalking", 0x1, Acts | NeedsTarget, "", ""),
@@ -221,13 +233,13 @@ public static class TaskDataTable
         R(144, "Home territory aggression", 0x61, Finder, "", "", "6"),
         R(32, "Self preservation", 0x65, Finder, "!159", "", "!39"),
         R(45, "Bodyguard", 0x61, NeedsTarget, "", "!16 !39"),
-        R(44, "Following", 0x61, Acts | NeedsTarget | NotProvider, "28", "!16 60 90 59"),
-        R(253, "Following", 0x61, Acts | NeedsTarget | NotProvider, "28", "!7 60 90 59"),
+        R(44, "Following", 0x61, Acts | NeedsTarget | NotProvider | NeverDone, "28", "!16 60 90 59"),
+        R(253, "Following", 0x61, Acts | NeedsTarget | NotProvider | NeverDone, "28", "!7 60 90 59"),
         R(40, "Following", 0x61, Acts | NeedsTarget, "28", "!7 !16 60 90 59"),
-        R(141, "Following leader", 0x61, Acts, "", "60 90 59 !26"),
-        R(171, "Following master", 0x61, Acts, "", ""),
-        R(31, "Staying close", 0x61, Acts | NeedsTarget, "", "!7 !16 60 90 59"),
-        R(289, "Staying close", 0x20, Acts | NeedsTarget, "", "!7 !16 60 90 168"),
+        R(141, "Following leader", 0x61, Acts | NeverDone, "", "60 90 59 !26"),
+        R(171, "Following master", 0x61, Acts | NeverDone, "", ""),
+        R(31, "Staying close", 0x61, Acts | NeedsTarget | NeverDone, "", "!7 !16 60 90 59"),
+        R(289, "Staying close", 0x20, Acts | NeedsTarget | NeverDone, "", "!7 !16 60 90 168"),
         R(166, "Restraining", 0x41, Acts | NeedsTarget, "134 !124", "38 46 118 7"),
         R(181, "Stripping weapons", 0x41, Acts | NeedsTarget, "118", "38 46 7"),
         R(182, "Processing slave", 0x1, Acts | NeedsTarget, "120", "46 134 42"),
@@ -245,17 +257,17 @@ public static class TaskDataTable
         R(288, "Protect allies", 0x61, Finder, "", "", "!12"),
         R(143, "Protect close allies", 0x61, Finder, "", "", "!16"),
         R(30, "Holding position", 0x75, NeedsTarget, "", "", "1"),
-        R(51, "Stand at node", 0x61, Acts | NeedsTarget, "31", "1"),
-        R(20, "Shopkeeper", 0x41, Finder, "", "", "31"),
-        R(38, "Static guard", 0x61, Finder, "", "!47", "31"),
-        R(268, "Static guard indoors", 0x61, Finder, "", "!47", "31"),
-        R(157, "Static town guard", 0x61, Finder, "", "!47", "31"),
-        R(47, "general node", 0x1, Finder, "", "", "31"),
+        R(51, "Stand at node", 0x61, Acts | NeedsTarget | NeverDone, "31", "1"),
+        R(20, "Shopkeeper", 0x41, Finder | NeverDone | KeepsJob, "", "", "31"),
+        R(38, "Static guard", 0x61, Finder | NeverDone | KeepsJob, "", "!47", "31"),
+        R(268, "Static guard indoors", 0x61, Finder | NeverDone | KeepsJob, "", "!47", "31"),
+        R(157, "Static town guard", 0x61, Finder | NeverDone | KeepsJob, "", "!47", "31"),
+        R(47, "general node", 0x1, Finder | NeverDone | KeepsJob, "", "", "31"),
         R(42, "Getting a weapon", 0x45, 0, "", "38 4"),
         R(176, "Blood tracking", 0x61, Acts, "", "!26 60"),
-        R(22, "Patrolling", 0x21, Acts, "", "!26 60 !157"),
-        R(36, "Patrolling town", 0x21, Acts, "", "94 !47 !26 60 !157"),
-        R(37, "Wandering town", 0x1, Finder, "", "!26 !157", "31"),
+        R(22, "Patrolling", 0x21, Acts | NeverDone | KeepsJob, "", "!26 60 !157"),
+        R(36, "Patrolling town", 0x21, Acts | NeverDone | KeepsJob, "", "94 !47 !26 60 !157"),
+        R(37, "Wandering town", 0x1, Finder | NeverDone | KeepsJob, "", "!26 !157", "31"),
         R(118, "Shopping", 0x1, Finder, "", "86", "85"),
         R(119, "Shopping", 0x1, Acts | NeedsTarget, "85", "1"),
         R(214, "Relaxing", 0x1, Finder, "", "86", "123"),
@@ -263,21 +275,21 @@ public static class TaskDataTable
         R(255, "Reigning", 0x41, Finder, "", "!26 !157 18", "136"),
         R(275, "Sitting around", 0x1, Finder, "", "!26 !47 !157 86", "136"),
         R(24, "Wandering", 0x21, Finder, "86", "", "1"),
-        R(39, "Wandering trader", 0x1, 0, "", "!157 32 36"),
+        R(39, "Wandering trader", 0x1, NeverDone | KeepsJob, "", "!157 32 36"),
         R(55, "Recruiting", 0x1, NeedsTarget | Finder, "", "", "1"),
         R(53, "Travelling", 0x61, Acts, "36", "!26 32"),
         R(130, "Travelling quickly", 0x61, Acts, "94", "!26 32"),
         R(215, "Mission formation", 0x61, Acts, "131", "!26"),
         R(5, "Attacking target", 0x61, Acts | NeedsTarget | NotProvider, "7", "!140 !78 37 !69"),
         R(61, "Attacking target unprovoked", 0x61, Acts | NeedsTarget | NotProvider, "7", "!140 !78 37 !69"),
-        R(150, "Prospecting", 0x41, Acts, "", "!139"),
-        R(97, "Training", 0x1, Acts | NeedsTarget | NotProvider, "", "38 73 1"),
-        R(153, "Going to bed", 0x41, Finder, "", "!141", "83"),
-        R(239, "Going to bed", 0x41, Finder, "", "!108 87", "83"),
+        R(150, "Prospecting", 0x41, Acts | NeverDone | KeepsJob, "", "!139"),
+        R(97, "Training", 0x1, Acts | NeedsTarget | NotProvider | NeverDone | KeepsJob, "", "38 73 1"),
+        R(153, "Going to bed", 0x41, Finder | NeverDone, "", "!141", "83"),
+        R(239, "Going to bed", 0x41, Finder | NeverDone, "", "!108 87", "83"),
         R(98, "Sleeping", 0x41, Acts | NeedsTarget, "72 83", "!130 73 !157 !47 1"),
-        R(258, "Sleeping", 0x41, Acts | NeedsTarget | NotProvider, "", "!130 73 !157 !47 1"),
-        R(175, "Sleeping on ground", 0x61, Acts, "72", "6 !29 !95 !157 !47"),
-        R(261, "Hiding", 0x61, Acts, "72", "6 !29 !157 !47"),
+        R(258, "Sleeping", 0x41, Acts | NeedsTarget | NotProvider | NeverDone | KeepsJob, "", "!130 73 !157 !47 1"),
+        R(175, "Sleeping on ground", 0x61, Acts | NeverDone, "72", "6 !29 !95 !157 !47"),
+        R(261, "Hiding", 0x61, Acts | NeverDone, "72", "6 !29 !157 !47"),
         R(99, "Put in bed", 0x1, Acts | NeedsTarget, "77", "73 47 1"),
         R(116, "Getting out of bed", 0x41, Acts, "!83", "45"),
         R(208, "Getting out of bed!", 0x41, Acts, "!83", "45"),
@@ -329,6 +341,30 @@ public static class TaskDataTable
     /// <see cref="Providers"/> results by (category, state), filled on first ask from any thread.
     /// </summary>
     static readonly System.Collections.Concurrent.ConcurrentDictionary<(int, TaskCondition), TaskDataRow[]> ProviderCache = new();
+
+    /// <summary>
+    /// TaskData <c>followMeWeight</c> (<c>+0x30</c>) where the registration sets it (<c>FUN_140319a60</c>, <b>Verified</b>: 24 writes, their values
+    /// read in the disassembly, each after its row's registration call): 1 for these rows; 35 Running away 0.5; 19, 37, 43, 153, 239, 255 and 275
+    /// write 0.1. Every other row keeps the constructor's 0.01 (<c>FUN_14061d350</c>).
+    /// </summary>
+    static readonly TaskType[] LeadingRows =
+    [
+        TaskType.Patrol, TaskType.Wanderer, TaskType.PatrolTown, TaskType.WanderingTrader, TaskType.TravelToTargetTown, TaskType.DefeatSquad,
+        TaskType.MakeAnnouncement, TaskType.RunAwayHometown, TaskType.RetreatHometown, TaskType.MakeAnnouncementFast, TaskType.TravelToTargetTownFast,
+        TaskType.TownStalker, TaskType.HuntingBloodsmell, TaskType.GoToSomewhereForDeliveringSlaves, TaskType.TravelToTargetPackage,
+        TaskType.DefeatSquadLimitChaseRange,
+    ];
+
+    /// <summary>
+    /// A row's <c>followMeWeight</c> (<c>+0x30</c>, <see cref="LeadingRows"/>): how much a character running it as its goal draws followers.
+    /// </summary>
+    public static float FollowMeWeight(TaskType type) => type switch
+    {
+        TaskType.RunAway => 0.5f,
+        TaskType.GoHomebuilding or TaskType.WanderTown or TaskType.StayInHome or TaskType.GoHomeAndGoToBed or TaskType.GoHomeAndGoToBedSecure
+            or TaskType.SitOnThrone or TaskType.SitAround => 0.1f,
+        _ => Array.IndexOf(LeadingRows, type) >= 0 ? 1 : 0.01f,
+    };
 
     /// <summary>
     /// The row of a type; null for the 37 named types without one.

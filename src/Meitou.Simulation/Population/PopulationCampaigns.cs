@@ -13,10 +13,16 @@ namespace Meitou.Simulation.Population;
 
 /// <summary>
 /// A town a campaign aims at or comes from: a placed town (<see cref="Site"/>, a position in the population's sites) or a player town
-/// (<see cref="PlayerTown"/>, its number).
+/// (<see cref="PlayerTown"/>, its number); as the town a character or squad is in also a wild nest (<see cref="Nest"/>).
 /// </summary>
 public readonly record struct CampaignTown(int Site, int PlayerTown)
 {
+    /// <summary>
+    /// The wild nest this is (the original's <c>Nest</c>, kept in the town list's second list): its wild site's index + 1; 0: not a nest. Only
+    /// the status town and the squad's current town are ever one (<see cref="Ai.AiSystem.StatusTownAt"/>).
+    /// </summary>
+    public int Nest { get; init; }
+
     /// <summary>
     /// No town.
     /// </summary>
@@ -24,7 +30,7 @@ public readonly record struct CampaignTown(int Site, int PlayerTown)
     /// <summary>
     /// Whether this is no town.
     /// </summary>
-    public bool IsNone => Site < 0 && PlayerTown <= 0;
+    public bool IsNone => Site < 0 && PlayerTown <= 0 && Nest <= 0;
     /// <summary>
     /// The placed town at site <paramref name="site"/>.
     /// </summary>
@@ -33,6 +39,22 @@ public readonly record struct CampaignTown(int Site, int PlayerTown)
     /// The player town numbered <paramref name="number"/>.
     /// </summary>
     public static CampaignTown OfPlayer(int number) => new(-1, number);
+    /// <summary>
+    /// The wild nest of wild site <paramref name="wildSite"/>.
+    /// </summary>
+    public static CampaignTown OfNest(int wildSite) => new(-1, 0) { Nest = wildSite + 1 };
+
+    /// <summary>
+    /// The faction owning this town: a placed town's from the population's site factions, a player town's (an outpost) from the player's
+    /// buildings, a nest's from its wild site; -1 for no town, a site outside the population's or a player town that is gone.
+    /// </summary>
+    public int Owner(World world, PopulationData data)
+    {
+        if (Nest > 0) return world.SystemOf<PopulationSystem>()?.NestFaction(Nest - 1) ?? -1;
+        if (Site < 0) return world.Buildings.FindTown(PlayerTown)?.Owner ?? -1;
+
+        return Site < data.SiteFactions.Count ? data.SiteFactions[Site] : -1;
+    }
 }
 
 /// <summary>
@@ -254,7 +276,9 @@ public sealed partial class PopulationSystem : IStateHashed
     /// </summary>
     public const double RollEveryHours = 6;
     /// <summary>
-    /// Spawn radius of a campaign squad round its town or leader (<b>Verified</b>, 700).
+    /// Spawn radius of a campaign squad round its town's centre or its leader (engine stand-in: the original's 700, <c>FUN_1409c4150</c>,
+    /// <b>Verified</b>, is the distance outward through the drafting town's first gate, and a squad drafted once there is a leader is made at the
+    /// leader platoon's position; docs/game/factions-squads-towns.md "Campaigns").
     /// </summary>
     public const float CampaignSpawnRadius = 700;
     /// <summary>
@@ -447,12 +471,6 @@ public sealed partial class PopulationSystem : IStateHashed
 
         return world.Buildings.FindTown(t.PlayerTown)?.Radius ?? 2500;
     }
-
-    /// <summary>
-    /// The faction owning a campaign town (-1: none, or a player town that is gone).
-    /// </summary>
-    int FactionOfTown(World world, CampaignTown t) =>
-        t.Site >= 0 ? _data.SiteFactions[t.Site] : world.Buildings.FindTown(t.PlayerTown)?.Owner ?? -1;
 
     /// <summary>
     /// A campaign town's name: the site's town name, the player town's, else the player faction's name.
@@ -804,7 +822,7 @@ public sealed partial class PopulationSystem : IStateHashed
             CampaignId = c.Id,
             Target = target,
             Home = home,
-            Enemy = FactionOfTown(world, target),
+            Enemy = target.Owner(world, _data),
             PhaseStart = now,
             Required = (int)(c.NumForces * _settings.RaidSizeMult),
         };
@@ -1200,7 +1218,7 @@ public sealed partial class PopulationSystem : IStateHashed
 
             ulong delayRoll = Rng.Hash(world.Seed, key, RngPurpose.Campaign, SeedSalts.CampaignDialogue + 1);
             float delay = e.V0 + Rng.Float(delayRoll) * Math.Max(0, e.V1 - e.V0);
-            return Queue(world, m, c, town, CampaignTown.None, FactionOfTown(world, town), delay, delay, world.GameHours, callerFlag: true);
+            return Queue(world, m, c, town, CampaignTown.None, town.Owner(world, _data), delay, delay, world.GameHours, callerFlag: true);
         }
 
         return false;
@@ -1221,7 +1239,7 @@ public sealed partial class PopulationSystem : IStateHashed
         if (target.IsNone || !Exists(world, target)) return false;
 
         float delay = Math.Max(0, delayHours);
-        return Queue(world, m, c, target, CampaignTown.None, FactionOfTown(world, target), delay, delay, world.GameHours, callerFlag: true);
+        return Queue(world, m, c, target, CampaignTown.None, target.Owner(world, _data), delay, delay, world.GameHours, callerFlag: true);
     }
 
     /// <summary>
@@ -1478,10 +1496,10 @@ public sealed partial class PopulationSystem : IStateHashed
     }
 
     /// <summary>
-    /// Whether a loaded platoon of a cannibal assault carries enough to retreat (<c>FUN_14028fdf0</c>, <b>Verified</b>; it first marks every member
-    /// of the loaded squad "ordered", <c>FUN_14028a4e0</c>): each platoon counts its own carriers and keeps its own stamp of the first one, cleared
-    /// while nobody (or no loaded squad) carries; any platoon with three carriers, or more than <see cref="CannibalCarryHours"/> since its first,
-    /// ends the campaign's assault.
+    /// Whether a loaded platoon of a cannibal assault carries enough to retreat (<c>FUN_14028fdf0</c>, <b>Verified</b>; it first runs the war
+    /// assault's update, the "ordered" marks, which the AI's package step gives, <c>AiSystem.StepWar</c>): each platoon counts its own carriers
+    /// and keeps its own stamp of the first one, cleared while nobody (or no loaded squad) carries; any platoon with three carriers, or more than
+    /// <see cref="CannibalCarryHours"/> since its first, ends the campaign's assault.
     /// </summary>
     bool CannibalsLoaded(World world, CampaignInstance inst, double now)
     {
@@ -1493,16 +1511,7 @@ public sealed partial class PopulationSystem : IStateHashed
             if (world.Platoons.Find(id) is { State: PlatoonState.Loaded } p && world.Squads.Find(p.SquadId) is { } squad)
             {
                 foreach (var member in squad.Members)
-                {
-                    if (table.TryResolveNext(member, out int slot))
-                    {
-                        var cold = table.Cold(slot)!;
-
-                        // FUN_14028a4e0, first thing the package's update does: the victim-side mark that stops an Assault booking
-                        cold.Ordered = true;
-                        if (!cold.Carrying.IsNone) carriers++;
-                    }
-                }
+                    if (table.TryResolveNext(member, out int slot) && !table.Cold(slot)!.Carrying.IsNone) carriers++;
             }
 
             if (carriers == 0)
@@ -1817,12 +1826,15 @@ public sealed partial class PopulationSystem : IStateHashed
     }
 
     /// <summary>
-    /// Some faction runs a hostile campaign against the player (a defence ends only when none does).
+    /// Some faction runs a hostile campaign against the player (a defence ends only when none does; <c>FUN_1407f2e80</c> asks every faction's war
+    /// manager).
     /// </summary>
-    bool HostileAgainstPlayer(World world)
+    internal bool HostileAgainstPlayer(World world)
     {
+        if (_wars is null) return false;   // no war manager made yet (the AI can ask before the population's first check)
+
         int player = PlayerFactionOf(world);
-        foreach (var m in _wars!)
+        foreach (var m in _wars)
         {
             foreach (var a in m.Actives)
                 if (a.Phase != 2 && a.Enemy == player && CampaignOf(a.CampaignId) is { IsHostile: true }) return true;

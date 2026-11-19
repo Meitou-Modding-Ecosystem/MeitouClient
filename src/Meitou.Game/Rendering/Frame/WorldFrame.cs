@@ -44,16 +44,17 @@ static partial class WorldFrame
 
     /// <summary>
     /// The region round the options' place (<c>--at</c>, <c>--zone</c> or <c>--town</c>; the origin without one): its heights, the game data and its
-    /// objects. Null when no town matches.
+    /// objects. The game data is <paramref name="preloaded"/>, else read by <paramref name="loadData"/> (the game's, with the code mods' data phase),
+    /// else read here. Null when no town matches.
     /// </summary>
-    public static WorldScene? Load(GameInstall install, WorldOptions o, GameDatabase? preloaded = null)
+    public static WorldScene? Load(GameInstall install, WorldOptions o, GameDatabase? preloaded = null, Func<GameDatabase>? loadData = null)
     {
         var watch = Stopwatch.StartNew();
         var map = TerrainHeightmap.Open(install);
         GameDatabase? db = null;
         if (o.Town is not null || !o.NoTextures || !o.NoObjects)
         {
-            db = preloaded ?? GameDatabase.Load(LoadOrder.FromInstall(install));
+            db = preloaded ?? loadData?.Invoke() ?? GameDatabase.Load(LoadOrder.FromInstall(install));
             Console.WriteLine($"game data {db.Records.Count} records ({watch.ElapsedMilliseconds} ms)");
             LogIssues("game data", db.Issues);
             Title.DataLoadErrors.Log(db, install);
@@ -326,12 +327,18 @@ static partial class WorldFrame
     /// The parts of Advanced materials (<c>chars2</c>), plain on / off rows under it.
     /// </summary>
     public const string MaterialHairSwitch = "Hair highlights", MaterialClothSwitch = "Cloth sheen", MaterialSkinSwitch = "Skin sheen and glow",
-        MaterialEyesSwitch = "Eye catchlights", MaterialMetalSwitch = "Metal on characters", MaterialBeadsSwitch = "Water beads";
+        MaterialEyesSwitch = "Eye catchlights", MaterialMetalSwitch = "Metal on characters", MaterialPolishSwitch = "Polished armour",
+        MaterialBeadsSwitch = "Water beads";
 
     /// <summary>
     /// Grass keeps its cover at a distance (<c>FoliageRenderer.GrassFarCover</c>), a plain on / off row.
     /// </summary>
     public const string GrassCoverSwitch = "Far grass cover";
+
+    /// <summary>
+    /// Large trees near the gameplay camera fade round the middle of the view (<c>FoliageNearFade.Enabled</c>), a plain on / off row.
+    /// </summary>
+    public const string NearTreeFadeSwitch = "Near tree fade";
 
     /// <summary>
     /// The world's surfaces show their wetness (<c>WeatherSurfaces.WetWorld</c>), a plain on / off row.
@@ -360,6 +367,13 @@ static partial class WorldFrame
     public const string GiRaysSwitch = "GI 64 probe rays";
 
     /// <summary>
+    /// The characters' traced indirect light (<see cref="PostOptions.CharacterOcclusion"/>, docs/render-gi.md "Characters"): rays gather each
+    /// character pixel's bounced light in place of the probes'. It needs GTAO and the indirect light; it had no switch of its own, and turning
+    /// ambient occlusion off was the only way to its cost.
+    /// </summary>
+    public const string GiCharactersSwitch = "GI traced on characters";
+
+    /// <summary>
     /// The weather particle sliders' labels: the particles' resolution and their density.
     /// </summary>
     public static readonly string[] ParticleSliders = ["Weather particles: 0 off 1 quarter 2 half 3 auto 4 full", "Particle density x"];
@@ -370,7 +384,8 @@ static partial class WorldFrame
     public const string ObjectDistanceSlider = "Object draw distance", GrassDensitySlider = "Grass density x",
         WaterReflectionSlider = "Water reflection 0-4 (game)", ShadowDistanceSlider = "Shadow distance (game 1k-9k, 0 off)",
         ShadowMapSlider = "Shadow map size (game quality 0-2)", GroundReliefQualitySlider = "Ground relief quality",
-        ShaftQualitySlider = "Light shafts quality", GtaoQualitySlider = "Ambient occlusion quality (GTAO)";
+        ShaftQualitySlider = "Light shafts quality", GtaoQualitySlider = "Ambient occlusion quality (GTAO)",
+        ShadowCascadesSlider = "Shadow cascades (Meitou)";
 
     /// <summary>
     /// More of the Tab panel sliders' labels, kept as saved and as the launcher names them.
@@ -410,6 +425,8 @@ static partial class WorldFrame
         HeatHazeStrengthSlider = "Heat haze strength (1 = game)",
         BloomStrengthSlider = "Bloom strength (0 = game)",
         DofApertureSlider = "Depth of field aperture (f-number)",
+        VignetteStrengthSlider = "Vignette strength",
+        GrainStrengthSlider = "Film grain strength",
         NightGradeStrengthSlider = "Night grading strength (0 = game)",
         ShaftStrengthSlider = "Light shafts strength",
         ShaftAirSlider = "Light shafts air (0 = none)",
@@ -419,9 +436,10 @@ static partial class WorldFrame
     /// The Tab panel switches that are not Faithful / Meitou ones (saved as <c>Meitou: &lt;label&gt;</c> like those).
     /// </summary>
     public const string
-        FifthCascadeSwitch = "Shadow cascade 5 (Meitou)",
         BloomSwitch = "Bloom",
         DepthOfFieldSwitch = "Depth of field",
+        VignetteSwitch = "Vignette",
+        FilmGrainSwitch = "Film grain",
         CameraEffectsSwitch = "Camera effects in the strategy camera",
         // The ground relief's Faithful / Meitou switches (Enhancements "parallax", "displace"), by name.
         GroundParallaxSwitch = "Ground parallax",
@@ -543,7 +561,7 @@ static partial class WorldFrame
         if (g.Foliage is { } foliage) AddFoliageSliders(sliders, foliage);
         AddWaterSliders(sliders, g);
         AddTerrainSliders(sliders, g, r);
-        var fifthCascade = g.Shadow is { } shadow ? AddShadowSliders(sliders, shadow) : null;
+        if (g.Shadow is { } shadow) AddShadowSliders(sliders, shadow);
         AddSkySliders(sliders, g.Sky, g.Options);
         if (g.Post is { } post) AddPostSliders(sliders, g, post);
 
@@ -554,7 +572,7 @@ static partial class WorldFrame
             v => samplers.MaxAnisotropy = 1 << (int)MathF.Round(v), "0",
             Text: v => (1 << (int)MathF.Round(v)) + "x" + (MathF.Round(v) >= 3 ? " (as the game)" : "")));
 
-        var toggles = SettingsToggles(g, switches, fifthCascade);
+        var toggles = SettingsToggles(g, switches);
         RayTracingAvailable = g.Sky.Gpu.HasRayQuery;
         AddChoiceSliders(sliders, toggles, g);
         var actions = SettingsActions(g);
@@ -897,10 +915,10 @@ static partial class WorldFrame
     }
 
     /// <summary>
-    /// The shadows' range, map size and filter, and the Meitou fifth cascade's switch (returned for the toggles). The game's <c>Shadow Range</c>
+    /// The shadows' range, map size, filter and the Meitou cascade count. The game's <c>Shadow Range</c>
     /// slider goes 1000 to 9000; the viewer allows more (the cascades stretch over it), and its left end (0) turns the shadows off (low-end GPUs).
     /// </summary>
-    static Toggle? AddShadowSliders(List<Slider> sliders, ShadowPass shadow)
+    static void AddShadowSliders(List<Slider> sliders, ShadowPass shadow)
     {
         const float off = KenshiShadows.MinRange * 0.9f;
         sliders.Add(new Slider(ShadowDistanceSlider, off, 200000, () => shadow.Enabled ? shadow.Settings.Range : off, v =>
@@ -915,10 +933,18 @@ static partial class WorldFrame
             v => shadow.Settings = shadow.Settings with { MapSize = KenshiShadows.MapSize((int)MathF.Round(v)) }, "0",
             Text: v => KenshiShadows.MapSize((int)MathF.Round(v)).ToString(CultureInfo.InvariantCulture) + "²"));
 
-        if (!shadow.Meitou) return null;
+        if (!shadow.Meitou) return;
         sliders.Add(new Slider(ShadowFilterSlider, 0, 2, () => shadow.FilterQuality, v => shadow.FilterQuality = (int)MathF.Round(v), "0"));
-        return new Toggle(FifthCascadeSwitch, () => shadow.MeitouCascades >= 5, v => shadow.MeitouCascades = v ? 5 : 4);
+        sliders.Add(ShadowCascades(shadow));
     }
+
+    /// <summary>
+    /// The Meitou cascade count row (also the Metal panel's): <see cref="ShadowPass.MinCascadeSetting"/> to <see cref="ShadowPass.MaxCascadeSetting"/>,
+    /// five by default. The atlas is made again at the new count on the next frame.
+    /// </summary>
+    internal static Slider ShadowCascades(ShadowPass shadow) => new(ShadowCascadesSlider, ShadowPass.MinCascadeSetting, ShadowPass.MaxCascadeSetting,
+        () => shadow.MeitouCascades, v => shadow.MeitouCascades = Math.Clamp((int)MathF.Round(v), ShadowPass.MinCascadeSetting,
+            ShadowPass.MaxCascadeSetting), "0", Step: 1);
 
     /// <summary>
     /// The sky's haze, planetshine, cloud height and ambient light.
@@ -1019,6 +1045,8 @@ static partial class WorldFrame
             Faithful: 1, Meitou: Enhancements.MeitouHeatHazeStrength));
         sliders.Add(new Slider(BloomStrengthSlider, 0, 0.25f, () => options.BloomStrength, v => options.BloomStrength = MathF.Round(v * 200) / 200,
             "0.000", Faithful: 0));
+        sliders.Add(new Slider(VignetteStrengthSlider, 0, 1, () => options.VignetteStrength, v => options.VignetteStrength = Round20(v), "0.00"));
+        sliders.Add(new Slider(GrainStrengthSlider, 0, 1, () => options.GrainStrength, v => options.GrainStrength = Round20(v), "0.00"));
         sliders.Add(new Slider(DofApertureSlider, 0.25f, 22, () => options.DofAperture, v => options.DofAperture = MathF.Round(v * 20) / 20, "0.00",
             Logarithmic: true));
         sliders.Add(new Slider(NightGradeStrengthSlider, 0, 1, () => options.NightGradeStrength, v => options.NightGradeStrength = Round20(v),
@@ -1027,19 +1055,35 @@ static partial class WorldFrame
         sliders.Add(new Slider(ShaftStrengthSlider, 0, 1, () => options.ShaftStrength, v => options.ShaftStrength = Round20(v), "0.00"));
         sliders.Add(new Slider(ShaftAirSlider, 0, 4, () => options.ShaftAir, v => options.ShaftAir = Round20(v), "0.00"));
         sliders.Add(new Slider(ShaftAirDawnSlider, 0, 6, () => options.ShaftAirDawn, v => options.ShaftAirDawn = MathF.Round(v * 10) / 10, "0.0"));
-        sliders.Add(new Slider(ShaftQualitySlider, 0, 2, () => options.ShaftQuality, v => options.ShaftQuality = Math.Clamp((int)MathF.Round(v), 0,
-            2), "0",
-            Text: v => (int)MathF.Round(v) switch { 0 => "Low", 1 => "Medium", _ => "High" }));
-        sliders.Add(new Slider(GtaoQualitySlider, 0, 2, () => options.GtaoQuality, v => options.GtaoQuality = Math.Clamp((int)MathF.Round(v), 0, 2),
-            "0", Text: v => (int)MathF.Round(v) switch { 0 => "Low", 1 => "Medium", _ => "High" }));
+        sliders.Add(ShaftQuality(options));
+        sliders.Add(OcclusionQuality(options));
     }
 
     /// <summary>
+    /// The light shafts' quality row (also the Metal panel's): Low, Medium, High, Ultra (<see cref="PostOptions.ShaftQuality"/>).
+    /// </summary>
+    internal static Slider ShaftQuality(PostOptions options) => new(ShaftQualitySlider, 0, PostOptions.MaxShaftQuality, () => options.ShaftQuality,
+        v => options.ShaftQuality = Math.Clamp((int)MathF.Round(v), 0, PostOptions.MaxShaftQuality), "0",
+        Text: v => QualityName((int)MathF.Round(v)));
+
+    /// <summary>
+    /// The ambient occlusion's quality row (also the Metal panel's): GTAO's budget, and the SSAO's taps (<see cref="PostOptions.GtaoQuality"/>,
+    /// <see cref="PostOptions.SsaoTaps"/>).
+    /// </summary>
+    internal static Slider OcclusionQuality(PostOptions options) => new(GtaoQualitySlider, 0, 2, () => options.GtaoQuality,
+        v => options.GtaoQuality = Math.Clamp((int)MathF.Round(v), 0, 2), "0", Text: v => QualityName((int)MathF.Round(v)));
+
+    /// <summary>
+    /// A quality level's name: 0 Low, 1 Medium, 2 High, 3 Ultra.
+    /// </summary>
+    static string QualityName(int level) => level switch { 0 => "Low", 1 => "Medium", 2 => "High", _ => "Ultra" };
+
+    /// <summary>
     /// The Faithful / Meitou switches as checkboxes (ticked: Meitou), the F-key toggles' state (the displacement switch only where the device has
-    /// tessellation shaders), then the optional effects: the fifth cascade, bloom (off in both looks, docs/render-post.md "Bloom"; a look preset may
+    /// tessellation shaders), then the optional effects: bloom (off in both looks, docs/render-post.md "Bloom"; a look preset may
     /// turn it on), and with tessellation the rock smoothing and outline refinement.
     /// </summary>
-    static List<Toggle> SettingsToggles(WorldGpu g, IReadOnlyList<Enhancement>? switches, Toggle? fifthCascade)
+    static List<Toggle> SettingsToggles(WorldGpu g, IReadOnlyList<Enhancement>? switches)
     {
         bool tessellation = g.Sky.Gpu.HasTessellation;
         var toggles = switches?
@@ -1047,11 +1091,14 @@ static partial class WorldFrame
             .Select(e => new Toggle(e.Name, () => e.IsMeitou, v => e.IsMeitou = v, () => e.IsMeitou ? e.Meitou : e.Faithful, Remaster: true,
                 OnOff: e.Faithful is "off" or "none", Optional: e.Optional))
             .ToList() ?? [];
-        if (fifthCascade is not null) toggles.Add(fifthCascade);
 
         if (g.Post is { } post) AddPostToggles(toggles, post);
         if (g.Foliage is { } farGrass)
+        {
             toggles.Add(new Toggle(GrassCoverSwitch, () => farGrass.GrassFarCover, v => farGrass.GrassFarCover = v, Remaster: true, OnOff: true));
+            toggles.Add(new Toggle(NearTreeFadeSwitch, () => farGrass.NearFade.Enabled, v => farGrass.NearFade.Enabled = v, Remaster: true,
+                OnOff: true));
+        }
         if (g.Surfaces is { } wetWorld)
         {
             toggles.Add(new Toggle(WetWorldSwitch, () => wetWorld.WetWorld, v => wetWorld.WetWorld = v, Remaster: true, OnOff: true,
@@ -1084,6 +1131,7 @@ static partial class WorldFrame
         toggles.Add(new Toggle(GiCloudShadowsSwitch, () => post.Options.GiCloudShadows, v => post.Options.GiCloudShadows = v));
         toggles.Add(new Toggle(GiCacheSwitch, () => post.Options.GiCache, v => post.Options.GiCache = v));
         toggles.Add(new Toggle(GiRaysSwitch, () => post.Options.GiMoreRays, v => post.Options.GiMoreRays = v));
+        toggles.Add(new Toggle(GiCharactersSwitch, () => post.Options.CharacterOcclusion, v => post.Options.CharacterOcclusion = v));
 
         // The traced sun shadows' grass, a plain on / off row, and their far cascades (the sun shadows' choice); they act while the sun is traced.
         toggles.Add(new Toggle(TracedGrassSwitch, () => post.Options.TracedGrass, v => post.Options.TracedGrass = v));
@@ -1099,7 +1147,8 @@ static partial class WorldFrame
         {
             (MaterialHairSwitch, Characters.CharacterRenderer.SurfaceHair), (MaterialClothSwitch, Characters.CharacterRenderer.SurfaceCloth),
             (MaterialSkinSwitch, Characters.CharacterRenderer.SurfaceSkin), (MaterialEyesSwitch, Characters.CharacterRenderer.SurfaceEyes),
-            (MaterialMetalSwitch, Characters.CharacterRenderer.SurfaceMetal), (MaterialBeadsSwitch, Characters.CharacterRenderer.SurfaceBeads),
+            (MaterialMetalSwitch, Characters.CharacterRenderer.SurfaceMetal), (MaterialPolishSwitch, Characters.CharacterRenderer.SurfacePolished),
+            (MaterialBeadsSwitch, Characters.CharacterRenderer.SurfaceBeads),
         };
         foreach (var (label, bit) in parts)
         {
@@ -1205,6 +1254,7 @@ static partial class WorldFrame
         var vp = rotation * Jitter.Apply(camera.Projection(aspect, 1, 1000), post.JitterPixels, post.RenderWidth, post.RenderHeight);
         gpu.Sky.SetEye(eye, gpu.Terrain.HeightAt, float.NegativeInfinity);
         gpu.Sky.Eye = eye;
+        gpu.Sky.PixelAngle = 2 * MathF.Tan(camera.FieldOfView / 2) / Math.Max(post.RenderHeight, 1);
         gpu.Sky.Clock = scene.Clock;
         gpu.Sky.Hour = hour;
         gpu.Sky.StarSeconds = seconds;

@@ -137,7 +137,8 @@ public sealed class Squad
     /// </summary>
     public long Money { get; set; }
     /// <summary>
-    /// The squad's shop, when it is a trader (<see cref="Trading.TradeSystem"/>); null otherwise.
+    /// The squad's shop, when it is a trader (<see cref="Trading.TradeSystem"/>), or a squad of the player's faction a code mod gave one
+    /// (<see cref="Trading.SetSquadShop"/>); null otherwise.
     /// </summary>
     public Trading.Shop? Shop { get; set; }
     /// <summary>
@@ -145,6 +146,18 @@ public sealed class Squad
     /// saved: the containers are.
     /// </summary>
     public long NextHomeFillTick { get; set; }
+    /// <summary>
+    /// The squad moved out of a house the player bought and was given no other (<see cref="Ai.AiSystem.Evict"/>): a save writes its platoon not
+    /// persistent, as the original's purchase leaves one (docs/formats/save.md "NPC platoons"). Not saved or hashed: only the save writer reads it.
+    /// </summary>
+    public bool MovedOut { get; set; }
+    /// <summary>
+    /// Whether one of the player's characters has stood in or on the squad's home building since the squad was made (its town loaded): the
+    /// original builds that building's interior parts (BuildingInterior <c>+0x10</c>) then and keeps them until the building unloads, and no restock
+    /// fills the home meanwhile (<see cref="Trading.TradeSystem"/>, docs/game/economy.md "Building shops"). Not saved, as the original's parts are
+    /// not; hashed while set.
+    /// </summary>
+    public bool HomeInteriorShown { get; set; }
     /// <summary>
     /// The squad's AI packages and the one running (<see cref="Ai.AiSystem"/>); null for a squad the AI does not run.
     /// </summary>
@@ -163,6 +176,68 @@ public sealed class Squad
     /// or a player-built building's id; null: none. The AI resolves it (<see cref="Ai.SquadAutonomy"/>). Saved, hashed while set.
     /// </summary>
     public string? AssignedHome { get; set; }
+    /// <summary>
+    /// An autonomous squad the player does not lead (<see cref="Ai.SetSquadAutonomy"/>): its members stay the player's faction but cannot be
+    /// selected, so take no orders, a click on one inspects it, and it has no squad tab, takes no squad commands and does not count against
+    /// <c>max squads</c> (<see cref="SquadManagement.LedSquads"/>). Only while <see cref="Autonomous"/>, never the last led squad. Meitou only;
+    /// saved, hashed while set.
+    /// </summary>
+    public bool Independent { get; set; }
+    /// <summary>
+    /// The code mod that made the squad autonomous (its manifest id, <see cref="Ai.SetSquadAutonomy"/>); null: none named, or not autonomous. A load
+    /// without that mod running gives the squad back to the player (<see cref="Ai.SquadAutonomy.DropUnowned"/>). Saved, hashed while set.
+    /// </summary>
+    public string? AutonomyOwner { get; set; }
+    /// <summary>
+    /// A player squad a code mod keeps out of the faction size count (<see cref="SetSquadUncounted"/>, <see cref="SquadManagement.CappedHeads"/>):
+    /// its members never fill <c>max faction size</c>, for townspeople, staff or followers a mod adds beside the player's own characters. They
+    /// still count as the faction's for everything else, the dismiss rule included. Meitou only; saved, hashed while set.
+    /// </summary>
+    public bool Uncounted { get; set; }
+    /// <summary>
+    /// The code mod that set <see cref="Uncounted"/> (its manifest id); null: none named. A load without that mod running counts the squad again
+    /// (<see cref="SquadManagement.DropUnownedUncounted"/>). Saved, hashed while set.
+    /// </summary>
+    public string? UncountedOwner { get; set; }
+    /// <summary>
+    /// The code mods' tags on the squad, by mod manifest id: a mod sets its own entry to find the squad again after a load, when squad ids are
+    /// given anew; one mod's tag never replaces another's. Saved for the player's squads (<see cref="Saving.ModTagSave"/>), hashed while any.
+    /// </summary>
+    public SortedDictionary<string, string> ModTags { get; } = new(StringComparer.Ordinal);
+    /// <summary>
+    /// A player squad a code mod gave its own purse (<see cref="SetSquadPurse"/>): its members pay an NPC-style purchase from <see cref="Money"/>
+    /// instead of the player's money, and what a shop it owns earns stays in it (a shopkeeper keeping its takings). Meitou only; saved with its
+    /// money, hashed while set.
+    /// </summary>
+    public bool OwnPurse { get; set; }
+    /// <summary>
+    /// The code mod that set <see cref="OwnPurse"/> (its manifest id); null: none named. A load without that mod running pours the purse into the
+    /// player's money and ends it (<see cref="SquadManagement.DropUnownedPurses"/>). Saved, hashed while set.
+    /// </summary>
+    public string? PurseOwner { get; set; }
+    /// <summary>
+    /// A player squad a code mod put to sleep (<see cref="SetSquadDormant"/>): its members ask for no zones round them, so their place unloads when
+    /// no led character or the camera is near, and while the far-tick cadence runs they are stepped only near the camera or a led player
+    /// character, standing still otherwise (a town that sleeps while the player is away). Meitou only; saved, hashed while set.
+    /// </summary>
+    public bool Dormant { get; set; }
+    /// <summary>
+    /// The code mod that set <see cref="Dormant"/> (its manifest id); null: none named. A load without that mod running wakes the squad
+    /// (<see cref="SquadManagement.DropUnownedDormant"/>). Saved, hashed while set.
+    /// </summary>
+    public string? DormantOwner { get; set; }
+    /// <summary>
+    /// The code mod that gave this player squad its shop (<see cref="Trading.SetSquadShop"/>, its manifest id); null: none named, or no shop. A load
+    /// without that mod running ends the shop (<see cref="Trading.TradeSystem.DropUnownedShops"/>), and so does removing the squad. Meitou only;
+    /// saved, hashed while set.
+    /// </summary>
+    public string? ShopOwner { get; set; }
+    /// <summary>
+    /// The SQUAD_TEMPLATE a code mod named for this player squad's shop (<see cref="Trading.SetSquadShop"/>): its trade terms, and its fills and
+    /// restocks when it is a trader's with vendor lists; null: none (terms of no template, stock the mod's own). Meitou only; saved, hashed while
+    /// set.
+    /// </summary>
+    public string? ShopTemplate { get; set; }
     /// <summary>
     /// The package it ran when it left the world (a kept or saved squad's), until the AI attaches a blackboard: an occupation goes on
     /// (<see cref="Ai.AiSystem"/>).
@@ -246,6 +321,16 @@ public sealed class SquadRegistry
     /// The squad with id <paramref name="id"/>; null when there is none.
     /// </summary>
     public Squad? Find(int id) => _byId.GetValueOrDefault(id);
+
+    /// <summary>
+    /// Whether squad <paramref name="id"/> is one the player does not lead (<see cref="Squad.Independent"/>).
+    /// </summary>
+    public bool IsIndependent(int id) => Find(id) is { Independent: true };
+
+    /// <summary>
+    /// Whether squad <paramref name="id"/> is one a code mod put to sleep (<see cref="Squad.Dormant"/>).
+    /// </summary>
+    public bool IsDormant(int id) => Find(id) is { Dormant: true };
 
     /// <summary>
     /// Takes the next id.
@@ -335,7 +420,27 @@ public sealed class SquadRegistry
             if (s.Resume) hasher.Add(0x52657375);
             if (s.Dead) hasher.Add(0x44656164);
             if (s.Autonomous) hasher.Add(0x4175746F);
+            if (s.Independent) hasher.Add(0x496E6470);
+            if (s.HomeInteriorShown) hasher.Add(0x496E7472);
             if (s.AssignedHome is { } assigned) hasher.Add(Rng.StableHash(assigned));
+            if (s.AutonomyOwner is { } owner)
+            {
+                hasher.Add(0x4F776E72);
+                hasher.Add(Rng.StableHash(owner));
+            }
+            if (s.Uncounted) hasher.Add(0x556E636E);
+            if (s.UncountedOwner is { } uncountedOwner) hasher.Add(Rng.StableHash(uncountedOwner));
+            foreach (var (mod, tag) in s.ModTags)
+            {
+                hasher.Add(Rng.StableHash(mod));
+                hasher.Add(Rng.StableHash(tag));
+            }
+            if (s.OwnPurse) hasher.Add(0x50757273);
+            if (s.PurseOwner is { } purseOwner) hasher.Add(Rng.StableHash(purseOwner));
+            if (s.Dormant) hasher.Add(0x446F726D);
+            if (s.DormantOwner is { } dormantOwner) hasher.Add(Rng.StableHash(dormantOwner));
+            if (s.ShopOwner is { } shopOwner) hasher.Add(0x53686F70 ^ Rng.StableHash(shopOwner));
+            if (s.ShopTemplate is { } shopTemplate) hasher.Add(Rng.StableHash(shopTemplate));
             hasher.Add(s.Members.Count);
             foreach (var m in s.Members)
             {

@@ -14,7 +14,8 @@ public static class ModList
     public static readonly IReadOnlyList<string> CoreModNames = ["Newwworld", "Dialogue", "rebirth"];
 
     /// <summary>
-    /// The file in a mod's folder that makes it an RE_Kenshi plugin mod (docs/formats/rekenshi.md); Meitou ignores its DLLs.
+    /// The RE_Kenshi file in a mod's folder (docs/formats/rekenshi.md, <see cref="ReKenshiFile"/>): Meitou applies its file rebinds and ignores
+    /// its DLLs.
     /// </summary>
     public const string NativePluginFile = "RE_Kenshi.json";
 
@@ -61,18 +62,47 @@ public static class ModList
                     .Where(f => Path.GetExtension(f) == ".mod")
                     .Order(StringComparer.Ordinal)
                     .FirstOrDefault();
-                if (file is not null)
-                    mods[Path.GetFileNameWithoutExtension(file)] = new ModInfo(Path.GetFileNameWithoutExtension(file), file, ModSource.Workshop);
+                if (file is not null) AddWorkshopMod(mods, file);
             }
         if (Directory.Exists(install.ModsDirectory))
             foreach (var folder in Directory.EnumerateDirectories(install.ModsDirectory).Order(StringComparer.Ordinal))
             {
                 var name = Path.GetFileName(folder);
                 var file = Path.Combine(folder, name + ".mod");
-                if (File.Exists(file))
+
+                // A name the code page cannot hold becomes ?s in the original, and that path names no file.
+                if (GameNameEncoding.CanEncode(name) && File.Exists(file))
                     mods[name] = new ModInfo(name, file, ModSource.Local);
             }
         return [.. mods.Values.OrderBy(m => m.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Adds the Workshop mod of <paramref name="file"/> under its file stem as the original has it: a stem the code page cannot hold keeps its
+    /// <c>?</c>s, and so does its path, which then names no file and fails to load.
+    /// </summary>
+    static void AddWorkshopMod(Dictionary<string, ModInfo> mods, string file)
+    {
+        var name = Path.GetFileNameWithoutExtension(file);
+        if (!GameNameEncoding.CanEncode(name))
+        {
+            name = GameNameEncoding.AsGameName(name);
+            file = Path.Combine(Path.GetDirectoryName(file)!, name + ".mod");
+        }
+
+        mods[name] = new ModInfo(name, file, ModSource.Workshop);
+    }
+
+    /// <summary>
+    /// The lines of the name list <paramref name="path"/> (<c>mods.cfg</c>, <c>__mods.list</c>) in the code page names are kept in
+    /// (<see cref="GameNameEncoding"/>), taken as bytes: a byte-order mark is part of the first line, as in the original.
+    /// </summary>
+    public static List<string> ReadLines(string path)
+    {
+        using var reader = new StreamReader(path, GameNameEncoding.Encoding, detectEncodingFromByteOrderMarks: false);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line) lines.Add(line);
+        return lines;
     }
 
     /// <summary>
@@ -108,7 +138,7 @@ public static class ModList
     public static List<string> ReadEnabled(GameInstall install)
     {
         var path = ModsCfgPath(install);
-        return File.Exists(path) ? [.. ParseModsCfg(File.ReadAllLines(path)).Distinct(StringComparer.Ordinal)] : [];
+        return File.Exists(path) ? [.. ParseModsCfg(ReadLines(path)).Distinct(StringComparer.Ordinal)] : [];
     }
 
     /// <summary>
@@ -117,7 +147,7 @@ public static class ModList
     public static HashSet<string> ReadKnown(GameInstall install)
     {
         var path = Path.Combine(install.DataDirectory, "__mods.list");
-        return File.Exists(path) ? new HashSet<string>(File.ReadAllLines(path).Where(l => l.Length > 0),
+        return File.Exists(path) ? new HashSet<string>(ReadLines(path).Where(l => l.Length > 0),
                 StringComparer.Ordinal) : new(StringComparer.Ordinal);
     }
 
@@ -155,24 +185,24 @@ public static class ModList
     }
 
     /// <summary>
-    /// Writes <paramref name="lines"/> to <paramref name="path"/>, each ended by CRLF, as UTF-8 without a BOM.
+    /// Writes <paramref name="lines"/> to <paramref name="path"/>, each ended by CRLF, in the code page names are kept in
+    /// (<see cref="GameNameEncoding"/>).
     /// </summary>
     static void WriteLines(string path, IEnumerable<string> lines)
     {
         var text = new StringBuilder();
         foreach (var line in lines) text.Append(line).Append("\r\n");
-        File.WriteAllText(path, text.ToString(), new UTF8Encoding(false));
+        AtomicFile.WriteAllText(path, text.ToString(), GameNameEncoding.Encoding);
     }
 
     /// <summary>
-    /// Kahn's algorithm over the mods' header dependencies, stable in name order; names not in the list are ignored. Mods still waiting in a
-    /// dependency cycle come last, in name order.
+    /// Kahn's algorithm over the mods' header dependencies, stable in name order; a dependency names a mod by its text before the last dot (the
+    /// launcher strips the extension), names not in the list are ignored. Mods still waiting in a dependency cycle come last, in name order.
     /// </summary>
     static IEnumerable<ModInfo> DependencyOrder(List<ModInfo> mods)
     {
-        var byFile = mods.ToDictionary(m => m.Name + ".mod", StringComparer.Ordinal);
-        var waiting = mods.ToDictionary(m => m,
-                m => m.Header?.Dependencies.Where(byFile.ContainsKey).Select(d => byFile[d]).Where(d => d != m).ToHashSet() ?? []);
+        var byName = mods.ToDictionary(m => m.Name, StringComparer.Ordinal);
+        var waiting = mods.ToDictionary(m => m, m => DependedOn(m, byName));
         while (waiting.Count > 0)
         {
             var ready = waiting.Where(p => p.Value.Count == 0).Select(p => p.Key).OrderBy(m => m.Name, StringComparer.Ordinal).FirstOrDefault();
@@ -183,6 +213,27 @@ public static class ModList
         }
         foreach (var mod in waiting.Keys.OrderBy(m => m.Name, StringComparer.Ordinal))
             yield return mod;
+    }
+
+    /// <summary>
+    /// The mods of <paramref name="byName"/> that <paramref name="mod"/>'s header depends on, itself left out.
+    /// </summary>
+    static HashSet<ModInfo> DependedOn(ModInfo mod, Dictionary<string, ModInfo> byName)
+    {
+        var deps = new HashSet<ModInfo>();
+        foreach (var dependency in mod.Header?.Dependencies ?? [])
+            if (byName.TryGetValue(DependencyName(dependency), out var other) && other != mod) deps.Add(other);
+        return deps;
+    }
+
+    /// <summary>
+    /// The mod a <c>.mod</c> header's dependency entry names: <paramref name="name"/> without the text from its last dot, unless that dot is the
+    /// first character (the original launcher's rule, docs/formats/overview.md "Load order"). Every check of header dependencies matches by it.
+    /// </summary>
+    public static string DependencyName(string name)
+    {
+        int dot = name.LastIndexOf('.');
+        return dot >= 1 ? name[..dot] : name;
     }
 }
 
@@ -216,9 +267,13 @@ public sealed class ModInfo(string name, string path, ModSource source)
     /// </summary>
     bool _headerRead;
     /// <summary>
-    /// <see cref="HasNativePlugin"/> once checked; null before the first use.
+    /// <see cref="ReKenshi"/> once read; null before that or when the mod has none.
     /// </summary>
-    bool? _nativePlugin;
+    ReKenshiFile? _rekenshi;
+    /// <summary>
+    /// Whether <see cref="ReKenshi"/> has tried to read the file yet.
+    /// </summary>
+    bool _rekenshiRead;
     /// <summary>
     /// <see cref="HasCode"/> once checked; null before the first use.
     /// </summary>
@@ -242,9 +297,25 @@ public sealed class ModInfo(string name, string path, ModSource source)
     public string Folder => System.IO.Path.GetDirectoryName(Path)!;
 
     /// <summary>
-    /// An RE_Kenshi plugin mod: its data loads in Meitou, its DLLs do not. Checked on first use.
+    /// An RE_Kenshi plugin mod: its <see cref="ReKenshi"/> file names DLLs, which Meitou does not load (its data does).
     /// </summary>
-    public bool HasNativePlugin => _nativePlugin ??= File.Exists(System.IO.Path.Combine(Folder, ModList.NativePluginFile));
+    public bool HasNativePlugin => ReKenshi is { HasPlugins: true };
+
+    /// <summary>
+    /// The mod's <see cref="ModList.NativePluginFile"/>, read on first use; null when it has none or it cannot be read.
+    /// </summary>
+    public ReKenshiFile? ReKenshi
+    {
+        get
+        {
+            if (!_rekenshiRead)
+            {
+                _rekenshi = ReKenshiFile.TryRead(Folder);
+                _rekenshiRead = true;
+            }
+            return _rekenshi;
+        }
+    }
 
     /// <summary>
     /// A Meitou code mod: its folder has <see cref="ModList.CodeManifestFile"/>, so it runs C# code of its own. Checked on first use.
@@ -279,13 +350,19 @@ public sealed class ModInfo(string name, string path, ModSource source)
 public sealed record ModEntry(ModInfo Mod, bool Enabled);
 
 /// <summary>
-/// The author, description, dependencies and references of a type 16/17 <c>.mod</c> header (docs/formats/fcs-mod.md, "File").
+/// The author, description, dependencies and references of a <c>.mod</c> header as the original launcher reads it (docs/formats/fcs-mod.md, "File";
+/// docs/formats/overview.md, "Name encoding").
 /// </summary>
 public sealed record ModHeader(int FileType, string Author, string Description, IReadOnlyList<string> Dependencies, IReadOnlyList<string> References)
 {
     /// <summary>
-    /// Reads the header at the start of the <c>.mod</c> file at <paramref name="path"/>; null when the file is unreadable, not type 16 or 17, or has
-    /// a bad string length.
+    /// The launcher's string buffer: a longer string keeps its first size - 1 bytes (the references string all of them).
+    /// </summary>
+    const int StringSize = 2048;
+
+    /// <summary>
+    /// Reads the header at the start of the <c>.mod</c> file at <paramref name="path"/>; null when the file is unreadable or ends early, or its type
+    /// is 15 or lower (the launcher reads a header above 15, a type-17 one after its length).
     /// </summary>
     public static ModHeader? TryRead(string path)
     {
@@ -293,30 +370,49 @@ public sealed record ModHeader(int FileType, string Author, string Description, 
         {
             using var r = new BinaryReader(File.OpenRead(path));
             int type = r.ReadInt32();
-            if (type is not (16 or 17)) return null;
-            if (type == 17) r.ReadUInt32(); // header length
+            if (type <= 15) return null;
+            if (type > 16) r.ReadUInt32(); // header length
             r.ReadInt32(); // version
-            string author = ReadString(r), description = ReadString(r);
-            return new ModHeader(type, author, description, Split(ReadString(r)), Split(ReadString(r)));
+            string author = Encoding.UTF8.GetString(ReadString(r, true));
+            string description = Encoding.UTF8.GetString(ReadString(r, true));
+            var dependencies = Split(ReadString(r, true));
+            return new ModHeader(type, author, description, dependencies, Split(ReadString(r, false)));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return null;
         }
     }
 
     /// <summary>
-    /// Reads a header string: an int32 byte length (0..1 MiB, else <see cref="InvalidDataException"/>) and that many UTF-8 bytes.
+    /// Reads a header string as the launcher does: an int byte length, up to <see cref="StringSize"/> bytes whole, a longer string (or a negative
+    /// length) cut and the rest skipped; then taken up to its first NUL. A longer string keeps size - 1 bytes when <paramref name="cutLast"/>.
     /// </summary>
-    static string ReadString(BinaryReader r)
+    static byte[] ReadString(BinaryReader r, bool cutLast)
     {
-        int length = r.ReadInt32();
-        if (length is < 0 or > 1 << 20) throw new InvalidDataException("bad string length");
-        return Encoding.UTF8.GetString(r.ReadBytes(length));
+        uint length = r.ReadUInt32();
+        byte[] bytes;
+        if (length <= StringSize)
+        {
+            bytes = r.ReadBytes((int)length);
+            if (bytes.Length < length) throw new EndOfStreamException();
+        }
+        else
+        {
+            bytes = r.ReadBytes(StringSize);
+            if (bytes.Length < StringSize) throw new EndOfStreamException();
+
+            r.BaseStream.Seek((long)(int)length - StringSize, SeekOrigin.Current);
+            if (cutLast) bytes = bytes[..(StringSize - 1)];
+        }
+
+        int nul = Array.IndexOf(bytes, (byte)0);
+        return nul < 0 ? bytes : bytes[..nul];
     }
 
     /// <summary>
-    /// Splits a header's comma-separated mod list into trimmed, non-empty names.
+    /// Splits a header's comma-separated mod list, bytes in the code page names are kept in (<see cref="GameNameEncoding"/>), into its non-empty
+    /// parts, untrimmed as the launcher keeps them.
     /// </summary>
-    static string[] Split(string list) => list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    static string[] Split(byte[] list) => GameNameEncoding.Encoding.GetString(list).Split(',', StringSplitOptions.RemoveEmptyEntries);
 }

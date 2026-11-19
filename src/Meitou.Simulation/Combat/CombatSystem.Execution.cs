@@ -15,8 +15,9 @@ public sealed partial class CombatSystem
     /// One blow of <c>Task_KillPrisoner</c> (goals 134, 135, docs/game/ai-tasks.md "Prisoner fate", <b>Observed</b>): the attacker's weapon packet
     /// (or its fists') lands on the target with no reach, block or dodge test (the target is caged), through its armour and toughness as a landed
     /// melee hit; the floater, sound, blood, KO, death and severed-limb effects follow as in <see cref="Apply"/>. The killing of a captive is no
-    /// crime (engine choice: the original's call passes no crime). <paramref name="blow"/> numbers the blows for the armour cover roll. True when the
-    /// target died of it. Serial phases only.
+    /// crime (engine choice: the original's call passes no crime). <paramref name="blow"/> numbers the blows for the armour cover roll. A code mod's
+    /// hit filter may change the packet or cancel the blow, which then does nothing here (<see cref="ICombatHitFilter"/>; the caller's job strikes
+    /// again). True when the target died of it. Serial phases only.
     /// </summary>
     public bool Execute(World world, int a, int d, int blow)
     {
@@ -35,6 +36,7 @@ public sealed partial class CombatSystem
                 race.StringId, fighter.DamageOutput, _combat)
             : DamageFormulas.Packet(skill, Eff(ac, StatsEnumerated.Dexterity) * fighter.DexterityMult, str, fighter.Weapon!, kind, race.StringId,
                 fighter.DamageOutput, _combat);
+        if (!world.CombatHitFilters.Pass(world, CombatHitSource.Execution, table.IdOf(a), table.IdOf(d), 0, blow, true, ref packet)) return false;
 
         var ctx = MakeContext(world, d, dc);
         var events = _hitEvents;
@@ -87,8 +89,8 @@ public sealed partial class CombatSystem
                     var template = dc.Medical!.Parts[ev.Part].Template;
                     _xp.ToughnessFromLimbLoss(dc.Stats!, dc.Race!);
                     table.LimbsChanged.Enqueue((d, template.LimbSlot, true));
-                    world.Defer(new Dialogue.DialogueEvent(table.IdOf(d), CharacterId.None,
-                        template.LimbSlot is 2 or 3 ? 70 : 71) { Tick = world.Tick + 1 });
+                    if (Data.Gameplay.Dialogue.DialogueEvents.LostLimb(template) is { } cry)
+                        world.Defer(new Dialogue.DialogueEvent(table.IdOf(d), CharacterId.None, cry) { Tick = world.Tick + 1 });
                     break;
             }
         }
@@ -97,7 +99,7 @@ public sealed partial class CombatSystem
     }
 
     /// <summary>
-    /// The execution's sound, blood, ragdoll throw, death record and the observers' hit feed.
+    /// The execution's sound, blood, ragdoll throw, death record, the observers' hit feed and a death's report (<see cref="DeathObservers"/>).
     /// </summary>
     void ReportExecution(World world, int a, int d, CharacterCold ac, CharacterCold dc, int blow, int part, HitDamage damage, ArmourAbsorbed absorbed,
         bool death, bool wasIncapacitated)
@@ -112,6 +114,7 @@ public sealed partial class CombatSystem
         if (dc.Medical!.Incapacitated) Sound(world, SoundKind.Down, d, a, prev[d].Position, fatal: death);
         if (death && world.Uniques.RecordOf(table.IdOf(d)) is { } unique) world.Uniques.Died(unique, ac.IsPlayer, dc.Faction);
         if (part >= 0) ObserveExecution(world, a, d, blow, part, damage, absorbed, -toAttacker, wasIncapacitated);
+        if (death) DeathObservers.Report(world, d, table.IdOf(a), DeathSite.Execution);
     }
 
     /// <summary>

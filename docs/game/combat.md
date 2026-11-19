@@ -17,7 +17,8 @@ hit code (whole-.text scan of reads at +0x248: only the armour and UI users): th
 (cut, blunt, pierce, stun 0) is then x the weapon's `human`/`animal`/`robot damage mult` (target robot race flag first, then the animal slot, then the human slot; 1 for a non-character
 target), x its `race damage` percent x 0.01 for the target's race, and, last, x the wearer's gear `damage output mult` (the whole packet, only when it is above 0 and not 1;
 the weapon skill itself is not scaled by it). Bleed multiplier (item `bleed mult`) and `armour penetration` ride along unscaled.
-Quality q = item level x 0.01 (`FUN_1400d3090`).
+Quality q = item level x 0.01 (`FUN_1400d3090`). Meitou: a WEAPON's `meitou skill` (not an editor field) names a code mod's skill that
+takes the category's skill's place in all of the above and in the weapon's experience ([modding](../modding.md), "Weapon types").
 
 Unarmed (stat-set category 5, the FISTS item for a person): rating R = lerp(e,0.2,1) x (martial arts raw + (int)(`unarmed bonus` with the [indoors](#indoors) modifier - dust penalty)) x slot 0x398
 (`FUN_140884e00` with its flag set, e the encumbrance factor; slot 0x398 is 1 for a person, `FUN_1405e5990`). Every combat caller sets the flag (the packet, the attack rating
@@ -54,6 +55,8 @@ in the damage packet, the attack rating and the defence rating alike; a door bas
 list unless `is block` or `is dodge` (then the defence list), in data order. Each keeps a per-category table:
 `katanas` 0, `sabre` 1, `blunt` 2, `heavy weapons` 3, `hackers` 4, `unarmed` 5, `bow` 6, `polearm` 8; with
 `animal` > 8 only that category. `1 handed` is not read here (only by `FUN_1405ba280`). `power N` is stored ×0.01.
+Meitou: a technique and the weapons with the same `meitou class` (not editor fields) form a class with a category number of its own, which the
+technique takes in place of `animal` ([modding](../modding.md), "Weapon types").
 
 ### Attack technique choice
 
@@ -64,6 +67,13 @@ list unless `is block` or `is dodge` (then the defence list), in data order. Eac
 - Pass: category = weapon's (5 for fists), skill = stored category level. If empty and not an animal: category 5 at
   `FUN_140884e00` = lerp(e, 0.2, 1) × (martial arts + CharStats +0x2c bonus − injury term) × slot 0x398. If still The injury term is the dust-storm attack penalty `FUN_140643a30` (int(`+0x14c` x K) while `+0x148` is 1); the attack chooser's unarmed passes (`FUN_140888030`:69, :78) ask with the flag set too, so its unarmed skill loses it (Meitou `CombatSystem.Act` `UnarmedSkill`).
   empty: that again, accepting hurt limbs. e = encumbrance factor (CharStats +0x190, 1 unburdened).
+- **Verified** (disassembly of `FUN_140888030`): the first pass takes the current weapon type (CharStats `+0x1f0`);
+  each unarmed pass runs only when the pass before found no technique and the character's vfunc `0x248` answers null
+  (the not-an-animal test), so an armed person throws martial-arts moves whenever no weapon attack fits. In the base
+  data that never comes from distance: each of the six classes has "heavy downcut v2" (`attack distance` 25), beyond
+  every unarmed attack ("ma jump knee", 13, at most), its attacks have no skill or burden limit, its standing ones
+  strike with the weapon (`limb` 4), and "ground attack L" and "R" serve the prone (**Observed**, a scan of the four
+  files).
 - Filter: category table; `min skill` ≤ skill ≤ `max skill`; (1 − e)·100 ≤ `max encumbrance`; `is prone` = posture ≠ 0 (always, **Verified** in the disassembly of
   `FUN_1408876d0`: the decompile prints the burden test and the prone test as `<` or `==` and prone, but the code rejects on burden above the maximum, then on a prone mismatch);
   limb factor f > 0, and f ≥ 1 except in the last pass.
@@ -335,8 +345,8 @@ path-facing branches set the heading at once (before, `Turn` at 4π rad/s, which
   heard now (entry +0x38 / +0x39), not left alone (`FUN_1408569a0`), passing the Hold post test `FUN_140598630` and the area test `FUN_140599f30`
   ([perception](perception.md)) and not friendly (character vfunc 0x3f0), and returns the best by `FUN_14059e300`. So the current target is kept only as a list
   member (an attacker, a threat) or, through the finder, while it is seen or heard and tagged an enemy: one that runs out of sight on open ground is lost at the next pick (a path
-  chase does not pick, below). Meitou (`CombatSystem.ChooseTarget` over `CharacterFacts.Senses`, [perception](perception.md#senses)): the lists and the finder as above (the leave-alone and
-  area tests left out), the aggro mode taken as 0; a pick after the timer runs out is made while the fighter runs on a path too (engine choice).
+  chase does not pick, below). Meitou (`CombatSystem.ChooseTarget` over `CharacterFacts.Senses`, [perception](perception.md#senses)): the lists and the finder as above (the area test left
+  out; the leave-alone test is the target score's, below), the aggro mode taken as 0; a pick after the timer runs out is made while the fighter runs on a path too (engine choice).
 - **Target score** (`AI::chooseBestAttackTarget` `FUN_14059e300`). Skips ragdolls (`Character::isRagdoll`), candidates the leave-alone test
   `FUN_1408569a0` passes, allies by faction (`FUN_1406b2630`, unless the candidate is a slave), impossible-path candidates and an obedient slave of the
   chooser's faction (slave state 1, chained with that faction its owner, `FUN_14032e2a0`, and holding job 187; **Verified**, the test gates the
@@ -344,7 +354,11 @@ path-facing branches set the heading at once (before, `Turn` at 4π rad/s, which
   an NPC chooser, a candidate it does not remember as an attacker and whose faction is not an enemy, when the candidate has diplomatic status
   (`Character::isDiplomaticStatus`: NPC class Diplomat, [ui-screens](ui-screens.md#4-hud-mainbargui)) or is in a war campaign whose +0xc0 is 0; for a player chooser, a candidate not aware of it, conscious,
   of another faction, while the chooser mans no turret, whose intended target is nobody, or who has no aggression towards it, or whose target
-  is not the chooser's ally (and an obedient slave leaves alone its master's allies). So player characters never pick an unaware bystander. Weights are CharStats fields that `CharStats::init` sets
+  is not the chooser's ally (and an obedient slave leaves alone its master's allies). So player characters never pick an unaware bystander. **Verified** (decompile of
+  `FUN_1408569a0`): "conscious" is not down (vfunc 0x30), "not aware" is the candidate's senses lacking the chooser (`FUN_140855960` flag 0), "mans no turret" is the
+  chooser's turret handle `+0x260` being null (type 0xb), the candidate's target is its AI's target hand (`FUN_1404357a0`) and its aggression the running task's (status
+  `+0xa0`, above 0 `DAT_141681b38`). Meitou `LeaveAlone.Spares`, in every chooser that scores (the fight's own choice, the attack-on-sight look and its finders, the
+  assault finder); the AI's target is the candidate's fight target, else its running task's target. Weights are CharStats fields that `CharStats::init` sets
   to the same constants for every character (**Verified** literals; not saved, no other writer found; names KenshiLib 1ce4a16): `STUBBOURNESS`
   +0x154 = 5, `PROFESSIONALNESS` +0x158 = 1, `HOLDING_POSITION` +0x15c = 2, `IMMEDIACY` +0x160 = 2, `IMMEDIACY_MAX_RANGE` +0x164 = 200,
   `MANLINESS` +0x168 = 1, `MURDEROUS` +0x16c = −2. Terms, in order:
@@ -468,7 +482,7 @@ Meitou (`CombatSystem.HasSlot` / `MayJoin`, `Fighting.Steer`):
 - **Threats.** The perception pass (`SensoryData::addToThreatsAndFlockingList`) looks at each sensed live character of another faction: its
   state broadcast's intended aggression adds to +0x90; when its intended target (+0x68) passes `AITaskSytem::intendsToAttackTarget` (prone
   state < 3 and its fight on; on Hold with the fight off, only within 40), a target that is the looker puts it on the threats list
-  (SensoryData +0x50) and adds its aggression towards the target to +0x88; a target of the looker's faction adds that to +0x8c.
+  (SensoryData +0x50) and adds its aggression towards the target to +0x88; another target of the looker's faction adds that to +0x8c.
   `iAmBeingMeleeAttacked general` (state 159) is "threats list not empty"; `immediate` (158) is Character +0x2b0, set in the periodic update
   (`FUN_1404378f0`, **Verified**) while a threat within 40 (Ogre `squaredDistance`, full 3D, strictly under 1600, `DAT_1416d4a28`) stands (prone state < 3: staying low and crawling count),
   is not in a bed or cage, not getting up (+0x278), not carried and fails `AI::isTargetOutsideTheGates` (`FUN_140598450`: both places' gate codes
@@ -556,7 +570,7 @@ Meitou (`CombatSystem.HasSlot` / `MayJoin`, `Fighting.Steer`):
 | 5, 6, 7 | aggressive / defensive / evasive | AI +0x2b8 (no reader found) |
 | 8, 9 | far / near | manoeuvre mode: 8 ROAM_FAR (centre target cleared), 9 STAY_CLOSE (centre at its position). **Verified** (decompile sweep of every call of the Character slot 0x308 and of `FUN_1407f3880`, the HUD's sender): no HUD button, hotkey, saved-state replay (`FUN_140626f50`) or AI package sends 9; 8 is sent once, to a spawned character (`FUN_1405836e0`, a no-op: ROAM_FAR is the default); Hold (12) leaves the mode alone, and HOLD_GROUND (0) is never set. The orders panel's buttons send only 3/4, 11, 12, 13, 14, 15, 17 and the speed ids 0-2, 16. Meitou has the commands and no UI for them, as the original |
 | 11 | Block (`DEFENSIVE_COMBAT`) | CharStats +0x128 (set only with vfunc 0x250, KenshiLib `isHuman`) |
-| 12 | Hold | +0x12b; on: hold point +0x130 = position (a running order move's update overwrites it with its destination; a get-up's start sets it to where it wakes) and goal 16 added (priority 3); off: goal 16 removed |
+| 12 | Hold | +0x12b; on: hold point +0x130 = position (a running order move's update overwrites it with its destination, `Task_Follow`'s update `FUN_14033b350` with its follow aim whether holding or not, at the followed character's height for a person (its position plus a flat formation offset, `FUN_1403335c0`, or a flat drawn distance, `FUN_140333500`; the formation branch's door aim is an animal's, [following](pathfinding.md#squads-travelling-together)), except on its early returns: no target (a dead one still resolves, `FUN_14034b9a0`), a target that is not a character (type 0x22 is walked to directly), and the lost-target end `FUN_14033a800` (only for a follower outside the player's faction, faction `+0x250` null, `FUN_14033a700`, of a non-ally: once a timer has run, it ends when the follower's sense entry of the target is gone, or neither seen nor heard and either stale or its last known point within 60 of the follower); a get-up's start sets it to where it wakes) and goal 16 added (priority 3); off: goal 16 removed. It gates no job: the job pass `FUN_14050e5b0` reads it only for the implicit jobs; the desires of 45 Bodyguard (AI slot 44 `FUN_1405991c0`) and 31 Staying close (slot 15 `FUN_1405a33f0`), the evaluators of 31's list B (59 `FUN_140597030`, 60 `FUN_1405a2710`, 90 `FUN_140597160`), `isMovementAllowed` and `Task_Follow` read no +0x12b, so a bodyguard on Hold follows (**Verified**, decompile) |
 | 13 | Passive | +0x12c |
 | 14 | Taunt | +0x12a |
 | 15 | Jobs (`CHASE`) | `OrdersReceiver::setJobsEnabled` |
@@ -794,7 +808,9 @@ values; trajectory, aim timing and obstruction uncertainties remain labelled.
 - **Target choice** (`FUN_140437f40`, `FUN_1404374d0`, score `FUN_140435d70`): the preferred/current target is kept if it still scores and equals the order's; else every
   sensed character (list category 4, mask 0x210) scores s = (f·g)² with g = 1 − d/(k × range) (k 1), f 1 (0.1 for slot 0x360, ×0.1 for slot 0x368; slot 0x368 > 0 is 0 for a gunner not of
   the player's faction); down for any gunner (slot 0x30: out, dead, ragdolled, carried, posture ≥ 3), `+0x2f8` ≠ 0 or `+0x3d4` (carried) → 0, and an ordered target that scores 0 is dropped (**Verified**; Meitou `CombatSystem.ScoresZero`); out of range → 0.001; then × weight (slot 6), × 1.5 when `FUN_1405ca6f0`, + 0.1 when it is the
-  current target; × 0.1 when its sense entry is not seen, × 1.5 for the current; best above 1e-6. None: with the player's **Shoot first** option (`DAT_142134690 +0x11a`) a player gunner takes
+  current target; × 0.1 when its sense entry is not seen, × 1.5 for the current; best above 1e-6. A candidate with diplomatic status (`FUN_140796240`, the biome factored in
+  for a gunner not with the player, `FUN_140856bc0`) scores 0 unless its intended aggression (vfunc 0x1e8, the current goal's) is above 0 (**Verified**, decompile of
+  `FUN_140435d70`; Meitou `CombatSystem.SparedDiplomat`). None: with the player's **Shoot first** option (`DAT_142134690 +0x11a`) a player gunner takes
   sensed characters of fundamental type 0 or 8 or a default-hostile faction (k 0.6); an NPC gunner takes default-hostile ones it is aware of (`FUN_14099b820`) and those fighting a member
   of its own group. An unseen chosen target is looked at (slot 0x3b0).
 - **NPC turret goals** 149/222/234 have list A `isNoEnemiesInVicinity` (with the `*` flag): done, so not chosen, while the gunner senses no enemy (state 6 is AI `+0xbc`
@@ -831,7 +847,7 @@ Order 228 "Stealth KO" (verb list `FUN_14079b2d0`), `Task_StealthKO` (vtable slo
   100 x (X + K) / 2K, K = 30 for X >= 0 else 15 (disassembly: the hidden third argument is +K). Unclamped. 0 when the
   target's sense entry of the attacker has its +0x38 flag (it sees the attacker); x0.5 when it only hears the attacker (+0x39 heard, **Verified**). Also 0 when the target is fighting, has an entry for the attacker and the attacker is not unseen (Character +0xe8 ≠ 1).
 - Roll uniform 0..100; lands when chance > roll. Hit: floating "*Thunk*", target KO time `FUN_140644980` with
-  assassination x 0.01 (the put-down KO formula, [carry-loot](carry-loot.md)). Both set the pending Assault crime (code 5, `FUN_140852c80`, against
+  assassination x 0.01 (the put-down KO formula, [carry-loot](carry-loot.md)); nothing else of the target changes, so a sleeper stays in its bed (+0x2f8), knocked out, to be looted or kidnapped there (**Verified**, `FUN_14034cd80`; Meitou keeps its Sleep task, #994). Both set the pending Assault crime (code 5, `FUN_140852c80`, against
   the target's faction, no other condition) and float the text in a ScreenLabel over the attacker ([floaters](ui-screens.md#8-damage-floaters), font index 1, shown
   whatever the floaters option says): "*Thunk*" colour (0.4, 0.8, 0.4, 0.9), "Failed!" (0.7, 0.4, 0.4, 0.7); **Verified**.
   Miss, in order (**Verified**): the target says event 56 ASSASSINATION_FAILED at the attacker (`FUN_140685660` over `FUN_140684990`); it notices the attacker
@@ -932,7 +948,7 @@ below is what the engine uses.
 ### Bolt visuals
 
 **Observed** (decompile; `Harpoon` +0x70 state 0 recycle, 1 flying, 2 hit a character, 3 landed): each bolt is one hardware-instanced entity of the
-CROSSBOW `live ammo` mesh (one `HarpoonManager_<mesh>` per mesh) with the gun's material, its local +z along the flight (`setDirection(dir, TS_WORLD,
+CROSSBOW `live ammo` mesh (one `HarpoonManager_<mesh>` per mesh) with the gun's material (Meitou: the debris renderer's material resolver; the flat sandbox, with no object renderer, makes its own, else every bolt drew untextured), its local +z along the flight (`setDirection(dir, TS_WORLD,
 UNIT_Z)`), scaled (1, 1, max(1, speed x 0.005)) in flight as a fake motion blur and 1 once it hits; no trail. A bolt past its range pitches down 8°
 a second about world x and is recycled at range -5000. Landed (`FUN_14043acf0`): exactly at the hit point, flight orientation kept, a world node;
 terrain hits under |dot(normal, dir)| 0.1 vanish; objects and buildings land with the "Stone" impact switch; above `harpoonLimit` (setting, default 60; **Verified**, `FUN_14043acf0`: the list is per bolt mesh, the test is count > limit, the new bolt included)
@@ -952,7 +968,7 @@ flies on into the stop point within 0.15 s. Needs the particle renderer: nothing
 node in the shooter's `hands` (`Bip01 Prop2` with the attach offset; without built meshes the character's position + (0, 10, 0)); the muzzle (slot 9
 `FUN_140434fc0`) is that node's world position + its orientation x (`barrel pos Y`, `barrel pos Z`, 0), the place of loaded bolt 0 (base game: (-1, 5.9, 0),
 Spring Bat (-1, 1.75, 0)). The direction is normalise(aim point - muzzle) (slot 12), the aim point the target's `Bip01 Spine2` (`Spine1` for some targets)
-plus a lead of target velocity x distance / `shot speed` (first order, **Verified**), tilted by `randomDeviant(random x deviation)`. Flight: each frame a ray from the bolt along its z on the physics
+plus a lead of target velocity x distance / `shot speed` (first order, **Verified**; Meitou: `RangedTuning.AimHeight` 13 above the feet, a lying target's lying-hull middle), tilted by `randomDeviant(random x deviation)`. Flight: each frame a ray from the bolt along its z on the physics
 thread (raycastClosestShape, group mask `0x087fde47`, read one frame late); a hit counts within 2 x the step. Groups tested: 0 and 1 (0: the characters' click hulls, below),
 2 terrain, 6 and 14 foliage, 9-12 building floors, 15-18 stairs, 19-22 furniture, 27 unwalkable roofs; not ragdolls, items, doors, interior hulls or
 passable parts. The shooter is skipped (`FUN_1400cd0b0`). The flight tests only what the physics scene holds: `FUN_1404380e0` has no case for
@@ -980,7 +996,7 @@ fire. The terrain is such a shape (`FUN_1407eaf90`: heightfield, group 2, no use
 **Closing ray** (`FUN_140438c70`, state 1): from the muzzle along (target feet + 5 up) − (own feet + 5 up) (read through the decompiler's garbled Ogre operators: the feet-to-feet
 line), mask `0x87f9e04` (no characters); it passes when it meets something
 farther from the shooter than the target is. Meeting nothing does not pass, so on open ground a walker goes on until its path fails or the planner turns it to melee.
-Meitou: `CombatSystem.HullHalf`, `HitHull`, `LineOfFire`, `ClosingRayPasses`; a down character has no hull (every Meitou knock-out is ragdolled), nor a carried one, awake too (every pick-up requests CARRY_MODE, [ragdolls](ragdolls.md)).
+Meitou: `CombatSystem.HullHalf`, `HitHull`, `LineOfFire`, `ClosingRayPasses`; a down character (knocked out or dead) keeps a lying hull, height max(X, Z) as the prone rule, standing in for the ragdoll bodies the original's bolts would strike (how they do is **Unknown**); a carried one has none, awake too (every pick-up requests CARRY_MODE, [ragdolls](ragdolls.md)).
 
 ### Arms
 
@@ -1003,6 +1019,18 @@ weapon at the moment an arm changes (the change's mask bit 2 with the left byte 
 in progress ends when the weapon goes (`CombatSystem.Act`, step 1). **Drawing is not timed**: equipping (`FUN_140346c30`, the Equipping weapon task 6 / 264, planned before Attacking 227, whose list needs
 `hasWeaponEquipped`) sets the weapon in hand at once through Character vfunc 0x3d8 (the hip/back mesh refresh `FUN_1405cbf90`) with no wait for a clip, so a fighter never swings sheathed. Meitou: `Engage`
 and `StartAttack` set `DrawnWeapon` to the weapon of the hand before a swing, and `CharacterAssembly.RefreshEquipment` and the arms' change update a weapon already drawn (a weapon picked up or lost in a fight left it stale).
+`DrawnWeapon` holds the animation kind the clips are matched with: a crossbow is `1 handed`, and so is a melee weapon animating as no skill class
+(category 6, 7, 9 and up, or an override to one). **Verified** (disassembly): the original asks the item in hand (Character `+0x2f8` vfunc `0x3c0`)
+whether it is a crossbow, through Item vfunc `0x2d8`, which returns null for a WEAPON (`FUN_1408a52c0`) and the item itself for a CROSSBOW
+(`FUN_1408aa180`); planner conditions 5 and 156 (`FUN_140596a30`, `FUN_140596a70`) and the HUD's display mode (`FUN_1408840d0`, mode 2) read it so,
+and the display mode's fists test reads the category (CharStats `+0x1f0` = 5). So a WEAPON of any category, 6 and 7 included, is never the drawn
+crossbow, while its current weapon type is its `skill category`. Meitou marks a person's such weapon apart (`WeaponKinds.MeleeMark`,
+`CombatSystem.MeleeDrawn`): the crossbow tests (those three, the in-hand crossbow meshes, the Hold exemption) answer as for a melee weapon, and
+`CombatSystem.HandCategory` answers the weapon's `skill category` (no Current Skill label for 6 or 7). No base weapon a person can hold animates as
+no skill class: of the 48 WEAPON records of the base data and its three bundled mods only the 12 creature weapons (categories 9 to 20) do, and
+nothing but ANIMAL_CHARACTER `weapon` and one unreferenced manufacturer names them (**Observed**, a scan of the four files). An animal's natural
+weapon of a creature category keeps the plain kind, so those tests read it as a crossbow; the Swamp Turtle's, drawn from a manufacturer,
+is a person's weapon of a skill class, whose kind is not the crossbow's.
 
 ### Unknowns of the ranged path
 

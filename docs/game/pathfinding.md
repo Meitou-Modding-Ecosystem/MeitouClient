@@ -39,7 +39,7 @@ Havok paths, local steering and unloaded-platoon movement are distinct code path
 ## Speed and orders
 
 **Observed** S=max(11,(V-11)*leg*hunger*replacement*encumbrance*statScale+11),
-V=lerp(speedMin,speedMax,athletics/100)*(0.5+0.5*slot115). After the water states `FUN_140886460` overrides S: 7 while
+V=lerp(speedMin,speedMax,athletics/100)*(0.5+0.5*slot115). In stealth mode (`Character::isStealthMode` `FUN_1405c9750`: the stealth flag and not `isInCombatMode(1, 1)`, melee or ranged; **Verified**, disassembly) the product X is capped before the +11: X=min(X,lerp(12,X,max((s-0.1)/0.8,0))), s the stealth term (**Verified**, `FUN_140886460` and its constants 0.1, 0.9, 12); in 1.0.68 a stealth-1 character's Run speed went from 16 to "5 (-11) mph" with Sneak on, and a squad mate not sneaking kept beside it in Group speed, **Observed**). The walk mode's cap and the water states start from that S, and a fighter sneaks at full speed. The mover's top speed (CharMovement `+0xb4` `maxSpeed`, which `SpeedGroup::getSpeed` reads) gets S through the animation (**Verified**, decompile; names KenshiLib): `Character::threadedUpdatePeriodic` (`FUN_1405d00b0`) runs the medical periodic update, whose `FUN_140646860` sets the animation's max speed (`+0x19c`, `FUN_14051c960`) to CharStats `+0x17c`; then CharStats `periodicUpdate` (`FUN_140883b70`, skipped while unconscious or dead) recomputes S (`FUN_1408866b0` → `FUN_140886460`); then `CharMovement::periodicUpdate` (`FUN_140660dc0`) copies the animation's value to `+0xb4`. S is also recomputed on each medical turn of a character in view (`+0x1a9`, `FUN_1405c7d40`). So a sneaker slows its speed group, and any change of S (injuries, hunger, encumbrance, gear, sneaking, crawling, the water state) reaches the mover on the second periodic update after it (tier A, 8 characters a frame round the list, [game loop](game-loop.md#the-character-update-budget)), or on the first when a medical turn in view came between; the panel's run speed (S) changes at the first recompute. Only the stats' init (`FUN_14064cb30`) and a load (`Character::loadFromSerialise` `FUN_140626f50` → `CharStats::updateStats` `FUN_14064b6a0`) recompute S at once; a race change (`setRace` `FUN_1405c93d0`, from the character editor `FUN_140538360`) or a stat's growth waits for the chain. A new mover's top speed is 70 until its first periodic update (CharMovement constructor `FUN_140664ec0`). Meitou: the body step works out S as a recompute would now (`BodySystem.TopSpeedNow`: `Speed.Run`, `Orders.TopSpeed` with `Speed.SneakCap`, `Speed.InWater` at the last movement step's water state, the crawl speeds over all); `MedicalTimeBudget` runs the periodic round beside the medical ones (a tick per frame) and `TopSpeedDelay` keeps the stats' S and the mover's; `CharacterHot.MaxSpeed` is the mover's (70 before its first periodic turn, again for a character coming back into the world), which the walk modes and speed groups read, and the panel and its tooltips read the stats'. The crawl speeds reach the mover the same way: movement adds no crawl override of its own. After the water states `FUN_140886460` overrides S: 7 while
 the posture is 1 (staying low), then 5 when medical `+0x160` (a leg down) is set (**Observed** literals; Meitou `Speed.Run`).
 **Verified** (nav agent `FUN_140147ca0` / `FUN_140147fd0`, `FUN_140144440`): the agent's velocity moves toward the wanted one by at most
 a × dt, a = RACE `pathfind acceleration` (Havok units, ×10 in world units; 24 for people, so about 0.2 s to full speed; 3 Murloc, 200 wasps),
@@ -62,8 +62,10 @@ the new mode to a walk under way in the old one (#691); a walk a task started in
 The squad template's `force speed` is copied onto its platoon (`+0xb0`, `FUN_1407ee2d0`; **Verified**): 3 (grouped, the value of 848 of 961 base templates) becomes 4 = no change; 0 walk, 1 jog (cap 55), 2 run (cap 999) are
 used by 17 templates (mostly rebirth.mod: wolf, beak and landbat packs, borderguards). Two readers, both **Verified**: the speed selector `FUN_140342a30` of the patrol, go-somewhere, travel-to-town and go-home tasks replaces
 the requested mode outright with it (after the AI package's mode and the carrier rule, before the slave rule `FUN_1405c8aa0` = 2 that forces run), and the move-task start `FUN_140332390` replaces only the package's mode, then
-takes the larger of the result and an explicit task mode when both are not 4 (so it never lowers an explicit mode); the carrier rule raises walk to jog (mode 0 to 1) in both. Meitou (`MovementSystem`, `Squad.ForceSpeed`): the raise
-every NPC member's walk or jog mode gets (the rule both readers share); lowering by the selector is not applied. The slave rule is not modelled here.
+takes the larger of the result and an explicit task mode when both are not 4 (so it never lowers an explicit mode); the carrier rule raises walk to jog (mode 0 to 1) in both. The move-task start (slot 6 of `Task_Move` and the `Task_MoveToDoor*` tasks)
+does all of this only for a character whose faction has no player flag (`+0x250` null), so a player's carrier keeps the mode it was ordered at
+(**Verified**, decompile). Meitou (`MovementSystem`, `Squad.ForceSpeed`): the raise every NPC member's walk or jog mode gets (the rule both
+readers share), and the carrier raise for NPCs only (#995); lowering by the selector is not applied. The slave rule is not modelled here.
 
 ### Running after a moving target
 
@@ -126,18 +128,30 @@ Every move of the nav agent, the animation-driven one (root motion, mode 3) incl
 - **Verified** (disassembly of `FUN_140147fd0`): the sweep's radius is the agent's `+0x70` (passed in XMM3 to `FUN_1401445d0`; the gather range is `+0x70` + 6). `FUN_1401476f0`, the only body test in this
   step, yields a push-out direction and strength from characters overlapping the agent (nothing when none do); it does not cut the move short, and the original has no separate "end point must have a surface" test:
   the sweep alone keeps the agent on the mesh.
+- **Verified** (disassembly of `FUN_140661f90`, `FUN_1401468a0`, `FUN_140145cf0`): the agent's `+0x70` is the character's `pathfind footprint radius`
+  (copied to `+0x364`) x its size (vfunc 0x390, as in the animal building test) x 0.1 (Havok units), set when its movement is made; a path request
+  copies it as its radius. So a small animal (a Bonedog pup: footprint 10 x its size, 0.35..0.85 by age) passes stairs and doorways an adult of its race does not.
+  Meitou: path requests (`MovementSystem`, `Fighting`) and the sweep take `CombatSteering.Radius` (footprint x `ScaleK`); **Observed** (#1006, `probe walk`):
+  a Bonedog pup ordered to a shack's floor 1 stopped on floor 0 with the unscaled radius and climbs the stair with it.
 - Meitou root motion (`AnimationSystem.Relocate`): after the slide, an end point with no stand-on surface (`IsWalkable(x, z, y)`: off the mesh, a drop or step beyond `StandRise`/`StandDrop`) keeps the
   farthest walkable part of the step (bisection) instead of dropping all of it; when no part has one but the ground is within `StandRise`, the step is made (the sweep saw no wall, and the original has no such test), and a body already standing where no surface is (pushed onto a mesh edge or into a hole) is not refused at all
   (**Observed**, siwa-test6: characters stood for 10+ ticks with every root step refused; `root-log`: 21 refusals over three fights fell to 1). Standing bodies no longer cut a root step short: the original only pushes
   overlapping characters apart, which `MovementSystem` separation does.
+- Meitou fight footwork (`MovementSystem.SlideStep`): a steering fighter's step (with the separation push, else alone) whose end cannot be stood on is
+  turned 30° and then 60° either way, shortened by the turn's cosine, and the first that can be stood on is made; on the mesh and in its
+  `EdgeTolerance` band alike (engine choice: the footwork step is not swept against the mesh's edges). Before, such a fighter stood still, every tick:
+  in #923's save (a Reaver 5.5 above the terrain off the mesh, nothing under it, `--nav`) the circling guards stood in the edge band nearest it,
+  backed off into the rise beyond and stayed piled up under 1 unit apart, so none had the
+  room to ask for a swing (`CombatSystem.BodyRoom`) and the Reaver took no hit in 1,000 ticks; with the turn none stood for the whole run and it was
+  knocked out at tick ~1,260 (**Observed**).
 - Meitou: `IWalkability.Slide` (`NavmeshWalkability.Slide`) for root motion (`AnimationSystem.Relocate`) and the combat approach step (`CombatSystem`): the walls are the edges that lead
   nowhere (no neighbour or tile link, not a zone-border edge the next zone links or that borders an unloaded zone, not into a closed door), within `SnapRange` (16) of the walker's height (engine choice: the mesh's own error on stairs);
-  the radius is RACE `pathfind footprint radius`. Before, only the end point was tested, and with the 2-unit edge tolerance a step could cross a thin wall (Observed: on the Hub's
+  the radius is the agent's (footprint x size, above). Before, only the end point was tested, and with the 2-unit edge tolerance a step could cross a thin wall (Observed: on the Hub's
   navmesh about 3% of 1-unit random moves crossed a wall edge, none with the sweep).
 
 ### Water states
 
-**Verified** (`FUN_1405c7fd0`, `FUN_140886460`, `FUN_140885eb0`; Meitou `Speed.WaterState/InWater/Swim`, `MovementSystem.WaterStateAt`):
+**Verified** (`FUN_1405c7fd0`, `FUN_140886460`, `FUN_140885eb0`; Meitou `Speed.WaterState/InWater/Swim`, `MovementSystem.WaterStateAt`; the water state enters S, [speed](#speed-and-orders)):
 - State of a character at height Y with body size g (`vtable 0x390`, 1 for humans): 0 when Y+2 is above 100 (the water level). Else 3 (deep) when 15g+Y <= 100,
   2 (waist) when 6g+Y <= 100, else 1 (shallow) only for a race with `swims` (race +0x79), otherwise 0. A carried character uses its carrier's.
 - Top speed S replaces the run speed: state 1 caps it at 45; in 2/3 a race that does **not** swim (skeletons, fishmen, robots) walks the bottom at 2 x race `walk speed`; a swimmer's
@@ -165,11 +179,10 @@ Squad formations: [squads travelling together](#squads-travelling-together). Off
 
 ### Water costs
 
-**Engine choice** (not the original's, which charges water faces one flat factor, RACE `water avoidance` a + 1, or 1 / (1 − a) below 0, halved for the player
-faction): the own builder bands terrain water triangles by their shallowest corner's depth (`Speed.WetStateOfDepth`, size 1) into areas shallow 2, waist 4, deep 5
-(`NavArea`). A path request's `WaterCost` per state is max(avoidance factor, land top speed / `Speed.InWater` speed); a non-swimmer's shallows take its land speed. A human
-swimming at 6 with top speed 40 pays 6.7 in deep water, at least the flat factor everywhere. `CoarseRoute` bands its cells by centre depth the same way, never below 1.
-Bands are at size 1, so larger races (Garru, Leviathan) are charged as if they swam where they wade.
+**Verified** (decompile): the path request (`FUN_1403aad30`) sets one factor on its `WaterCostModifier`, whose cost (`FUN_1403b57e0`) multiplies a water face's
+(material 3) cost by it at any depth, with no speed term; the factor is RACE `water avoidance` a + 1, or 1 / (1 − a) below 0, halved for the player faction. Meitou:
+`WaterCost.Of` gives every state that factor. The own builder still bands terrain water triangles by their shallowest corner's depth (`Speed.WetStateOfDepth`, size 1)
+into areas shallow 2, waist 4, deep 5 (`NavArea`), and `CoarseRoute` its cells by centre depth (never below 1); with one factor the bands cost alike.
 
 ## Squads travelling together
 
@@ -205,7 +218,7 @@ owner or in its platoon (`14033b160`); otherwise the aim is target + normalise(m
 moves, H += (dir − H) × 0.5 × dt (`GameLoop_DtScaled`), aim = leader position + H × leader speed + slot rotated from −X onto H, so
 followers aim one second ahead of the leader. When the leader is inside a building the follower cannot enter, aim = A + (A − B) × 1.1 +
 rotated slot × 0.2 (A, B: the door's two points, its leaf centre ± 15, [ai-tasks](ai-tasks.md) gate guards; 200 LEAVE_BUILDING walks to the same A + (A − B) × 1.1, so A is
-the outer one, **Observed**: the aim is 33 past the doorway outside).
+the outer one, **Observed**: the aim is 33 past the doorway outside). The door is the building's first (`Building::getDoor`, vfunc 0x3e0 `FUN_1400f7080`; A from its `doorClosedPositionOut` +0x3bc), and the branch runs only while `FUN_140547500` is false: byte `+0xe0` of the building's `BuildingInterior` (`+0x1f0`), which the interior's setup `FUN_140551660` copies from the BUILDING's `allow animals` (**Verified**, decompile; a building without `interior` references gets no interior, `FUN_140551b20`, and reads false). "Cannot enter" is the follower's Character slot 101 (`0x328`): 1 for every person (`FUN_1405e5960`, Character and CharacterHuman), so the branch is an animal's; `CharacterAnimal`'s `FUN_1405c81d0` allows a building when its race lacks `cant enter buildings` (RACE `+0x9c`) and its radius (footprint `+0x364` × scale) is under 4.5 or the BUILDING is `cavernous` (`+0xc2`) (**Verified**, decompile; names KenshiLib 1ce4a16). The other readers of `FUN_140547500` (**Verified**, decompile): `FUN_140597030` keeps an animal out the same way (slot 101 and the byte both false) and then answers its default instead of `hasAnOpenDoor`: false for state 59 DESTINATION_IS_ACCESSIBLE (`FUN_1405a2820`), true for 168 DESTINATION_IS_ACCESSIBLE_ANIMAL (`FUN_1405a2860`, row 289's); the patrol draw (`FUN_14065eaa0`, [off-screen world](factions-squads-towns.md#off-screen-world)) lets an animal in only when both hold; the player's Move order (type `0x1d` in `FUN_1407f9e20`) on a building keeping a selected animal out, while the animal is not inside it (`isIndoors`, vfunc `0x1d8`, not equal), sends it to the point past the first door (its factor hidden in the decompile, read as the formation's 1.1: **Observed**; none: the navmesh point nearest the click, `FUN_1403a2300`, box 100), skipping the scatter, which draws no rand for it and gives the exact point only to the selection's first. Meitou (`Locks.AnimalEntry`, shared by all of them): the formation branch as above (`MovementSystem.AnimalDoorAim`), the first door the gates' (`LockSystem.FirstDoor`, door index 0), A by `DoorPoints.Outer` (`DoorPoints.PastFirstDoor`), the hold point taking the aim at the door's height; 59 and 168 in the door planner (`DoorPlan`; the main planner holds door states true, the doors being the movement's, [simulation](../simulation.md#planner)); the Move order in `MovementSystem.MovePoints` (`Formation.Scatter` skips the animal), its building the one whose navmesh lies nearest the order's point within 10 (the order carries the point, not the clicked object), a doorless one keeping the point itself (**Observed**, headless, METARU: a Bull ordered with two people onto a Stack house goes 48 past its door's leaf, the second person takes the first scatter draw); **Observed** (headless, the base data's Stack houses): Garru and Bulls (`cant enter buildings`) and Bonedogs of radius 4.5 or more aim 48 past the door's leaf, smaller Bonedogs, Goats and Small Spiders get no door aim. Meitou's `ShutOutAim` (people too, nearest door, every door locked and whole) is an engine choice.
 
 Each update, with d the XZ distance to the aim: under 1 the desired speed (movement +0xbc) is 0. While the leader moves it is
 d × max(0.1, 0.5 + 0.5 × dot(leader direction, own direction)): a follower that lags runs to catch up, one facing away slows. With the
@@ -260,6 +273,12 @@ crossed the chest's hole (the ground floor 66 below), every step was refused and
 -51119,2797, scratch sim, PR #230): its path was found, every step was refused, the GoTo dropped after 3 asks and it stood for good; with the rule it walks out and arrives.
 Inside the Storm House's shop counter and tables the mesh is not cut, so a walker there just walks out. The original lets such a walker out (**Observed**, Kenshi 1.0.68, #460's save: the walker inside the chest walked out to its saved goal, -55397,-12831,
 read from a quicksave about ten game minutes after the load).
+A walker standing on the bare terrain where it is steeper than the mesh's 40° terrain limit follows the terrain toward its path's current point, when that point is
+a surface at the point's own height, however far below or above the walker it lies (engine choice, `MovementSystem.DescendsToward`). **Observed** (Kenshi 1.0.68, #894's
+save, a cliff face at -69242,1074.6,-41946 where the pointer shows no walkable ground nearby, the path's next point 31 below): ordered to the cliff's foot, the walker
+walked down it and arrived within 6 s. The rule also holds where the walker's own spot counts as a surface (the terrain at its height, a mesh slope far
+above) but no step off it does. **Observed** (#886's save, `meitou-tools probe walk --nav`): Gorefiend on a shore rock face at -34421,94,-59855, the mesh 30 above,
+every step refused; with the rule he climbs off into the water and swims to his goal 1,900 away.
 A polygon within `EdgeTolerance` counts across a zone border too (`NavWorld.TryEdgePoint` looks in the next zone's mesh when its own has none; engine
 choice). **Observed** (#774, the issue's save, Iron Valley zone 33.24 at 4614,-36197, `meitou-tools probe --nav`): a hole in the mesh east of the
 zone line x 4608, about 36 square, which the original's `tile33.24` lacks too; a character in it got a path whose first point lay on the line, the
@@ -315,10 +334,10 @@ climb of 4 cells instead cut Squin's rock top (18.35, RockOut_Rock at 1709) from
 counts an original tile's interior face covered when a kept polygon within 12 of its centre's height lies over the centre or within 3 units of it
 (`OriginalNavTiles.CoverInteriors`; the original's slivers along a mesh end sit a unit or two past ours). **Observed** over the centre only: 18.35 68→86 %,
 19.29 62→68 %, 50.33 69→71 %, 47.16 77→81 %, 20.32 88→90 % with the two rules; within 3: 18.35 96.6 %, 19.29 80.6 %, 50.33 87.2 %, 47.16 93.7 %, 20.32 98.1 %,
-43.11 90.2 %, 26.13 92.9 %, 48.45 99.4 % (`InteriorCoverageTests` holds each a point under). The rest is not lost storeys (**Observed**, `--compare-interiors`):
+43.11 90.2 %, 26.13 97.4 %, 48.45 99.4 % (`InteriorCoverageTests` holds each a point under). The rest is not lost storeys (**Observed**, `--compare-interiors`):
 furniture: without it (`--own-only` in every interior) 99.3..99.8 % but 19.29 (89.5 %) and 47.16 (83.4 %: own-only also drops the buildings placed inside a hull). Per building the tile either has holes under our layout furniture
-(Squin: 0..1 of 23..63 pieces per interior stand on an original face) or floor under it (World's End L-House `26.13:748-`: 34 of 34; Black Scratch
-`50.33:324-`: 13 of 26), so those tiles were built with another or no interior layout (`--verbose` lists it). 19.29: its Bughouse `8-` and Longhouses `4-`,
+(Squin: 0..1 of 23..63 pieces per interior stand on an original face) or floor under it (Black Scratch `50.33:324-`: 13 of 26), so those tiles were built with another or no interior layout (`--verbose` lists it; World's End's
+L-House `26.13:748-`, 34 of 34, is one the original [vacates](factions-squads-towns.md#town-residents) and stands empty in ours too). 19.29: its Bughouse `8-` and Longhouses `4-`,
 `3324-` reach their upper storey by stairs in 19.28/20.29, so alone (the border rule keeps ground-level regions only) it is pruned; with its neighbours
 (`--around 1`), as loaded in play, 19.29 is 91.2 %.
 **Shells and open structures**: as the original (**Verified** rule, "Generator" below: class, `interior` list), a building is a shell with an interior (its
@@ -343,7 +362,9 @@ collision (`AshDome_Level_00_EXT_COL`, local y −77..181), lies 30+ under that 
 `AshDome-RUIN-WallS-*`) have no collision, so the original's tile walks the terrain through the walls as ours does (2,022 samples both, 0 either only;
 `--probe` radius 200: 1647 both, 11 original only, 6 ours only). 8 of the 12 ruins match within 30 samples; at 54.58 `15-`, 54.57 `2-`, 54.59 `9-` and `18-`
 the tile has 290..1,000 fewer samples inside the ring on bare terrain with no geometry at the mesh end, as a tile built with the dome carved; the tiles hold
-no interior group there.
+no interior group there. **Verified** (issue #1023, `--probe` at 317 points, every 30 units within 300 of `55.59:4-rebirth-INGAME`, origin 250 under
+the terrain): the original's tile has polygons within 27 of the terrain and on floors 21..181 over it (3644..3865) only, as ours; none on the
+ruin's walkable floors 31..303 under the terrain (3479..3734, 338 samples). Meitou (**Observed**, probe `walk`): a walk ordered to a buried floor ends on the terrain over it.
 **Interior parts**: the `interior` list (laid out like `parts` after the same position-seeded reseed, as drawn) is collision too,
 none when destroyed; it holds interior stairs and upper floors. **Verified** (tile20.32 interior `600815`, the Hub Storm House
 `4933-Newwworld-INGAME`): the original mesh ramps +4→+68 over (+30..+65, −45..−5) from the origin to the roof storey at +69..+72,
@@ -423,6 +444,7 @@ from the tiles). **Observed** (`--compare`): in 18.39 (Swamp Village; 371 of 383
 foliage domes (e.g. -60348,34444: water 100 under a face at 205) are ours only; with the test ours-only falls 6.6 → 5.0 %, floors under floors 395 → 286,
 original-only unchanged; 21.42 within 0.1 %. Obstacle foliage meshes are canopies open below: in 18.35 (Squin) the test removed ground the tile keeps
 (original-only 0.3 → 1.2 %, e.g. -60300,15908, terrain 421 under a face at 472), and closed obstacle meshes changed nothing in 18.39, 18.35, 21.42, 23.22.
+**No path** (`meitou-tools navmesh --path ... --verbose`): with no path the tool lists the chain of polygons a search without clearance takes to the goal, each step with whether a radius-4 agent passes it under the query's rule and the widest radius that does, so the narrow portal shows.
 **Compare** (`meitou-tools navmesh --compare x,z ...`): samples each zone every 8 units against `tileX.Y.hkt`: points on both, only ours, only the
 original's, ours-only points in a building footprint, and points where ours has more layers than the original with one 10+ under our top (floors under
 floors). Interiors are not read from the tiles, so our interior floors count as ours-only; the original's big polygons float up to ~20 over hollows, so
@@ -442,6 +464,11 @@ door leaves sit 5..14 inside the interior hull, so the hull-carved exterior got 
 When the door's exterior polygons are all pruned yet touch a kept polygon, the interior's door polygons link to those and the carry keeps them. **Observed**
 (zone 38.29, `meitou-tools navmesh --verbose`, issue #436): the Waystation bar, L-House `3-rebirth-INGAME`, has a 14.4 doorway whose kept landing meets
 the door polygons over edges of 8.9 and 5.7, under the narrow-portal 9, so the bar was an island; now a path from the street reaches its floor.
+After such a join the doorway's open edges also join the kept exterior polygons they face (the next case), since the pruned door polygons can be a
+sliver. **Observed** (issue #998, `meitou-tools probe path` with the save's buildings): a player's Storm House (`3384-TwoStorey.mod`) tilted ~8° on a
+slope; its doorway's 14-long outer edge met the door's exterior triangle over 2.8 (widest walker radius 1.25) and the stair's top polygon beside it was
+left unjoined, so the house was sealed both ways while the original walks in and out (Kenshi harness, the same save). Of the 29 zones this doc names only
+21.42 `805-rebirth-INGAME` gains such joins (3); the Waystation's are unchanged.
 When neither joins, the interior polygons connected to the door polygons within 32 units of them join the exterior polygons their open
 edges face: a raised sill reached by steps (~47..52°) that cross the hull, whose lower part is the exterior's (cut at the hull: Y351 for
 `29-rebirth-INGAME`, door Y365..380; Y418 for `27-`, door Y430..441) and upper part the interior's, meeting on the hull's edge.
@@ -467,7 +494,15 @@ the original has neither. Walkable and cutting triangles are now rasterized into
 walkable surface in it reaches within the climb (5 cells) of its top, and then stands at that walkable top, not on the cutting part over it (cutting material
 removes the original's faces, it never makes walkable ones). **Observed** (`--survey-interiors`): lifted to the cutting top, the cells at the foot of a steep
 collar became a stair onto the dome it carries (Y-House `39.16:16-`: roof 1069, collar tops 1074, dome 1079..1096; the original has no dome); a stricter
-threshold (1..3 cells) instead drops floor cells along tilted walls, whose faces enter them (Outpost s-I `9.51:2-`: its upper storey was lost at 3).
+threshold (1..3 cells) instead drops floor cells along tilted walls, whose faces enter them (Outpost s-I `9.51:2-`: its upper storey was lost at 3). The merged span's area is that of the walkable surfaces whose own top is within the climb of its walkable top, as Recast's
+merge flags; a surface lower in the same merged span gives none. **Observed** (#854, Swamp Store `21.42:323-Newwworld-INGAME`, `--path`, `--probe`, scratch polygon
+dump): a deck's steep side reaching down to the water joined the water's span (area deep water) to the deck's edge cells, which took that area, split from
+the deck as regions of their own and left a 2-unit wedge between the north and west decks: their only portal was 6 wide between wall ends, so radius-4
+walkers stopped at the corner and never reached the door; the original's tile joins the two decks over a 16-unit edge. Now the corner is one surface and
+(-47158,48455) → (-47300,48410) `--from-y 100 --to-y 125` walks in (423). `--compare` over the 16 zones of "Narrow portals": unchanged but 21.42 (kept
+4791 → 4582, both +6, ours only −11, original only −6), 10.31 (original only −1) and 18.39 (Swamp Village: both +65, original only −65, decks the original
+has; ours only +19 and extra layers +13, single samples along those decks' edges and the water under them); `--compare-interiors` 18.35, 19.29, 50.33,
+47.16, 20.32, 43.11, 26.13, 48.45, 21.42 unchanged.
 **Interior survey**: `meitou-tools navmesh --survey-interiors zones|towns|x,z ... [--name text] [--png dir] [--section x,z]` samples over each intact interior's
 hull every 2 units the zone's kept polygons against the original's interior faces plus its exterior polygons (the original carves its exterior with the hull's
 convex volume, so a ledge round the walls is its exterior's and our interior's) and sums, per building type, the area both have, only ours (and how much 20+
@@ -538,7 +573,7 @@ unjoined are linked (`Links`, not `Neighbours`) when they run opposite, share on
 lie within 1.5 of each other's line at both ends of the overlap, and are within the climb and half a height cell there (stitched vertices stand half a cell under their span's top; 5.25 since cells are 0.5), by the edges' own heights or else by both polygons' surfaces (own-region samples, interpolated) at every cell along the overlap: Recast simplifies contours in X/Z only, so a long edge from flat ground up a stair runs straight in height and misses the stair beside it by a step (engine choice). **Observed** (zone 14.23, Longhouse `14.23:78-`, west door stair): the stair's lower polygon (an 88-unit edge along z -37652, 1506 to 1536) against the upper stair's edge from (-82306,1515) was 12 off by the edge, 4 at most by the surfaces; unjoined, radius-4 walkers could not reach the door (the town's residents searched 300-600 ms for its cabinet again and again), now (-82140,-37692) → (-82157,-37664) goes round to it (818). Near-miss joins in 14.23, 27.22, 21.42, 20.32, 42.22, 18.39 grew 10-20 % (28.60 none); hub path pins unchanged. A* portals for such links take the overlap
 with the door joins' 6 gap when no facing edge is within 0.2. **Observed** (zone 18.39, `meitou-tools navmesh`): the Swamp Village stair foot's edge
 (-62220,108,34088 → -62208,105,34086) against two edges meeting at (-62216,106,34086) joins both; the path (-62218,34080) → (-62216,34148)
-`--to-y 140` climbs through that vertex (length 83) instead of detouring to the tile line x−62208 (97). **Observed** (after the terrain diagonal change, the same path from z 34080 exactly on a polygon edge): 153, the funnel from a start on its first portal's line swung out to that portal's end; `NavQuery.Pull` drops a first portal the start lies on, 82. **Observed** (576-unit tiles, watershed regions): 101, by the tile line again (x−62208 is still one).
+`--to-y 140` climbs through that vertex (length 83) instead of detouring to the tile line x−62208 (97). **Observed** (after the terrain diagonal change, the same path from z 34080 exactly on a polygon edge): 153, the funnel from a start on its first portal's line swung out to that portal's end; `NavQuery.Pull` drops a first portal the start lies on, 82. **Observed** (576-unit tiles, watershed regions): 101, by the tile line again (x−62208 is still one). The portal also takes in the facing edges either side of the chosen one that go on along the edge within 1.5 and lead back (`WidenOverSplitEdges`), its wall ends from the outer ones: at a T split the edge on the line can be the short part. **Observed** (#1031, zone 30.49, `meitou-tools probe ... path --nav`, Catun L-House `30.49:2191-` door): the floor's 18-unit door edge faced the step's 2-unit edge (0.2 off) and 14-unit edge (0.4 off); the 2-wide portal let radius 1.75 by, so the building could be entered but not left (paths went to the upper floor's corner); now (-6563,849,81593) → (-7387,832,81842) goes out the door. The pins above are unchanged.
 **Tile seams** (engine choice): tiles are rasterised with a 3-cell border from their neighbours (Recast `borderSize`), so contour
 vertices on a tile's edge are kept and those edges come out as portals. Without it Recast treats the edge as a wall and simplifies across
 it (error 1.3 cells): a strip one cell deep along the edge loses its edge vertex and the stitcher finds no edge on the line. **Observed**
@@ -650,7 +685,7 @@ than the agent height over it; each row's run of samples is one rectangle. **Obs
 building footprints, 17,085 feature rectangles, sampled in 1.2 s): across Rebirth west to east (-49500,-56080 → -45500,-56080) the samples of the route
 inside a feature fell 25 → 3 of ~360 (length 5,817 → 5,594), north to south past the statue (-47500,-58500 → -47500,-53500) 89 → 0 (5,318 → 6,054); at the
 Hub, past its cliff blocks (-52800,3000 → -51700,4800) 18 → 0 (3,764 → 3,775), (-53200,4500 → -51200,3400) 3 → 0. The navmesh part ends inside loaded zones, the rest is provisional and
-re-asked; its zones within `Lookahead` load early. When meshes go live the host sends one `RepathCommand` with those zones at most every second (`RepathCoalesceSeconds`), and only GoTo walkers whose path still to walk crosses one of them (or whose answer is pending) ask again: re-asking every walker at each zone turned long walks about again and again (issue #50). A walker following a path does not ask for the whole way: it splices (engine choice, `MovementSystem.Splice.cs`), asking only for a path to its own path's point `SpliceReach` (4000) ahead, or past the last changed zone it crosses, and replacing its path up to that point while it walks on along the old one; reaching the provisional part splices the same way. A splice that finds nothing asks for the whole way; a blocked walker asks for the whole way from where it stands. **Observed** (save "Gigachad", scratch sim, Hub west to the plateau at -28667,6399): with whole-way repaths the path was asked for again at every zone batch, about every second; with splices one path lasted from 10 s to 95 s (~10,000 units) and the walk took 248 s (247 before). A path asked for on the move starts where the walker stood then; it is entered at the end of the leg nearest the walker (within `JoinSlack` 10 of it, among the legs as long as the way the walker came, and steppable toward), not at its first point, which would turn the walker back in a loop (engine choice, `MovementSystem.Join`). A goal in a loaded zone with no navmesh path is a long route too when its zone is
+re-asked; its zones within `Lookahead` (4000) times the game speed (`GameSpeed`, the same real time of walking at 1x, 2x and 5x) load early. The builder (one thread, `NavBuildQueue`) serves the zones asked for in the order the player's characters reach them (engine choice): first those their paths enter within 20,000 units, nearest along the path first, then the others by distance from those characters, the oldest of equal ones first; a character in a zone whose mesh is not live is frozen ([inactive characters](game-loop.md#inactive-characters)), which the original's loading hold hides and Meitou leaves out. **Observed** (#824 save, `probe --stream --speed 5`, the streamed zones uncached, builds on the play share of the cores): its saved order (two borders) stood 8.1 s at 49.8 in request order, which waited behind 48.9, 48.10 and 43.11, where the dog Bonedoga stands, and not at all in reach order; a move to (110000, -104000), eight zones east, stood 2.0 s at 48.9 and 6.0 s at 49.9 in request order and not at all in reach order on 12 cores. On 8 (`DOTNET_PROCESSOR_COUNT`) reach order with the 1x lookahead stood 1.1 s and 3.9 s, each route zone asked for only as the one before went live (that run's request order, on another walk, did not stand); with the lookahead times the speed four zones were asked for ahead and it did not stand. Uncached zones took 3-13 s and a cached one goes live in milliseconds; the probe ran about 80 ticks a second (5x is 150), so in the game a walker reaches each border sooner. When meshes go live the host sends one `RepathCommand` with those zones at most every second (`RepathCoalesceSeconds`), and only GoTo walkers whose path still to walk crosses one of them (or whose answer is pending) ask again: re-asking every walker at each zone turned long walks about again and again (issue #50). A walker following a path does not ask for the whole way: it splices (engine choice, `MovementSystem.Splice.cs`), asking only for a path to its own path's point `SpliceReach` (4000) ahead, or past the last changed zone it crosses, and replacing its path up to that point while it walks on along the old one; reaching the provisional part splices the same way. A splice that finds nothing asks for the whole way; a blocked walker asks for the whole way from where it stands. **Observed** (save "Gigachad", scratch sim, Hub west to the plateau at -28667,6399): with whole-way repaths the path was asked for again at every zone batch, about every second; with splices one path lasted from 10 s to 95 s (~10,000 units) and the walk took 248 s (247 before). A path asked for on the move starts where the walker stood then; it is entered at the end of the leg nearest the walker (within `JoinSlack` 10 of it, among the legs as long as the way the walker came, and steppable toward), not at its first point, which would turn the walker back in a loop (engine choice, `MovementSystem.Join`). A goal in a loaded zone with no navmesh path is a long route too when its zone is
 in another block of side-by-side loaded zones than the walker's (two groups of walkers far apart); within one block, the navmesh's
 nearest reachable point and a straight provisional tail (the terrain search, under one lock for every path thread, is not run there;
 a way round through an unloaded zone within one block is not found). **Observed**: Hub→(-36000,-6000) and Hub→Squin arrive; "6 dudes"
@@ -786,8 +821,12 @@ lose the collision too once a destroyed one was made; Meitou clears it per place
       329 enclosed regions (25 of their 28 million sq units) hold one). Then the midpoints of the
       open border edges of each already built neighbour zone (FUN_1403c9820, the four neighbours) so regions connect
       across zone borders; points of a global list (DAT_14212f470, not identified) inside the box; and linked wall
-      sections (class 9 WALL with `link length` > 0): three seeds on top of WALKABLE walls (ray hits) and, for walls that
-      leave the zone, three ground seeds clamped into the zone box.
+      sections (class 9 WALL with `link length` > 0): three seeds on top of WALKABLE walls the player owns (ray hits) and, for walls that
+      leave the zone, three ground seeds clamped into the zone box. **Verified** (FUN_1403cbfa0's wall loop): the top seeds need
+      FUN_140546dd0 (the owner faction, slot 0x58, has the player field +0x250) as well as `path mode` 3, so a town's walls get none;
+      **Observed** (`meitou-tools navmesh --town Admag --probe`, #798): the original's 12.35 tile has no polygon on Admag's WALKABLE
+      `Defensive Wall IV` tops, where seeding them kept a 200-polygon island with no way down that patrols walked onto and stood on. Meitou:
+      `BuildingPlacement.PlayerOwned` (the host's sites whose owner is the player's faction).
     - job type 1: two ground seeds on each edge of the job's box (corner table DAT_1416ccd30).
     - ground seeds (FUN_1403d8ac0): terrain height at (x, z), raised to the water level, then a ray down against
       groups 2, 6, 9, 14, 19 (mask 0x84244); the seed is added only when the ray finds nothing (or a hit of one
@@ -830,7 +869,7 @@ lose the collision too once a destroyed one was made; Meitou clears it per place
   - BUILDING `path mode` counts 92/84/304/123 for 0/1/2/3 (**Verified**, 603 records). Enum names (FCS `PathMode`, the
     editor's enum): 0 NAVMESH_IGNORE, 1 NAVMESH_PROJECTED, 2 NAVMESH_OBSTACLE (default), 3 NAVMESH_WALKABLE (**Verified**).
     Other fields: `destroyed navmesh` (6 buildings, walls; read by `Building::setDestroyed` `FUN_140557280`, which rebuilds the navmesh in the building's bounds when set,
-    **Verified**, and by the dead "Wall termites" check FUN_1402ef1f0: [buildings-production](buildings-production.md#walls)), `allow animals` (10 true; `Building::allowAnimals`, reader not traced),
+    **Verified**, and by the dead "Wall termites" check FUN_1402ef1f0: [buildings-production](buildings-production.md#walls)), `allow animals` (10 true; the interior's byte `+0xe0`, read by `FUN_140547500`: [following](#squads-travelling-together)),
     `enforce ceiling` ([perception](perception.md#sight)), `inventory content name` (the title of its storage section in `BuildingContainerInventoryLayout::setupSections`, **Verified**),
     `build threshold` (19 buildings: below it a part is in a +14 group and drops out of the shape mask), `is gateway`
     (13), `max slope` (placement only, [buildings-production.md](buildings-production.md)).
@@ -917,8 +956,12 @@ polygons expanded within 1 % (18.39: 5 % fewer).
 Unreachable goals were most of the rest. **Observed** (same run): a town's residents in zone 14.23 kept asking for goals in a building they cannot
 enter (radius 4 found no way in, radius 0 did: an unjoined seam on its door stair, "Inner seams"), 300-600 ms each: the exact search, up to four
 off-mesh start retries, then the nearest-point search, each exploring all the ground they reach. Engine choices since: a goal found unreachable
-is remembered (goal polygon, radius, door rule; same navmesh; `NavmeshWalkability.UnreachableSeconds`), and a walker that reaches its
-remembered nearest point gets the provisional route at once, while no door was locked or unlocked since (`NavDoors.Version`: through a door unlocked since,
+is remembered (goal polygon, radius, door rule; same navmesh; `NavmeshWalkability.UnreachableSeconds`) with the polygons its failed nearest-point
+search covered (`NavQuery.LastSearchReached`), and a walker whose start polygon is one of them gets the provisional route to the remembered nearest
+point at once. Reaching that point is no proof of the same ground: **Observed** (#1025 save, Cat-Lon's Exile, `probe crowd --nav`): fighters shoved
+onto an unjoined two-polygon sliver at a stair foot (105634,125000, on the tile seam z 124992) marked their target's polygon unreachable, and of
+the 50 Stormthralls on the open mesh, who reach that corner too, about 25 stood 200 away and several were turned back to it from 115 short of the
+target; by the start polygon all 50 stand within 100. The memory holds while no door was locked or unlocked since (`NavDoors.Version`: through a door unlocked since,
 walkers outside reached the corner of a locked L-House that one shut in it had found, and stood there; **Observed**, Gigachad save, 39.16); retries skip start
 polygons a failed search reached (same region, same failure). GoTo answers went from ~95 to ~17 ms on average, polygons per search ~11,000 to ~5,800.
 
@@ -1017,7 +1060,6 @@ Shark's Makeshift Gate 0, every other door -1, so the first side is the inside.
 
 ## Unknowns
 
-- Whether the path request converts the footprint radius to Havok units.
 - The full avoidance parameters (the repulsion's absolute magnitude); how movement caps a follower's desired speed by its speed mode.
 - Whether face data values other than 3, 4, 5 and the gate nibble exist; how building construction and destruction
   update faces (path mode switches at runtime).

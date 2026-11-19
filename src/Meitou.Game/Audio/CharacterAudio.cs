@@ -30,9 +30,19 @@ sealed class CharacterAudio(GameHost host)
     AudioSystem? _characterAudioFor;
 
     /// <summary>
+    /// The code mods' own sound objects (made on the first posted mod sound, again for another audio).
+    /// </summary>
+    ModSoundPosts? _modPosts;
+
+    /// <summary>
     /// The characters' sound objects; null before the first frame with a database and the animations.
     /// </summary>
     internal CharacterSounds? Sounds;
+
+    /// <summary>
+    /// The bodies fed into machines, each sounding on an object of its own until the exe's deletion would end it; made with <see cref="Sounds"/>.
+    /// </summary>
+    FedBodySounds? _fedBodies;
 
     /// <summary>
     /// The ground types of the terrain under the characters' feet.
@@ -166,6 +176,7 @@ sealed class CharacterAudio(GameHost host)
         if (!ReferenceEquals(_characterAudioFor, sound))
         {
             _characterAudioFor = sound;
+            _modPosts = null;
             Sounds = null;
             _soundsFor = null;
         }
@@ -183,7 +194,8 @@ sealed class CharacterAudio(GameHost host)
         UpdateCharacters(sounds, db, world);
         sounds.EndFrame();
         ForgetStaleMemos();
-        while (_soundQueue.TryDequeue(out var happened)) PlayCombatSound(sounds, happened);
+        _fedBodies!.Update(host.Session.Simulation.Speed);
+        while (_soundQueue.TryDequeue(out var happened)) PlayCombatSound(sounds, happened, eye);
     }
 
     /// <summary>
@@ -192,6 +204,7 @@ sealed class CharacterAudio(GameHost host)
     internal void Reset()
     {
         Sounds?.Clear();
+        _fedBodies?.Clear();
         _soundQueue.Clear();
         if (_soundsFor is { } world) world.Sounds = null;
         _soundsFor = null;
@@ -227,6 +240,7 @@ sealed class CharacterAudio(GameHost host)
         _definitionLoops = [.. library.Definitions.Select(d => d.Loop)];
         _workEvents.Clear();
         Sounds = new CharacterSounds(sound.Player, _groundSurfaces) { Floor = FloorSurface, Puddle = host.InPuddle };
+        _fedBodies = new FedBodySounds(sound.Player);
     }
 
     /// <summary>
@@ -235,6 +249,7 @@ sealed class CharacterAudio(GameHost host)
     void FollowWorld(CharacterSounds sounds, World world)
     {
         sounds.Clear();
+        _fedBodies?.Clear();
         _workLayers.Clear();
         _soundQueue.Clear();
         world.Sounds = _soundQueue;
@@ -309,7 +324,7 @@ sealed class CharacterAudio(GameHost host)
     /// (<see cref="Meitou.Game.Audio.CharacterSounds.Floor"/>, docs/audio.md "Surface"): the building's <c>interior material</c> when the character
     /// stands inside a building's indoor hull, else its <c>exterior material</c>.
     /// </summary>
-    int FloorSurface(Vector3 feet)
+    internal int FloorSurface(Vector3 feet)
     {
         if (host.ActiveObjects is not { } objects) return -1;
 
@@ -420,7 +435,7 @@ sealed class CharacterAudio(GameHost host)
     /// <summary>
     /// The definition of the character's layer playing the ANIMATION record called <paramref name="clip"/>; -1 when none does.
     /// </summary>
-    static int LayerOf(CharacterSnapshot c, string clip)
+    internal static int LayerOf(CharacterSnapshot c, string clip)
     {
         for (int k = 0; k < c.Animations.Count; k++)
             if (c.Animations[k].Name == clip) return c.Animations[k].Definition;
@@ -477,7 +492,7 @@ sealed class CharacterAudio(GameHost host)
     /// <summary>
     /// Plays one of the combat's happenings: on the characters' objects, or as an interface sound.
     /// </summary>
-    void PlayCombatSound(CharacterSounds sounds, in SoundEvent e)
+    void PlayCombatSound(CharacterSounds sounds, in SoundEvent e, Vector3 eye)
     {
         ulong subject = SoundKey(e.Subject), other = e.Other.IsNone ? 0 : SoundKey(e.Other);
         switch (e.Kind)
@@ -533,27 +548,39 @@ sealed class CharacterAudio(GameHost host)
             case SoundKind.Inspected:
                 sounds.Job(subject, "Character_Inspect");
                 break;
+            // Posted, with the price floater, only while the interface is shown (FUN_1409a14b0 tests the GUI's shown flag first).
             case SoundKind.NpcBought:
-                sounds.Job(subject, "Sell_Item", CharacterSounds.FootstepLimit);
+                if (host.Player.UiVisible) sounds.Job(subject, "Sell_Item", CharacterSounds.FootstepLimit);
                 break;
             case SoundKind.ReleasedFromPrison:
                 host.Sound.Ui.Sounds?.Play(new UiSoundEvent("Create_Character"));
                 break;
             case SoundKind.FedToMachine:
-                sounds.FedToMachine(e.Position, ArmourOf(e.Subject));
+                _fedBodies!.Post(e.Position, e.Armour, eye);
+                break;
+            case SoundKind.Posted or SoundKind.PostedInterface when e.Posted is { } posted:
+                PlayModSound(sounds, in e, posted, subject, eye);
                 break;
         }
     }
 
     /// <summary>
-    /// The <c>material type</c> of a character's body armour (<see cref="CharacterSoundProfile.ArmourMaterial"/>) from the previous snapshot, for one
-    /// already gone from the current one; 0 (Cloth) when it is in neither.
+    /// A code mod's event (docs/modding.md "Sounds"), never setting a switch on an object of the game's: on the mods' interface object; on a
+    /// character, its own object when there is no switch (the sound follows it), else a mods' pooled object at its place; or a mods' pooled object
+    /// at the point. A character too far to have an object hears nothing.
     /// </summary>
-    int ArmourOf(CharacterId id)
+    void PlayModSound(CharacterSounds sounds, in SoundEvent e, PostedSound posted, ulong subject, Vector3 eye)
     {
-        if (!host.PreviousById.TryGetValue(id, out var c) || c.Appearance is not { } look) return 0;
-        return _soundProfiles.TryGetValue(look, out var profile) ? profile.ArmourMaterial : 0;
+        var (name, group, value) = (posted.Event, posted.SwitchGroup, posted.SwitchValue);
+        if (_characterAudioFor is not { } audio) return;
+
+        var posts = _modPosts ??= new ModSoundPosts(audio.Player);
+        if (e.Kind == SoundKind.PostedInterface) posts.OnInterface(name, group, value);
+        else if (e.Subject.IsNone) posts.At(e.Position, eye, name, group, value);
+        else if (group is null) sounds.Job(subject, name, CharacterSounds.EventLimit);
+        else if (sounds.TryPlace(subject, out var at)) posts.At(at, eye, name, group, value);
     }
+
 
     #endregion
 }

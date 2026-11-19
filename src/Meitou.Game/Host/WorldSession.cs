@@ -119,6 +119,11 @@ public sealed class WorldSession : IDisposable
     /// </summary>
     public Vector3? ViewEye { get; set; }
     /// <summary>
+    /// The buildings whose interior the player sees, by key, which the simulation takes at each tick's start (<see cref="World.ShownInteriors"/>);
+    /// the interior view sets it each frame it changes, never altering a set it handed over. Null: no view (no gate).
+    /// </summary>
+    public IReadOnlySet<string>? ShownInteriors { get; set; }
+    /// <summary>
     /// Where the frame is between the previous and the current control tick (camera interpolation).
     /// </summary>
     public float Alpha => (float)Ticks.Alpha;
@@ -146,8 +151,11 @@ public sealed class WorldSession : IDisposable
         var next = new World(_worldSettings, _worldWalkability, list);
         next.Floaters = World.Floaters;   // the host keeps drawing the floaters across the swap
         next.BenchFacingFix = World.BenchFacingFix;
+        next.PrisonPoseFix = World.PrisonPoseFix;
+        next.CagedAnimalFix = World.CagedAnimalFix;
         next.BagSearchFix = World.BagSearchFix;
         next.TakeIntoBackpack = World.TakeIntoBackpack;
+        next.ActionLog = World.ActionLog;
         try
         {
             setup?.Invoke(next);
@@ -159,8 +167,9 @@ public sealed class WorldSession : IDisposable
         }
         var old = World;
         World = next;
-        // Ticks the old world ran ahead go with it.
+        // Ticks the old world ran ahead go with it, and so does its loading pause.
         (_aheadTicks, _held, _heldPrevious, _heldCurrent) = (0, false, null, null);
+        (Simulation.LoadingHold, ZonesLoading) = (false, false);
         Discard(old);
         // The navmesh door table follows the new world: the old one's locked doors are forgotten, the new one's told.
         if (_worldWalkability is Simulation.Locks.IDoorGate gate)
@@ -245,6 +254,7 @@ public sealed class WorldSession : IDisposable
     public int AdvanceSimulation(double realSeconds)
     {
         EnsureNotRunning();
+        StepLoadingPause();
         int n = Simulation.Advance(realSeconds);
         if (!Simulation.IsPaused)
         {
@@ -308,10 +318,42 @@ public sealed class WorldSession : IDisposable
         // the ragdoll physics steps in real time
         World.PhysicsSpeed = (float)(Simulation.Speed > 0 ? Simulation.Speed : Simulation.LastNonZeroSpeed);
         World.ViewPosition = ViewEye ?? Camera.Current.Eye;
+        World.ShownInteriors = ShownInteriors;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         World.RunTick(publish);
         Measure(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
         Clock.Advance(Simulation.TickSeconds);
+    }
+
+    #endregion
+
+    #region Loading pause
+
+    /// <summary>
+    /// The original's loading pause is on (Advanced settings "Pause while loading", its Faithful side; <c>UserConfig.LoadingPause</c>): the game is
+    /// held while the zones round the camera load (<see cref="SimulationClock.LoadingHold"/>, docs/game/game-loop.md "Loading pause").
+    /// </summary>
+    public bool LoadingPause { get; set; }
+    /// <summary>
+    /// With <see cref="LoadingPause"/> on, the camera's load is under way: the HUD shows the original's <c>Loading...</c> panel.
+    /// </summary>
+    public bool ZonesLoading { get; private set; }
+
+    /// <summary>
+    /// The frame's loading pause, before its ticks are counted: off, nothing is held; on, the world holds or lets go
+    /// (<see cref="World.StepLoadingPause"/>). A world paused otherwise is not held, as the original tests only while its paused flag is clear, but its
+    /// zones go on loading.
+    /// </summary>
+    void StepLoadingPause()
+    {
+        if (!LoadingPause)
+        {
+            (Simulation.LoadingHold, ZonesLoading) = (false, false);
+            return;
+        }
+
+        bool held = Simulation.LoadingHold;
+        (Simulation.LoadingHold, ZonesLoading) = World.StepLoadingPause(held, !held && Simulation.IsPaused);
     }
 
     #endregion
@@ -387,6 +429,7 @@ public sealed class WorldSession : IDisposable
         for (int i = 0; i < count; i++, seconds += Simulation.TickSeconds) starts[i] = (Clock.TotalHoursAt(seconds), Clock.IsDaytimeAt(seconds));
         World.PhysicsSpeed = (float)Simulation.Speed;   // the ragdoll physics steps in real time
         World.ViewPosition = ViewEye ?? Camera.Current.Eye;
+        World.ShownInteriors = ShownInteriors;
         _runner ??= new TickRunner();
         _runner.Start(World, starts);
         _running = true;

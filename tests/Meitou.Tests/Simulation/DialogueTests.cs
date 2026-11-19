@@ -230,8 +230,9 @@ public class DialogueTests
     }
 
     /// <summary>
-    /// A guard greets a stranger of another squad (event 3; its line refuses player targets) with a crowd trigger: his mate cheers (event 74), and
-    /// the chain passes to the line the stranger says back (speaker T_TARGET).
+    /// A guard greets a stranger of another squad and faction he sees on his sight pass (event 3; its line refuses player targets), the chain
+    /// passes to the line the stranger says back (speaker T_TARGET), and the guard's third line has a crowd trigger: the whole squad, the guard
+    /// with it, cheers (event 74), the cheer taking the place of the line that set it off.
     /// </summary>
     [Fact]
     public void A_greeting_between_npcs_sets_off_the_crowd_and_the_target_answers()
@@ -239,6 +240,7 @@ public class DialogueTests
         var data = PopulationData.Create(Db([
             Rec("204-gamedata.base", FcsRecordType.Faction, r => r.Name = "Nameless"),
             Rec("f-d", FcsRecordType.Faction, r => r.Name = "Villagers"),
+            Rec("f-o", FcsRecordType.Faction, r => r.Name = "Drifters"),
             Rec("guard-c", FcsRecordType.Character, r => { r.Name = "Guard"; r.References["dialogue package"] = [Ref("guard-p")]; }),
             Rec("guard-p", FcsRecordType.DialoguePackage, r => r.References["dialogs"] = [Ref("hail-d", 3)]),
             Rec("player-dc", FcsRecordType.DialogAction, r => { r.Ints["condition name"] = 36; r.Ints["who"] = (int)Talker.Target; }),
@@ -247,20 +249,32 @@ public class DialogueTests
             {
                 r.Strings["text0"] = "Hail, /YOURNAME/.";
                 r.References["conditions"] = [Ref("player-dc", 0)];
-                r.References["crowd trigger"] = [Ref("cheer-d", 100)];
                 r.References["lines"] = [Ref("answer-l")];
             }),
-            Rec("answer-l", FcsRecordType.DialogueLine, r => { r.Ints["speaker"] = (int)Talker.Target; r.Strings["text0"] = "Hail yourself."; }),
+            Rec("answer-l", FcsRecordType.DialogueLine, r =>
+            {
+                (r.Ints["speaker"], r.Strings["text0"]) = ((int)Talker.Target, "Hail yourself.");
+                r.References["lines"] = [Ref("cheer-on-l")];
+            }),
+            Rec("cheer-on-l", FcsRecordType.DialogueLine, r =>
+            {
+                r.Strings["text0"] = "Cheer, lads!";
+                r.References["crowd trigger"] = [Ref("cheer-d", 100)];
+            }),
             Rec("cheer-d", FcsRecordType.Dialogue, r => { r.Bools["monologue"] = true; r.References["lines"] = [Ref("cheer-l")]; }),
             Rec("cheer-l", FcsRecordType.DialogueLine, r => r.Strings["text0"] = "Hurrah!"),
         ]), []);
         var dialogue = new DialogueSystem(data, new DialogueSettings { AmbientEvents = true });
         var ground = new OpenGroundWalkability((_, _) => 150);
-        using var world = new SimWorld(new WorldSettings { Seed = 5, PublishSnapshots = false }, ground, [dialogue]);
+        var senses = new Meitou.Simulation.Aggro.AggroSystem(data.Relations);
+        var bodies = new Meitou.Simulation.Bodies.BodySystem(Meitou.Tests.Bodies.BodyFixtures.BaseGame);
+        var sight = new Meitou.Simulation.Perception.SightSystem(data);
+        using var world = new SimWorld(new WorldSettings { Seed = 5, PublishSnapshots = false }, ground, [bodies, senses, dialogue, sight]);
         world.Player.Faction = data.PlayerFaction;
+        world.ViewPosition = new Vector3(0, 150, 100);   // NPCs look at NPCs only in view (+0x1a9); all face +Z
         int villagers = data.FactionIndex("f-d");
         Squad? last = null;
-        CharacterId Spawn(string name, float x, int faction, bool player, string record, bool join = false)
+        CharacterId Spawn(string name, float z, int faction, bool player, string record, bool join = false)
         {
             if (!join)
             {
@@ -269,7 +283,7 @@ public class DialogueTests
             }
             var cold = new Combat.Combatant { Name = name }.MakeCold();
             (cold.Faction, cold.IsPlayer, cold.RecordId, cold.Inventory, cold.SquadId) = (faction, player, record, new Inventory(), last!.Id);
-            var id = world.Characters.Spawn(new CharacterHot { Position = new Vector3(x, 150, 0), Health = 100, MaxSpeed = 60, WalkSpeed = 15,
+            var id = world.Characters.Spawn(new CharacterHot { Position = new Vector3(0, 150, z), Health = 100, MaxSpeed = 60, WalkSpeed = 15,
                     Task = (byte)CharacterTask.Idle }, cold, 0);
             last.Members.Add(id);
             if (!join) last.Leader = id;
@@ -277,8 +291,8 @@ public class DialogueTests
         }
         Spawn("hero", 0, data.PlayerFaction, true, "");
         Spawn("Guard", 100, villagers, false, "guard-c");
-        Spawn("Mate", 110, villagers, false, "guard-c", join: true);
-        Spawn("Stranger", 150, villagers, false, "");
+        Spawn("Mate", 200, villagers, false, "guard-c", join: true);   // past the stranger: only the guard faces him
+        Spawn("Stranger", 150, data.FactionIndex("f-o"), false, "");   // of a faction the guards do not regard as friendly
 
         var said = new HashSet<string>();
         for (int i = 0; i < 400; i++)
@@ -287,13 +301,9 @@ public class DialogueTests
             foreach (var s in dialogue.PublishSpeech()) said.Add($"{world.Characters.Cold(s.Speaker.Slot)!.Name}: {s.Text}");
         }
 
-        // Which of the two greets depends on the scan order; the other cheers.
         string[] all = [.. said.Order()];
 
-        Assert.True(all.SequenceEqual(["Guard: Hail, Stranger.", "Mate: Hurrah!", "Stranger: Hail yourself."]) || all.SequenceEqual(["Guard: Hurrah!",
-                "Mate: Hail, Stranger.", "Stranger: Hail yourself."]),
-
-            string.Join(" | ", all));
+        Assert.Equal(["Guard: Hail, Stranger.", "Guard: Hurrah!", "Mate: Hurrah!", "Stranger: Hail yourself."], all);
     }
 
     /// <summary>
@@ -484,12 +494,16 @@ public class DialogueInstallTests
         var levels = WorldLevelData.LoadBaseGame(install, includeInteriors: true);
         using var map = TerrainHeightmap.Open(install);
         var buildings = TownBuildings.Build(db, levels, new BuildingLayouts(db, levels.Interiors), (x, z) => map.HeightAt((float)x, (float)z));
-        var data = PopulationData.Create(db, levels.Towns(), buildings: buildings);
+        var data = PopulationData.Create(db, levels.Towns(), new GeneratedAppearances(db, install.Root), buildings: buildings);
         var hub = data.Sites.Single(s => s.Town.Name == "The Hub");
         var dialogue = new DialogueSystem(data, new DialogueSettings { AmbientEvents = true });
         var walk = new OpenGroundWalkability((_, _) => 300);
+        var bodies = new Meitou.Simulation.Bodies.BodySystem(Meitou.Tests.Bodies.BodyFixtures.BaseGame);
+        var senses = new Meitou.Simulation.Aggro.AggroSystem(data.Relations);
+        var sight = new Meitou.Simulation.Perception.SightSystem(data);
         using var world = new SimWorld(new WorldSettings { Seed = 1, PublishSnapshots = false }, walk,
-            [new PopulationSystem(data, new PopulationSettings { CheckEveryTicks = 1 }), new MovementSystem(new PathService(walk, true)), dialogue]);
+            [new PopulationSystem(data, new PopulationSettings { CheckEveryTicks = 1 }), new MovementSystem(new PathService(walk, true)), bodies,
+                senses, dialogue, sight]);
         world.Player.Faction = data.PlayerFaction;
         world.Commands.Enqueue(new FocusCommand(hub.Position) { Tick = 0 });
         world.RunTicks(5);
@@ -519,9 +533,11 @@ public class DialogueInstallTests
         Assert.NotEmpty(talk.Text);
         Assert.Equal(2, talk.Choices.Count);   // trade or decline; their texts are picked at random
 
-        // A resident next to the player character says a speech bubble within a few game hours.
-        // The Hub is allied with the player: its residents have event 67 lines (most event 3 lines are disabled or conditional in the data); each is
-        // said at a chance of 30 % once per squad per half game hour, so the loop spans a few of those.
+        // A resident who sees the player character says a speech bubble. The sight pass needs the residents' bodies (their races come with their
+        // looks), update turns (bodies) and senses (aggro). With the Hub allied, a resident reacts on each update turn to one character it senses,
+        // trying its event 67 lines (I_SEE_ALLY_PLAYER) at the player character; a said line cools that speaker's event for 1 s. The Hungry
+        // bandit's (Holy Nation Outlaws) "Good Relations - bandit gang" fires; the "You saved my life!" roots most residents share need a rescue
+        // (docs/game/dialogue.md "Sight").
         for (int i = 0; i < table.HighWater; i++)
             if (table.Next[i].Alive && table.Cold(i) is { IsPlayer: false } resident)
                 data.Relations.Set(resident.Faction, data.PlayerFaction, 100);

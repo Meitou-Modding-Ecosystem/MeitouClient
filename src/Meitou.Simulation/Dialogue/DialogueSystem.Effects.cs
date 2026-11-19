@@ -38,8 +38,12 @@ public sealed partial class DialogueSystem
     {
         var mc = Cold(world, me);
         if (mc is not null) RunLocks(c, line, mc);
-        if (line.Interrupt is { } interrupt) _interrupts[me] = interrupt;
-        RunRelationChanges(world, line);
+        if (line.Interrupt is { } interrupt)
+        {
+            _interrupts[me] = interrupt;
+            world.DialogueLines.Line(world, "interrupt", $"{EventLog.Who(world, me)}: next talk opens {interrupt}");
+        }
+        RunRelationChanges(world, line, me);
         CrowdTrigger(world, c, line, me);
         var target = c.Player;
         var tc = Cold(world, target);
@@ -61,15 +65,16 @@ public sealed partial class DialogueSystem
     }
 
     /// <summary>
-    /// The line's <c>change relations</c>: each listed faction's relation with the player's faction changed by the amount, and the change posted.
+    /// The line's <c>change relations</c>: each listed faction's relation with the player's faction changed by the amount, and the change posted;
+    /// <paramref name="speaker"/> is the line's NPC-side speaker.
     /// </summary>
-    void RunRelationChanges(World world, DialogueNode line)
+    void RunRelationChanges(World world, DialogueNode line, CharacterId speaker)
     {
         foreach (var (factionId, amount) in line.ChangeRelations)
         {
             int f = _data.Relations.IndexOf(factionId);
             if (f < 0 || amount == 0 || world.Player.Faction < 0) continue;
-            ChangeRelation(world, f, world.Player.Faction, amount);
+            ChangeRelation(world, f, world.Player.Faction, amount, new(RelationCauseType.Dialogue, speaker));
             world.Post(amount > 0
                 ? Loc.Tr("Relations with {1} improved by {2}", _data.Factions[f].Name, amount)
                 : Loc.Tr("Relations with {1} decreased by {2}", _data.Factions[f].Name, -amount));
@@ -200,7 +205,7 @@ public sealed partial class DialogueSystem
         switch (effect.Action)
         {
             case DialogueActions.AffectRelations when mc is not null && tc is not null:
-                ChangeRelation(world, mc.Faction, tc.Faction, effect.Value);
+                ChangeRelation(world, mc.Faction, tc.Faction, effect.Value, new(RelationCauseType.Dialogue, me));
                 break;
             case DialogueActions.AffectReputation when mc is not null:
                 _data.Relations.AddGlobalTrust(mc.Faction, effect.Value);   // the speaker's faction's global trust (slot 9), whoever the target is
@@ -213,11 +218,11 @@ public sealed partial class DialogueSystem
                 break;
             case DialogueActions.DeclareWar when mc is not null && tc is not null && _data.Relations.Contains(mc.Faction)
                 && _data.Relations.Contains(tc.Faction):
-                PlayerRelations.DeclareWar(world, _data.Relations, mc.Faction, tc.Faction);
+                PlayerRelations.DeclareWar(world, _data.Relations, mc.Faction, tc.Faction, me);
                 break;
             case DialogueActions.EndWar when mc is not null && tc is not null && _data.Relations.Contains(mc.Faction)
                 && _data.Relations.Contains(tc.Faction):
-                PlayerRelations.EndWar(world, _data.Relations, mc.Faction, tc.Faction);
+                PlayerRelations.EndWar(world, _data.Relations, mc.Faction, tc.Faction, me);
                 break;
         }
     }
@@ -279,14 +284,8 @@ public sealed partial class DialogueSystem
         switch (effect.Action)
         {
             case DialogueActions.AssignBounty when tc is not null && mc is not null && effect.Value > 0 && _data.Relations.Contains(mc.Faction):
-                {
-                    // FUN_140853e20 (Verified): marks the pending crime booked, then adds the amount to the speaker's faction's booking entry
-                    // (none kept without one).
-                    if (tc.Pending is { } pending) pending.Booked = true;
-                    if (Crime.CrimeFactions.BookingKey(_data.Relations, mc.Faction) is var key and >= 0)
-                        (tc.Bounties ??= new Crime.BountyLedger()).Get(key, _data.Factions[key].Name).Amount += effect.Value;
-                    break;
-                }
+                AssignBounty(world, effect.Value, me, mc, target, tc);
+                break;
             // Without an amount only a speaker whose CHARACTER has `assigns bounties` books the target's pending crime
             // (Character::canAssignBounties, Verified).
             case DialogueActions.AssignBounty when tc is not null && mc is not null && effect.Value <= 0 && Arrests is { } booker
@@ -313,15 +312,43 @@ public sealed partial class DialogueSystem
             case DialogueActions.EnslaveTargetsCarriedPerson when tc is { Carrying.IsNone: false }:
                 takeOver = enslave = true;
                 break;
-            case DialogueActions.ClearBounty when tc?.Bounties is { } ledger && mc is not null:
-                if (ledger.BookedFor(_data.Relations, mc.Faction) is { } entry) ledger.Remove(entry);
-                if (Position(world, target) is { } at && TownAt(at) is >= 0 and var town && town < _data.SiteFactions.Count
-                    && ledger.BookedFor(_data.Relations, _data.SiteFactions[town]) is { } local)
-                    ledger.Remove(local);
-                if (ledger.Count == 0) tc.Bounties = null;
-                tc.Recognition = 0;
+            case DialogueActions.ClearBounty when tc?.Bounties is { } ledger && mc is not null
+                && world.Characters.TryResolveNext(target, out int wanted):
+                ClearBounties(world, mc, target, wanted, tc, ledger);
                 break;
         }
+    }
+
+    /// <summary>
+    /// <c>DA_ASSIGN_BOUNTY</c> with an amount (<c>FUN_140853e20</c>, <b>Verified</b>): marks the target's pending crime booked, then adds the amount
+    /// to the speaker's faction's booking entry (none kept without one), reported as a booking with the speaker as the witness
+    /// (<see cref="Crime.CrimeEventKind.Booked"/>).
+    /// </summary>
+    void AssignBounty(World world, int amount, CharacterId me, CharacterCold mc, CharacterId target, CharacterCold tc)
+    {
+        if (tc.Pending is { } pending) pending.Booked = true;
+        if (Crime.CrimeFactions.BookingKey(_data.Relations, mc.Faction) is not (var key and >= 0)) return;
+
+        var entry = (tc.Bounties ??= new Crime.BountyLedger()).Get(key, _data.Factions[key].Name);
+        entry.Amount += amount;
+        if (!world.Characters.TryResolveNext(target, out int culprit)) return;
+
+        var code = tc.Pending?.Code ?? Crime.CrimeCode.None;
+        world.SystemOf<Crime.CrimeSystem>()?.Note(world, Crime.CrimeEventKind.Booked, culprit, code, key, entry.Amount, me);
+    }
+
+    /// <summary>
+    /// <c>DA_CLEAR_BOUNTY</c>: the target's entries of the speaker's faction and of the town it stands in go (each reported as cleared,
+    /// <see cref="Crime.CrimeEventKind.Cleared"/>), and its recognition.
+    /// </summary>
+    void ClearBounties(World world, CharacterCold mc, CharacterId target, int wanted, CharacterCold tc, Crime.BountyLedger ledger)
+    {
+        if (ledger.BookedFor(_data.Relations, mc.Faction) is { } entry)
+            Crime.CrimeSystem.ClearBounty(world, wanted, tc, ledger, entry);
+        if (Position(world, target) is { } at && TownAt(at) is >= 0 and var town && town < _data.SiteFactions.Count
+            && ledger.BookedFor(_data.Relations, _data.SiteFactions[town]) is { } local)
+            Crime.CrimeSystem.ClearBounty(world, wanted, tc, ledger, local);
+        tc.Recognition = 0;
     }
 
     /// <summary>
@@ -452,8 +479,14 @@ public sealed partial class DialogueSystem
     {
         if ((tc.Faction != world.Player.Faction && !tc.IsPlayer) || mc.SquadId < 0) return;
         if (world.Squads.Find(mc.SquadId) is not { Leader: { IsNone: false } leader }) return;
-        if (_open?.Npc == leader || _npcApproaches.Has(leader)) return;
+        string who = $"{EventLog.Who(world, leader)} to {EventLog.Who(world, target)}";
+        if (_open?.Npc == leader || _npcApproaches.Has(leader))
+        {
+            world.DialogueLines.Line(world, "walkup", $"{who}: DA 2 ignored, " + (_open?.Npc == leader ? "already talking" : "already walking up"));
+            return;
+        }
         if (!world.Characters.TryResolveNext(leader, out int l) || !Awake(world.Characters, l)) return;
+        world.DialogueLines.Line(world, "walkup", $"{who}: starts walking up (DA 2)");
         _npcApproaches.Add(world, leader, target);
         Hold(world, l);
     }
@@ -475,15 +508,11 @@ public sealed partial class DialogueSystem
     static void Lock(CharacterCold cold, string dialogue, bool locked) => (cold.DialogueLocks ??= new(StringComparer.Ordinal))[dialogue] = locked;
 
     /// <summary>
-    /// Changes the relation of factions <paramref name="a"/> and <paramref name="b"/> by the amount, posting the notice when one is the player's.
+    /// Changes the relation of factions <paramref name="a"/> and <paramref name="b"/> by the amount, posting the notice when one is the player's
+    /// (<see cref="PlayerRelations.Add"/>).
     /// </summary>
-    internal void ChangeRelation(World world, int a, int b, int amount)
-    {
-        var (before, after) = _data.Relations.Add(a, b, amount);
-        int other = a == world.Player.Faction ? b : a;
-        if (b == world.Player.Faction || a == world.Player.Faction)
-            if (PlayerRelations.Notice(_data.Factions[other].Name, before, after) is { } text) world.Post(text);
-    }
+    internal void ChangeRelation(World world, int a, int b, int amount, RelationCause cause) =>
+        PlayerRelations.Add(world, _data.Relations, a, b, amount, cause);
 
     /// <summary>
     /// Money to (or from, when negative) the character's faction: the player's purse, else its squad's.
@@ -510,7 +539,7 @@ public sealed partial class DialogueSystem
             return;
         }
         if (table.Cold(s) is { IsPlayer: false, IsImprisoned: false, Medical.Incapacitated: false, Fighter.CanAttack: true })
-            world.Defer(new Combat.AttackOrder([me], target) { Tick = world.Tick + 1, Source = TaskSource.Npc });
+            world.Defer(new Combat.AttackOrder([me], target) { Tick = world.Tick + 1, Source = TaskSource.Npc, Cause = "a dialogue line (attack)" });
     }
 
     #endregion

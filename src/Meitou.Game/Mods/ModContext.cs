@@ -144,6 +144,45 @@ public sealed class ModContext
     }
 
     /// <summary>
+    /// Plays a named sound event on a character, from any thread (docs/modding.md "Sounds"): <see cref="World.PostSound(string, CharacterId,
+    /// string?, string?)"/> on the running world; nothing before the first world or without audio.
+    /// </summary>
+    public void PostSound(string eventName, CharacterId on, string? switchGroup = null, string? switchValue = null)
+    {
+        CheckSound(eventName, default);
+        _world()?.PostSound(eventName, on, switchGroup, switchValue);
+    }
+
+    /// <summary>
+    /// Plays a named sound event at a world point, from any thread: <see cref="World.PostSound(string, System.Numerics.Vector3, string?,
+    /// string?)"/> on the running world; nothing before the first world or without audio.
+    /// </summary>
+    public void PostSound(string eventName, System.Numerics.Vector3 at, string? switchGroup = null, string? switchValue = null)
+    {
+        CheckSound(eventName, at);
+        _world()?.PostSound(eventName, at, switchGroup, switchValue);
+    }
+
+    /// <summary>
+    /// Plays a named sound event on the interface, from any thread: <see cref="World.PostInterfaceSound"/> on the running world; nothing before the
+    /// first world or without audio.
+    /// </summary>
+    public void PostInterfaceSound(string eventName, string? switchGroup = null, string? switchValue = null)
+    {
+        CheckSound(eventName, default);
+        _world()?.PostInterfaceSound(eventName, switchGroup, switchValue);
+    }
+
+    /// <summary>
+    /// Throws, as the world's calls do, for an empty event name or a point that is not finite, also before the first world.
+    /// </summary>
+    static void CheckSound(string eventName, System.Numerics.Vector3 at)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(eventName);
+        if (!float.IsFinite(at.X + at.Y + at.Z)) throw new ArgumentOutOfRangeException(nameof(at), at, "A sound's point must be finite.");
+    }
+
+    /// <summary>
     /// A line in the game's log (log.txt), prefixed with the mod id.
     /// </summary>
     public void Log(string message) => Console.WriteLine($"mod       {Id}: {message}");
@@ -164,6 +203,7 @@ public sealed class ModContext
         ArgumentNullException.ThrowIfNull(factory);
         if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A system needs a name.", nameof(name));
         if (Pending.Systems.Any(s => s.Name == name)) throw new ArgumentException($"The mod already has a system named '{name}'.", nameof(name));
+        if (name == ModWorldStateSave.EntryName) throw new ArgumentException($"'{name}' is the game's name in the mod's save data.", nameof(name));
         Pending.Systems.Add(new SystemFactory(Id, name, anchor, factory));
     }
 
@@ -234,6 +274,19 @@ public sealed class ModContext
     }
 
     /// <summary>
+    /// A rule asked whether a wearer may wear an item (docs/modding.md "Wear rules"): <paramref name="rule"/> gets the item's record id, the
+    /// wearer's RACE id and whether it is an animal, after the item's own race lists pass, and false refuses the item everywhere a race limit
+    /// applies. It may run on any thread, so it must be quick, read no world state and answer the same for the same arguments. A throw counts as
+    /// yes and is logged once.
+    /// </summary>
+    public void AddWearRule(Data.Gameplay.WearRule rule)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(rule);
+        Pending.WearRules.Add(rule);
+    }
+
+    /// <summary>
     /// A bar on the medical panel after Hunger (docs/modding.md "Medical meters") labelled <paramref name="label"/>: the mod's systems set each
     /// character's reading in the tick with <see cref="Simulation.Bodies.ModMeter.Set"/>, and the panel shows it for the selected or inspected
     /// character. A label another meter has, or a fifth meter of all mods together, refuses it.
@@ -268,6 +321,39 @@ public sealed class ModContext
     }
 
     /// <summary>
+    /// A named, timed status effect (docs/modding.md "Status effects"): the mod's systems put it on and take it off characters with
+    /// <see cref="Simulation.Bodies.StatusEffect.Apply"/> and <see cref="Simulation.Bodies.StatusEffect.Remove"/>; the game shows it on the HUD's
+    /// State line, adds its stat amounts while it lasts, ends it when its time runs out and saves it with the character. Its stat amounts are copied
+    /// here. An id another effect has refuses it.
+    /// </summary>
+    public Simulation.Bodies.StatusEffect AddStatusEffect(Simulation.Bodies.StatusEffect effect)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(effect);
+        // The stat amounts are copied now: a later change of the mod's list, even inside Initialize, does nothing.
+        Simulation.Bodies.StatusEffectModifier[]? modifiers = effect.Modifiers is null ? null : [.. effect.Modifiers];
+        var asked = modifiers is null ? effect : effect with { Modifiers = modifiers };
+        if (Simulation.Bodies.StatusEffects.Refusal(asked, Pending.StatusEffects.Select(p => p.Effect)) is { } refusal)
+            throw new ArgumentException(refusal, nameof(effect));
+
+        Pending.StatusEffects.Add((effect, modifiers!));
+        return effect;
+    }
+
+    /// <summary>
+    /// A combat move for a character the game plays nothing for (docs/modding.md "Combat moves"): <paramref name="source"/> answers a
+    /// <see cref="CombatMove"/> (technique and progress) or null; the first mod's answer wins. It runs in the animation's parallel step for every
+    /// stepping character, and what it answers is part of the hashed world (the move's layers and root motion), so it must be cheap,
+    /// deterministic, thread-safe and read-only. A fault (a throw, no technique, a progress that is not finite) drops the source from the next tick.
+    /// </summary>
+    public void AddCombatMove(CombatMoveSource source)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(source);
+        Pending.CombatMoves.Add(source);
+    }
+
+    /// <summary>
     /// A right click on an item of <paramref name="record"/> (an item record's string id) in a player character's own inventory window, with no
     /// other character's window open (docs/modding.md "Item use"): <paramref name="handler"/> runs in a serial step of the tick and may change the
     /// world. It returns true when it used the click (removing a used-up item itself), false to let the click equip or move the item as usual. One
@@ -280,6 +366,37 @@ public sealed class ModContext
         if (string.IsNullOrWhiteSpace(record)) throw new ArgumentException("An item use needs a record id.", nameof(record));
         _registry.CheckItemUseFree(record, Pending, Id);
         Pending.ItemUses[record] = handler;
+    }
+
+    /// <summary>
+    /// A job type of the mod's own (docs/modding.md "Mod jobs"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up, so
+    /// never a game task), which the mod puts in characters' job lists and runs itself. The jobs panel names it <paramref name="name"/>; a save keeps
+    /// it in its place in the list under Meitou keys (the original's list never holds it), and a load puts it back while the type is registered.
+    /// One mod per number, whether claimed as a job or an NPC goal type (a mod may claim one number as both).
+    /// </summary>
+    public void AddJobType(Data.Gameplay.Ai.TaskType type, string name)
+    {
+        CheckOpen();
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A job type needs a name.", nameof(name));
+
+        _registry.CheckJobTypeFree(type, Pending, Id);
+        Pending.JobTypes[type] = name;
+    }
+
+    /// <summary>
+    /// An NPC goal type of the mod's own (docs/modding.md "NPC goals"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up,
+    /// so never a game task) that AI_TASK records of a data mod name in AI packages; NPCs whose running package lists it weigh it in the AI's chooser
+    /// by the desire of the goal one of the mod's systems registers (<see cref="Meitou.Simulation.Ai.INpcGoalOwner"/>), and the mod acts it out. Log
+    /// lines and notices name it <paramref name="name"/>. One mod per number, whether claimed as a goal or a job type (a mod may claim one number as
+    /// both); without the mod the goal stays inert.
+    /// </summary>
+    public void AddGoalType(Data.Gameplay.Ai.TaskType type, string name)
+    {
+        CheckOpen();
+        if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("A goal type needs a name.", nameof(name));
+
+        _registry.CheckGoalTypeFree(type, Pending, Id);
+        Pending.GoalTypes[type] = name;
     }
 
     /// <summary>
@@ -297,6 +414,7 @@ public sealed class ModContext
         CheckOpen();
         ArgumentNullException.ThrowIfNull(extension);
         Pending.Ui.Add(extension);
+        Pending.UiFolders[extension] = Folder;
     }
 
     /// <summary>
@@ -312,6 +430,19 @@ public sealed class ModContext
     }
 
     /// <summary>
+    /// Arranges the faction tab's relations list (docs/modding.md "Faction list"): <paramref name="arrange"/> gets the rows the tab would show,
+    /// sorted by name, and returns the rows to show in order: reordered, renamed, left out, or with headings (<see cref="FactionListRow.Faction"/>
+    /// -1). Called on the host's thread whenever the tab is drawn, so it must not touch the world; mods chain in load order. A throw or a null is
+    /// logged and the arranger is not called again.
+    /// </summary>
+    public void ArrangeFactionList(Func<IReadOnlyList<FactionListRow>, IReadOnlyList<FactionListRow>> arrange)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(arrange);
+        Pending.FactionLists.Add(new ModFactionList(Id, arrange));
+    }
+
+    /// <summary>
     /// A row of the debug menu (F10), after the vanilla rows. <paramref name="run"/> runs on the host's thread while a tick may be in flight: it must
     /// not touch the world, only read the context and queue commands; its return is the status line.
     /// </summary>
@@ -322,6 +453,47 @@ public sealed class ModContext
         if (string.IsNullOrWhiteSpace(label))
             throw new ArgumentException("A debug command needs a label.", nameof(label));
         Pending.DebugCommands.Add(new ModDebugCommand(Id, label, hasField, run));
+    }
+
+    /// <summary>
+    /// Claims the WORLD_EVENT_STATE <paramref name="record"/> (docs/modding.md "World states"): while the mod has set a value on it in a world
+    /// (<see cref="Simulation.Factions.ModWorldState.Set"/>, in a serial phase), every data record that tests the state reads that value; until then,
+    /// and without the mod, its own conditions answer. The values are saved in the mod's save data. A record that is no WORLD_EVENT_STATE, or one
+    /// another mod claimed, refuses the mod.
+    /// </summary>
+    public Simulation.Factions.ModWorldState AddWorldState(string record)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(record);
+        if (Data.Find(record) is not { Type: global::Meitou.Data.Fcs.FcsRecordType.WorldEventState })
+            throw new ArgumentException($"'{record}' is not a WORLD_EVENT_STATE of the loaded data.", nameof(record));
+        _registry.CheckWorldStateFree(record, Pending, Id);
+
+        var state = new Simulation.Factions.ModWorldState(Id, record);
+        Pending.WorldStates.Add(state);
+        return state;
+    }
+
+    /// <summary>
+    /// A key action (docs/modding.md "Key actions"): a row named <paramref name="label"/> on the settings' Controls page after the game's, bound to
+    /// those of <paramref name="defaults"/> that no other action holds, rebindable and saved as the game's are (under <paramref name="name"/>, unique
+    /// within the mod). Each press in the game view runs <paramref name="pressed"/> on the host's thread while a tick may be in flight: it must not
+    /// touch the world, only read the context and queue commands. A throw is logged and the action gets no more presses.
+    /// </summary>
+    public Game.Host.Input.ModKeyAction AddKeyAction(string name, string label, Action<Game.Host.Input.ModKeyContext> pressed,
+        params Game.Host.Input.Binding[] defaults)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(label);
+        ArgumentNullException.ThrowIfNull(pressed);
+        ArgumentNullException.ThrowIfNull(defaults);
+        if (Game.Host.Input.ModKeyAction.Refusal(name, label, defaults, Pending.KeyActions) is { } refusal)
+            throw new ArgumentException(refusal, nameof(name));
+
+        var action = new Game.Host.Input.ModKeyAction(Id, Name, name, label, pressed, [.. defaults]);
+        Pending.KeyActions.Add(action);
+        return action;
     }
 
     /// <summary>

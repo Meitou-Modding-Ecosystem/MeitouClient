@@ -60,7 +60,8 @@ River coverage and biome scum are incomplete; object-contact foam and character 
 
 Water combines Fresnel, normal distortion, depth absorption/refraction, sky/scene reflection,
 caustics, crest light/glitter and persistent foam. Surface colour/clarity depend on biome/Tab
-settings. Foam uses diffuse sun/ambient/weather lighting, reads the sun shadow and cloud-shadow
+settings. Meitou water's sky colour (where the mirrored scene is not, or past its border) is the game sky's under the weather's fog over the sky
+(`atmoSkyFog`, as the dome), so a dust storm's water mirrors its fog; Faithful's is the bare sky. Foam uses diffuse sun/ambient/weather lighting, reads the sun shadow and cloud-shadow
 tile, and dims at night, not emissive white. Metal uses the same native bindless water program as
 Vulkan; there is no Metal-only water fragment. The reflected scene remains mirrored around Y100
 despite waves. Reflect level/range, frustum,
@@ -142,6 +143,15 @@ Refraction copy omitted when the nearest water (or the near plane) is >=max(1.5*
 transmission is zero and swash faded. Higher clarity restores the copy. Do not infer absence
 from terrain/reflection visibility. `--ab water-lean` isolates shader/copy skips; geometry quality
 is independent. A scene with no nearby water can skip water work, with conservative bounds.
+
+Grid rings in view (`WaterRenderer.GridRange`, switch `RingsInView`): the grid's indices run ring by ring from the farthest in, so one
+index run draws the rings between the nearest and the farthest ground distance at which the picture's rays (5 % wider) cross the slab the
+surface stays in (water level ± 200 units: the waves at the strongest wind, breakers, ripples, twice over). The steepest ray gives the
+nearest distance, the flattest the farthest (no cut when it does not go down); nothing is cut sideways; the whole grid when the eye is
+within 200 units above the level or under it. Same triangles in the same order, so the picture is the same. **Verified** (2026-11-16,
+siwa-test6, paused, 5 views from 20° to 88° pitch with water in view, rings on against off: differences at the same-state noise floor).
+**Observed** (RTX 4090, 2560x1440): the whole grid (1.46 M vertices) cost 0.33 ms whatever the view; a town view with no water in
+sight draws 25 to 33 % of the indices, 0.14 to 0.16 ms; about 0.1 ms of the pass is not the grid.
 
 ## Verification and limitations
 

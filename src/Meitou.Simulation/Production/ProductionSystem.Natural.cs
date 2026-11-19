@@ -73,6 +73,15 @@ public sealed partial class ProductionSystem
     public static bool IsNatural(string id) => id.StartsWith(NaturalPrefix, StringComparison.Ordinal);
 
     /// <summary>
+    /// The BUILDING of the rock a natural id names (<see cref="NaturalId"/>); null for any other id.
+    /// </summary>
+    public static string? NaturalRecord(string id)
+    {
+        int at = id.LastIndexOf('@');
+        return IsNatural(id) && at > NaturalPrefix.Length ? id[NaturalPrefix.Length..at] : null;
+    }
+
+    /// <summary>
     /// A player site of the registry, else the rock a natural id names, else a town seat or training dummy; null for none.
     /// </summary>
     BuildSite? Site(World world, string id) => world.Buildings.Find(id) ?? Seat(world, id) ?? Natural(id) ?? TownDummy(world, id) ?? TownWorkSite(id);
@@ -130,9 +139,10 @@ public sealed partial class ProductionSystem
     }
 
     /// <summary>
-    /// The site a natural id describes, whether or not a rock stands there yet: a BUILDING with <c>is foliage</c> whose machine is an operable mine
-    /// of a <c>world resource mining</c>. Owned by no faction (-1: the original's <c>nofac</c> of its town NO_TOWN) until a player character works
-    /// it; complete. Null for an id naming no such BUILDING.
+    /// The site a natural id describes, whether or not a rock stands there yet: a BUILDING whose machine is operable, whatever its <c>world
+    /// resource mining</c> (0: yield 1). The placer makes the rock building natural (+0xc0) whether or not it has <c>is foliage</c> (<b>Verified</b>,
+    /// <c>FUN_1406d2410</c> passes the factory <c>FUN_14057cc70</c> the flag that sets it). Owned by no faction (-1: the original's <c>nofac</c> of
+    /// its town NO_TOWN) until a player character works it; complete. Null for an id naming no such BUILDING.
     /// </summary>
     BuildSite? ParseNatural(string id)
     {
@@ -144,8 +154,8 @@ public sealed partial class ProductionSystem
             return null;
 
         string record = id[NaturalPrefix.Length..at];
-        if (_db.Find(record) is not { Type: FcsRecordType.Building } building || !building.GetBool("is foliage")) return null;
-        if (Data(record) is not { Operable: true, Resource: not 0 }) return null;
+        if (_db.Find(record) is not { Type: FcsRecordType.Building } building) return null;
+        if (Data(record) is not { Operable: true }) return null;
 
         return new BuildSite { Id = id, Record = record, Name = building.Name, Position = new Vector3(x, y, z), Owner = -1, Materials = [],
             Complete = true };
@@ -192,12 +202,13 @@ public sealed partial class ProductionSystem
 
     /// <summary>
     /// The richness line of the building <paramref name="instance"/> names (<c>ProductionBuilding::getGUIFertility</c>, function 1 or 27 with a
-    /// resource): a machine's yield, or a rock's before it has been mined (no machine yet); null for anything else.
+    /// resource): a machine's yield (a site's, or a town building's <see cref="TownWorkId"/> machine: the slot tests no owner), or a rock's before
+    /// it has been mined (no machine yet); null for anything else.
     /// </summary>
     public RichnessView? RichnessOf(World world, string? instance)
     {
         if (instance is null) return null;
-        if (world.Machines.Find(instance) is { } m)
+        if ((world.Machines.Find(instance) ?? world.Machines.Find(TownWorkPrefix + instance)) is { } m)
         {
             return m.Data is { Function: MachineData.MineFunction or MachineData.NaturalMineFunction, Resource: not 0 and var r }
                 ? new(instance, r, m.Yield) { Owner = Natural(instance)?.Owner ?? -1, TownName = TownNameOf(world, Natural(instance)) }

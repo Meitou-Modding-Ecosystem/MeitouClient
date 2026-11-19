@@ -21,7 +21,9 @@ where occluders justify it. A depth prepass is extra geometry, not automatically
 **Layer arrays** (`TerrainTextures`), two tiers per texture pair (a BC3 diffuse and a BC1 normal):
 - **Far arrays** hold every pair of the biomes within the material distance (`--material-distance`, default 30000; the "Terrain material distance" row, live: the draw and the streamer read it each frame) at a quarter of the layer size (512² at 2048, about 0.5 MB a pair),
   at a fixed index per pair, at most 256 (the array layers every Vulkan device has; a pair past that stays in ground colour). The R8 height array
-  and the relief texture use the same index. A biome is drawn once all its pairs are in.
+  and the relief texture use the same index. A biome is drawn once all its pairs are in. The arrays have a slot for every pair of the world up to that
+  cap whatever the distance (`FarSlots`, code reading), so the distance sets what is loaded and shaded, not the video memory. The quality tiers set it
+  (15000 Low, 20000 Medium, 30000 High, 45000 Ultra and Extreme; [native-ui](native-ui.md) "Settings").
 - **Near arrays** have 32 slots at the full size (about 270 MB at 2048²), 32 per kept place (`Areas`, render-objects.md "Kept points") up to 128 when
   the guard allows: growing reallocates both arrays (no image copy), so every pair drops to far and loads near again; they never shrink, and a refused size is not asked again. A slot goes to a pair within its near range of the eye, then of a kept point while slots are left
   ([render-objects.md](render-objects.md#kept-points)), least recently needed first: the range is the pair's tile × pixels per radian ÷ layer size × 11.3, with an upscaler's negative bias widening it.
@@ -218,6 +220,17 @@ patches' second pass, for comparing). In the main view the patches' colour is no
   night 4.77 -> 2.87; a town with little ground in view 0.24 -> 0.37 (the target's clear and the pass over the picture). The pictures differ by 0.34 / 255 on average
   where two frames of the same setting differ by 0.21, at most 24 / 255 on about 150 pixels along ripple crests (the steps across an outline).
 - Not in the reflection, the viewer's other views or with the wireframe: those draw the patches' colour as before (`ResolveInputs` null).
+- **Split at the march's distance** (`TerrainShaders.ResolvePart`, `TerrainRenderer.NearRect`, switch `TerrainResolveSplit`): with the ground parallax on, the
+  resolve is two triangles. The far program is built without the march (`NO_MARCH`) and leaves out the pixels the march's own test takes
+  (`uParallax > 0.0 && distance < uParallaxEnd`); the near program is the full one, drawn last, keeps those pixels and a unit more (so the two programs' rounding leaves
+  no pixel to neither) and is scissored to the rectangle that can hold them: the selected nodes' boxes within the march's distance, cut to the rows whose rays go down
+  steeply enough to meet ground that near (the eye's height over the highest ground within reach, over the distance). No such rectangle: the near triangle is not drawn.
+  A rectangle over 60 % of the picture: the one full program as before (the far pass would mostly find pixels to leave: +0.06 to 0.08 ms in close views).
+  **Why**: the march's registers are the whole program's ("Registers"), so every pixel paid for it, reached or not. **Observed** (RTX 4090, 2560x1440, paused):
+  a town seen from 170 m 2.18 -> 1.58 ms of terrain (night 2.35 -> 1.79), a dune field from 180 m 1.43 -> 0.92, from 250 m 1.41 -> 0.87 (the cost with the
+  parallax off); from 130 m 1.46 -> 1.40; nearer, and city-night, unchanged. **Verified** (2026-11-16, siwa-test6 and "The boys 123", 10 paused views with a
+  partial rectangle, split against one program in the same session): no hole; 0.09 % of the pixels differ by more than 2 / 255 where two frames of one setting
+  differ on 0.03 %, scattered on cliff faces, no shift of the mean.
 
 ## Material cache
 

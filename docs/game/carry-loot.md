@@ -12,7 +12,7 @@ Bip01 L UpperArm attachment. A collapsed, missing or crushed left arm prevents c
 when the carrier is someone else) unless the task's snatch byte `+0x79` is set: the task factory `FUN_14032ebd0` sets it for task types 213 Lifting/Snatching,
 225 Lifting/Snatching Order and 240 Capture Target, not for 68 and 170; the link `FUN_14034fbe0` then unlinks the old carrier (`FUN_1405ce1e0`) before attaching
 (**Verified** decompile). Meitou `CharacterCold.Snatching`: the player's pick-up order (not a kidnap) and a lift started with row 213 or 240 (`CarrySystem.BeginPickUp`; a dialogue capture, DA 29 in its own town, passes 240 and so takes a target another carries, `ArrestSystem` `Arrest.Capture`); the old carrier lets go as a drop (no put-down knock-out). AI down-state gate and player context-menu eligibility
-are different: the menu offers Pick Up on a standing own character ([ui-input](ui-input.md#context-menu-verbs), **Observed**), never on a carried body (**Verified**, `FUN_1407a6bc0`): so a player snatch can only follow a body picked up by another after the order was given (**Observed**, inferred). Meitou's Ctrl + right click also snatches (engine choice). Race carry-bone affects attachment; secondary character type unknown.
+are different: the menu offers Pick Up on a standing own character ([ui-input](ui-input.md#context-menu-verbs), **Observed**) and on a standing friend of another faction, never on a carried body (**Verified**, `FUN_1407a6bc0`): so a player snatch can only follow a body picked up by another after the order was given (**Observed**, inferred). Meitou's Ctrl + right click also snatches (engine choice). Race carry-bone affects attachment; secondary character type unknown.
 
 **Observed** placement each frame (`CharacterAnimal::vfunc_77` `FUN_1405cda20`, `FUN_1405b5980`, `FUN_1405b1a30`): the body's
 *node* (not its root bone) gets position `carrierPos + carrierRot·boneModelPos + boneWorldRot·O` and rotation
@@ -52,7 +52,12 @@ body, **awake or not** (no consciousness test): it sets `+0x3d4`, clears the bed
 special action `AnimationClass +0x228`). The per-frame update `FUN_140520500` with that action set plays it alone (`FUN_1405203b0` by name each frame) and skips the movement, idle and combat picks, so
 a conscious carried character holds the same `carry me` pose as a knocked-out one; category 3 (CARRIED) is only the record's own tag (the only record with `being carried`). Meitou: `AnimationSystem.Update` plays
 `carry me` for any carried body (it did so only for a downed one before, so an awake carried mate fell through to the standing picks, none of which fits `being carried`, and showed the binding pose), and
-a carried body plays no technique, stumble, lift or knock-out clip. Awake carrying exists for the player's standing squad mates (`CarrySystem.AwakeMate`).
+a carried body plays no technique, stumble, lift or knock-out clip. Awake carrying exists for the player's standing squad mates (`CarrySystem.AwakeMate`) and for another faction's standing character that regards
+the carrier as friendly (a freed prisoner's TEMP_ALLY too; `CarrySystem.AwakeFriend`, #1012), lifted only by one of the player's own characters:
+the lift task's start (`FUN_14034f990`, **Verified**) tests only that the target is not the carrier, a flag of its race and, unless snatching, that
+it is not carried, and row 225 has no need on its target. Whether an awake body rides on and whether the put-down knocks it out read the carrier's
+full regard (slot 126 with the squad memory, as `FUN_1403504f0` and `FUN_1403509f0` call vfunc `0x3f0`; `CarrySystem.RegardsBody`). An NPC still walking up to lift a player character gives the lift up once that character is up again
+(`CarrySystem.Liftable`).
 
 **Observed** (other carrier / body pairs; a Shek body on the human leader, the squad's carried mates): the placement formula above takes only the body's `Height` slider
 (0.5 where the race has no body file) and the carrier's attach bone, so a body of another race hangs by the same rule; no difference from it was found. The upper-body movement pick enforces the carrying flags on its
@@ -85,9 +90,18 @@ carried pelvis 8 to 16, head 14 to 16 above the carrier's feet; a crawling carri
 and the only combat-side read of the carrying flag (`+0x348`) is the steering update `FUN_140660dc0`, which lists the carried body with its carrier. The protect-allies desire
 (`FUN_140599b90`, goals 15 / 288) is x0.5 while carrying and 0 in stealth. So a carrier retaliates and fights on its own with the body on its shoulder; weapon choice reads only the
 medical arm bytes (not the carrying flag), and the carrying arm stays on the body because the carrying arm overlay plays every frame ([animation](../animation.md#a-carrier)). Other `+0x348` readers found in the
-exe: squad-level "someone carries" tests (`FUN_140288630`, `FUN_14028fdf0`, a crowd-control count), the walk-to-run rule (`FUN_140342a30`: a carrier walking runs, Meitou `MovementSystem`), the lift and
+exe: squad-level "someone carries" tests (`FUN_140288630`, `FUN_14028fdf0`, a crowd-control count), the walk-to-jog rule (`FUN_140342a30`, `FUN_140332390`: an NPC carrier walking jogs, a player's keeps its mode, [force speed](pathfinding.md#force-speed); Meitou `MovementSystem`), the lift and
 put-down tasks, the FIND_BED desire and the Watching-slaves desire. **Verified** records: `carrying left arm only` (overlay, `override L arm`, every other bone deleted), `stand carrying left` (overlay, `override L arm`),
 `walk/jog carrying left` (upper, `override L arm`), `sword ready (carry)` (upper idle, carrying left, one weapon in hand).
+
+### A carrier at work
+
+**Verified** in `kenshi_x64.exe` (decompile and disassembly): a carrier keeps its jobs. The job pass `FUN_14050e5b0` reads `+0x348` only after the
+ditch entry, to skip the implicit sleep and sit jobs ([implicit jobs](ai-tasks.md)); 87 Operating machine's list B has no `!47`, its desire stub
+`LAB_1400215ee` jumps to `FUN_140318320`, AI vtable `+0x98` (slot 19, constant 1), and `Task_OperateMachine` (`FUN_14035b430`, `FUN_14035bc90`) reads
+neither `+0x348` nor the state-47 evaluator. No production or construction row but 146 Turret gunner has `!47` (234 Turret guard plans through 146).
+Meitou: `ProductionSystem.Able` (#915), `ConstructionSystem.Able` (#361); a carrier takes no job while its lift or put-down clip plays on past the
+order, or while it delivers on an errand (engine choice).
 
 ## Dropped item placement
 
@@ -111,6 +125,32 @@ slave/prisoner/bounty/bandit/police/diplomat/own-property branches, not just con
 drag-drop unpermitted down-character→Theft3, other source→Looting10. Ordinary loot UI path unknown.
 Ground pickup can raise Theft inside another faction's building, and taking from another faction's container does (Theft by right-click, Looting by drag).
 
+**Verified** (decompile of the right click `FUN_140713d20`, the drag `FUN_140715560` and the give `FUN_140712490`): the three set the crime and roll
+only when the source window has an owner character (`InventoryGUI` slot 15, `FUN_14070cfe0` -> `FUN_14070cef0`), and book it against that
+character's faction with it as the victim (the setter `FUN_140852c80` gets its handle), none when it is the player's (faction `+0x250`,
+`FUN_1407916d0`). The owner character is the window's character; a CONTAINER's character parent (`+0x230`); for a BUILDING, Building slot 59
+(`isIndoors`, `FUN_140547530`: the null handle for a door or unless the record is `is interior furniture`, [lights](../formats/lights.md)) gives the
+building it stands in: its `isInsideBuilding` hand (`+0x80`), else its interior layout's building; a building of no layout with a null hand has
+none (Building slot 122 returns 0 for every class but doors). That building's resident squad (`+0xD0`, a CHARACTER or PLATOON hand; its active
+platoon `+0x1d8`; [whose](factions-squads-towns.md#whose-template-a-home-carries)) gives its effective leader (`FUN_140792b90`,
+[squad leader](factions-squads-towns.md#squad-leader)), which keeps the member it falls back on as the backup. So a take out of a building that is no interior furniture (the wells, the outdoor farms, mines, refineries
+and wind generators: `is interior furniture` False in gamedata.base; the indoor farms, rain collectors and generators are True), out of interior
+furniture standing outdoors or out of furniture in a building nobody lives in is never a crime and has no roll; `isStealing` alone still marks the
+item. A building window's codes: the right click sets Theft 3 unless the owner character is down, when the loot permission decides
+(`FUN_140793940`, which allows any subject that is no character, so no crime, but the roll follows); the drag sets Looting 10 (its downed-owner
+branch needs a character subject, vfunc `0x20` = 1); the give Theft 3. The roll's object is the window's subject (right click: the GUI's `+0x50`;
+drag: slot 16 `FUN_14070d010`), but the give passes the owner character, so a give out of a building's window rolls as a take out of that
+character (the pickpocket chance below) and a caught thief's Theft is against it; out of the right click and the drag a caught Theft has the
+window's building as its victim, which the witness function (`FUN_140854d10`, resolving only a CHARACTER or type 0x5b victim) reads as none. The window's "Stealing chance:" (`FUN_140712920`) asks only the
+subject's faction (not the player's) and `isStealing`, so it is shown with no owner character too.
+Meitou (`CrimeSystem.PendSteal`, `OwnerCharacter`, #808): the same rule, the building it stands in being an interior piece's house or a town
+building's `isInsideBuilding` parent (`TownBuilding.InsideOf`). The resident squad is the squad living there of the template the building carries
+(the handle and the template are written together), the last made when several are, none when none is; it alone gives the owner character
+(`PopulationSystem.EffectiveLeader`, its `Squad.Backup` kept) and the watcher. A caught Theft names the holder in `PendingCrime.VictimHolder`. **Observed**
+(scratch harness, `PendSteal` on the #808 save): a Rebirth bar's barrels book against its Barman, not its guard housemates; a Hub bar the town's
+faction owns books against its blackmarket residents' faction; an empty Hub house's chest, Rebirth's wells and farms and Farming Village's
+outdoor Biofuel Distillery (interior furniture) book nothing.
+
 **Observed** steal roll (`FUN_140794810`, chance `FUN_1407944d0`; virtual names KenshiLib 1ce4a16): both inventory transfers above and the give
 set their pending crime, then roll; caught refuses the move. **Verified** (`FUN_140713d20` decompile): the right click asks the taker's
 inventory for room (`Inventory` slot 4 `FUN_14074afa0`), else its backpack, after setting the crime and before the roll (`Character` slot 83);
@@ -128,7 +168,7 @@ save, Rebirth's raised barrels read floor 1, the guards below floor 0, and a thi
 (`+0xD5`) is set; the roof flag is only set for a character whose `isIndoors` building is set (`FUN_1405d00b0`). Each movement step
 sets the floor from the surface under the character, roof or not (`FUN_1405c7c30`: `setFloor(CharMovement::getCurrentFloor())`, no roof test):
 that thief loaded with no saved `floor` key (read by `FUN_140626f50`; the original's saves write one per character) and read 1 on the roof. No watcher, or one unconscious, dead, carried or imprisoned (or a down thief): p = 1, the
-pending crime stays. Caught (`rand > p`): a watcher in bed says event 47 instead half the time (`rand > 0.5`); else it stands up, says event 8, the
+pending crime (set only with an owner character, above) stays. Caught (`rand > p`): a watcher in bed says event 47 instead half the time (`rand > 0.5`); else it stands up, says event 8, the
 thief gets Theft timer 30 against the owner's faction and the watcher's squad a long-term STOLE_FROM_ME tag (4, `FUN_140673a20`); no faction
 relation event (none of the slot-5 callers in [factions 3.5](factions-squads-towns.md#35-what-fires-relation-changes-observed-decompile) is a theft
 or loot path). Thievery XP 2 x 20, caught 2 x 80, none when p >= 0.98, the thief is imprisoned or its `+0x180` is 10 or more after the roll.
@@ -167,6 +207,13 @@ player's) only when `InventoryGUI::isStealing(source window, other window)` (`FU
 
 The mark does not ask `isItOkForMeToLoot` (that only picks the crime), so a bandit's or bounty holder's gear is stolen from its faction too.
 Right click and drag mark only an item with no owner yet; a give to a portrait (`FUN_140712490`) calls `notifyTheftFrom` whatever the owner (**Verified** call sites).
+`isStealing` also holds for a move out of the player's window into another faction's (a container, #851); the crime and roll are skipped for a source of
+the player's faction (`FUN_1407916d0`), an ownerless item stays unmarked, and a marked one put into the window of its from-owner, or of an owner of the
+from-owner's faction, loses its mark (owner set to the null handle, vfunc 0x2b0; **Observed**, both paths). Meitou: `HeldItemTheft.PutMark`, for a container or storage machine whose
+owner is the mark's faction (the drag through `MarkFor`, the right click in `ProductionSystem.PutInGrid`), before the units stack; units left behind keep the mark.
+A drag out of a window not the player's into a container or storage machine (another faction's or the player's) marks an ownerless item from the source's owner and leaves a marked one
+as it is, whatever its owner (**Observed**, `FUN_140715560`: the mark needs the source window not the player's, the clearing the player's); Meitou
+`HeldItemTheft.MarkFor` / `TheftMark`.
 
 Meitou: `CrimeSystem.IsStealing` (character and container overloads) gates `Pickpocket`, `Steal` and the marks (`MarksTheft`, container takes);
 the player's-windows and trade terms are the callers' own-faction tests and the separate trade window.
@@ -198,9 +245,9 @@ finders resolved from the thunks in the exe's bytes):
 | Goal | Desire | Finder | Follow-up |
 | --- | --- | --- | --- |
 | `FIND_AND_RESCUE` 105 | `140599480` (exe bytes): 0 if CharStats `+0x12b` is set or the character carries, else 1 | `FUN_1408cd550` | - |
-| `FIND_AND_RESCUE_IF_THERES_BEDS` 148 | `FUN_1405994c0`: 0 if CharStats `+0x12b` (Hold) or carrying, else the bed search `FUN_1408cfe00(..., 1)` (Meitou `CarrySystem.MayRescue`: all three, the bed one as `FindBed` for the rescuer, also for the one-shot Rescue order, which says "No free bed to take anyone to." over the rescuer when the search finds none, engine choice, the original is silent; a body already in a bed is not lifted again) | `FUN_1408cd550` | 148, then **106** `FIND_BED_AND_PUT_IN` |
-| `FIND_AND_RESCUE_LEADER` 142 | - | `FUN_140598540`: the squad leader (`platoon +0xa0`) when it is not the character itself and not dead, at any distance (**Verified**; Meitou: goal 142 is data driven (`AiBehaviour.RescueLeader`, only the packages that list it: raid retreat, Go home everybody, ex slave, Retreat and refresh, campaign victory occupy town, addon wandering slaver base): the carry sweep `CarrySystem.RescueLeaders` lifts the leader as row 213 once the AI chose the goal, no range; an engine cap: only a knocked-out leader the lift can take, the original also counts a crippled or crawling one) | - |
-| `FIND_BED_AND_PUT_IN` 106 | `FUN_1405a0d50`: 2 while carrying a body the carrier regards as friendly, whose slot `0x248` is null, that (for a police carrier, `FUN_140599600`) has no bounty with the carrier's faction, whose faction is not hostile to the carrier's (`FUN_1406b26d0`) and that the carrier's squad memory holds no grudge tag on (`FUN_140599390`: long-term tags 1, 4, 5, 7-10, short-term 1, 2, 4, 5, 7; **Verified**, Meitou `BedSystem.WantsToPutIn`); else 0 | none | - |
+| `FIND_AND_RESCUE_IF_THERES_BEDS` 148 | `FUN_1405994c0`: 0 if CharStats `+0x12b` (Hold) or carrying, else the bed search `FUN_1408cfe00(..., 1)` (Meitou `CarrySystem.MayRescue`: all three, the bed one as `FindBed` for the rescuer, also for the one-shot Rescue order, which says "No free bed to take anyone to." over the rescuer when the search finds none, engine choice, the original is silent; a body already in a bed is not lifted again; an NPC the AI runs whose goal lists hold 148 weighs it in its chooser at this desire times the finder's factor, both kept by the carry sweep `CarrySystem.RescueToBeds` (`AiBehaviour.RescueToBed`), and lifts the finder's body as row 148 once it chose the goal) | `FUN_1408cd550` | 148, then **106** `FIND_BED_AND_PUT_IN` |
+| `FIND_AND_RESCUE_LEADER` 142 | - | `FUN_140598540`: the squad leader (`platoon +0xa0`) when it is not the character itself and not dead, at any distance (**Verified**; Meitou: goal 142 is data driven (`AiBehaviour.RescueLeader`, only the packages that list it: raid retreat, Go home everybody, ex slave, Retreat and refresh, campaign victory occupy town, addon wandering slaver base): the carry sweep `CarrySystem.RescueLeaders` lifts the leader as row 213 once the AI chose the goal and holds the character, no range; the goal is not wanted by a member not able to lift at all (no usable left arm, or the row not in its repertoire; a fight or a crouch only delays the lift), and a walk to the leader that has not reached it in 60 game seconds, or whose leader died, is given up (engine choices, as for 148); an engine cap: only a knocked-out leader the lift can take, the original also counts a crippled or crawling one) | - |
+| `FIND_BED_AND_PUT_IN` 106 | `FUN_1405a0d50`: 2 while carrying a body the carrier regards as friendly, whose slot `0x248` is null, that (for a police carrier, `FUN_140599600`) has no bounty with the carrier's faction, whose faction is not hostile to the carrier's (`FUN_1406b26d0`) and that the carrier's squad memory holds no grudge tag on (`FUN_140599390`: long-term tags 1, 4, 5, 7-10, short-term 1, 2, 4, 5, 7; **Verified**, Meitou `BedSystem.WantsToPutIn`); else 0. The function itself tests neither death nor power (**Verified**, decompile of `FUN_1405a0d50`: it reads only the above). Its friendly test, Character vfunc `0x3f0` (`FUN_1407923d0`, the same thunk `0x140016892` at slot 126 of the `Character`, `CharacterHuman` and `CharacterAnimal` vtables, **Observed** from the RTTI vtables), returns true at once for a body of the carrier's own faction; for another faction it reads the squad memory tags (`FUN_140678960`, `FUN_140599590`) and the faction relation (`FUN_1406b27b0`, ally at or above `DAT_141683170`); none of these four functions tests death in its own code (**Verified** by decompile). So by these tests 106 wants a dead comrade as much as a living one. Row 99 Put in bed, its plan's step, has no `isCarriedDudeDead` in list B (row table, [ai-tasks](ai-tasks.md)). Its finder's place test tests no power (**Observed**, [locks](locks.md#beds)). Meitou: an NPC carrier whose body no errand's plan holds weighs it with its other carried-body goals (`TownDutySystem.LookCarriers`, `RankDisposals`, `BedSystem.PutInDesire`; after an errand's own lift the goal that lifted goes on, so a corpse lifted for the disposal goes on to it while that errand lasts; a carrier left with a corpse and no errand, after a load, a failed walk to the disposal or a body that died on a 148 or 142 carrier's shoulder, weighs 106 with the rest and may lay it in a bed, as the decompiled desire allows) and walks the body to the bed its finder gives, where it is laid in as by the player's put-in (`BedSystem.PutIn`) | the bed search `FUN_1408cfe00` (its registration stores it at +0x160, **Verified** `FUN_140319a60`; [locks](locks.md#beds)) | - |
 | `CARRY_WOUNDED_SLAVES` 168 | the rescue desire of 105 (registration `FUN_140319a60` gives 105, 138 and 168 the same function pointer; **Observed**: 0 on Hold or carrying; Meitou: Hold only, `CaptiveSystem.TryStartSlaveWork`) | `FUN_1408cdf50` | - |
 | `FIND_AND_KIDNAP` 132 | - | `FUN_1408cd5c0` (the character finder below, masks 0x4008 / 0x811, beds allowed) | - |
 | `FIND_A_DEAD_GUY` 138 / 230 | - | `FUN_1408cfb00` / `FUN_1408ce170` (the nearest dead, ragdolled, uncarried body; `carriable` when asked) | - |
@@ -308,6 +355,12 @@ Status `+0xe9`, saved as `kidn` ([save](../formats/save.md)). **Verified** by de
 - **Set** only by `Task_Kidnapping` vfunc 2 (`FUN_1403552d0`), on the victim, when the roll was not failed (task `+0x80` clear, set by the failed
   branch of vfunc 1) and the target resolves and is not the kidnapper: the kidnapper gets the pending Kidnapping (code 15) against the victim's
   faction, the victim the flag, then the lift (`Task_LiftSomething` vfunc 2). So every 246 lift flags its victim, whoever the kidnapper is, before any cage.
+- **An NPC kidnapping is no crime** (**Verified**): goal 254's step 132 needs state 48 carrying, whose only provider is 68 Lifting (`Task_LiftSomething`): 246 is
+  registered not-a-provider (TaskData `+0x40` = 1, `FUN_140319a60`), and only the task factory `FUN_14032ebd0` builds `Task_Kidnapping` (`FUN_140334d70`). The code-15
+  setters are `Task_Kidnapping`'s two slots, the witness function below and the put-down, the last two only for a load with the flag; so an NPC kidnapper's victim is
+  never flagged and its carrier is booked for nothing, by the lift or by those who see it carry the victim off. Meitou: `KidnapSystem` books nothing for a downed
+  victim; a sleeper it takes from a bed it lifts through the kidnap roll (`CarrySystem.BeginPickUp` with `kidnap`, engine choice), which books the Kidnapping
+  but does not flag the victim.
 - **Cleared** by the per-update `FUN_140852a30`: not carried (`+0x3d4` clear) and in a bed (`+0x2f8` = 1) while its status town (`+0x88`) is its
   home town (`FUN_1407956a0` `+0x30`); or carried by someone it regards as friendly (vfunc `0x3f0`) or loves (`FUN_140599590`), else it tags its
   carrier TEMP ENEMY (4) each update. Also by the separated-squad merge ([locks](locks.md#cages-and-beds)). Caging, release and escape do not touch it.
@@ -321,7 +374,7 @@ Status `+0xe9`, saved as `kidn` ([save](../formats/save.md)). **Verified** by de
   victim faction: the carrier's `+0x110` = 250 and a wrapper-set pending Kidnapping (timer 20, freed flag cleared).
 - No sentence, bail or escape rule reads it.
 
-Meitou: `CharacterCold.KidnapVictim`, set by `CarrySystem.Kidnap` on a roll that took, kept up by `ArrestSystem.UpdateKidnapVictims` (the bed
+Meitou: `CharacterCold.KidnapVictim`, set by `CarrySystem.Kidnap` on a roll of order 246 (the player's) that took, kept up by `ArrestSystem.UpdateKidnapVictims` (the bed
 test reads "its home town" as `InOwnTown`) and `PopulationSystem.RejoinSeparated`, read by `CarrySystem.LetKidnapVictimGo`, the status line and
 the witnesses (`CharacterFacts.Kidnapped`, `CrimeSystem.MindsKidnapping`; a witness friendly to the carrier's faction is still skipped, engine
 choice) and the bounty panel (`TooltipRuntime.ShowsBountyPanel`). Meitou's own
@@ -357,7 +410,8 @@ The same update (1.0.68 `FUN_1405a4f50`, **Verified** by decompile) makes a slav
 When the handle's character does not resolve, its platoon is looked up and the slave is measured to it the same way. A squad handle (0x5b) is resolved to its platoon.
 **Observed** (1.0.68 `FUN_1405a4f50` and `FUN_1404fe6e0`): with neither found, the slave escapes unless the handle still names a registered object.
 A null handle (type 11) fails that check, so an ownerless slave becomes escaped even inside town; only the resolved-owner distance branch checks the town.
-A cage or a carry is not tested. Meitou keeps an unloaded master squad or pending saved `slaver` handle until it can resolve.
+A cage or a carry is not tested. Meitou keeps an unloaded master squad or pending saved `slaver` handle until it can resolve, and a slave whose Meitou save lost its owner
+([save](../formats/save.md) "Slave state") until it finds one.
 
 Since the setter removes job 187 Obedient Slave, the slave then plans with its own lists. In the Rebirth hold (**Observed**, one slave), a slave sent to a workplace about 4 000 from its owner became an escaped slave and took its own 172 Getting in my cage, whose finder (`FUN_1408caaf0`) has no slave state test.
 
@@ -370,12 +424,19 @@ times a factor, and a nest marker never holds anyone (`FUN_140926d50`). In order
 2. the current town when there is one, within **1.5 x** radius (`DAT_14168ad18`), else the nearest town, within 1 x (`DAT_14167c308`): entering takes the radius,
    leaving takes half again;
 3. for a town whose vfunc `0x230` and `0x2f0` hold (likely walls), a point it gives for the position (vfunc `0x308`) within 300;
-4. the nearest entry of the world's second town list (`FUN_140927ad0`; **Observed** to be the player towns), with step 2's factor;
+4. the nearest entry of the town list's second list (`FUN_140927ad0`), with step 2's factor: the nests. The town factory (`FUN_140581770`) makes a
+   `Nest` object for a TOWN record of `type` 0 and a `Town` for any other, and the list's add (`FUN_14092d690`) puts an object whose vfunc `0x268`
+   is null (`TownBase`, `Nest`) into the second list (`+0x88` / `+0x90`) and a `Town` (player towns too) into the first (`+0x58` / `+0x60`), the
+   one steps 1 and 2 search. A nest's radius is a flat 625 (`Nest` vfunc `0x2a0`, `FUN_140926e90`, `DAT_141733c14`), a nest marker's 0. A wiped-out
+   nest stays in the list (`FUN_14092f010` only posts the message and stamps the hour). **Verified**, decompile;
 5. the town of the building the character stands in (Character vfunc `0x1d8`).
 
 **Observed** (Rebirth hold, radius 2 875): slaves working 2 350-2 590 from the centre and 3 600-3 950 from their
 owners stayed slaves all hour; one that walked past about 4 100 escaped. Meitou: `CharacterCold.StatusTown`, `AiSystem.StatusTownAt`, kept up by `ArrestSystem` on the
-spotting cadence; steps 3 and 5 are not modelled, step 1 reads the placed towns of the player's faction and step 4 the player towns.
+spotting cadence; steps 3 and 5 are not modelled, step 1 reads the placed towns of the player's faction, step 2 the placed towns and then the player
+towns, step 4 the nests whose centre is decided (`PopulationSystem.PlacedNests`: a nest gets its centre when it first loads, engine choice) as
+`CampaignTown.Nest` with `AiSystem.NestTownRadius`. A nest status town is its faction's home town (state 95, `ArrestSystem.AtHomeTown`) and a
+bandit nest's own faction answers event 45 there (`SightCrimes`); it is no town for DC 31 and nobody shops in it.
 
 Loading can free an escaped slave at once, because the clock is restored to the minute while the stamp is not. **Observed** with a "The Slaves" save written right after New Game:
 - the save holds `ssct` 34.00063 and the clock day 1 10:00, which is 34.0 h;
@@ -392,7 +453,6 @@ Meitou: `FixtureRegistry.LayLow` runs from the crime sweep (engine choice) and a
 ## Unknowns
 
 1. The bed search (`FUN_1408cfe00`) is decoded for player-faction characters and, in outline, for others ([locks](locks.md#beds)); the meaning of the designated-building kinds is not.
-   Row 106 does have a finder: its registration stores the bed search `FUN_1408cfe00` at +0x160 (**Verified**, `FUN_140319a60`); `BedSystem` already uses that search.
 2. The **sensed-list category bits** (`FUN_140853960` masks 1, 0x4010, 0x20, 0x210, 0x4008, 0x811, 0x10): which bit is ally, enemy, dead, slave;
    and the size of the sensed list, which is the search range of every finder.
 6. **Witness timing**: how often `FUN_1408580d0` runs per sensed character, with what range and line of sight, and how the pending timer `+0x90`

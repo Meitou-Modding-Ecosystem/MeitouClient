@@ -129,8 +129,17 @@ msgstr "Procurar"
 msgid "Install folder"
 msgstr "Pasta de instalação"
 
-msgid "Where versions are installed; changing it moves them."
-msgstr "Onde as versões são instaladas; alterá-la move os arquivos."
+msgid "Where versions are installed; changing it asks whether they move."
+msgstr "Onde as versões são instaladas; ao alterá-la, pergunta se elas devem ser movidas."
+
+msgid "Move the installed versions from {1} to {2}? Kept, they stay where they are and the new folder lists only its own."
+msgstr "Mover as versões instaladas de {1} para {2}? Se mantidas, ficam onde estão e a nova pasta lista apenas as suas."
+
+msgid "Move them"
+msgstr "Mover"
+
+msgid "Keep them"
+msgstr "Manter"
 
 msgid "Open"
 msgstr "Abrir"
@@ -194,6 +203,84 @@ msgstr "Mod local"
 
 msgid "RE_Kenshi plugin: its DLLs are ignored in Meitou"
 msgstr "Plugin RE_Kenshi: as DLLs são ignoradas pelo Meitou"
+
+msgid "Built into Meitou: {1}; this mod is not run"
+msgstr "Integrado ao Meitou: {1}; este mod não é executado"
+
+msgid "Squad XP in the Advanced settings"
+msgstr "Squad XP nas configurações Avançadas"
+
+msgid "Meitou port on the Steam workshop, endorsed by Meitou: {1} by {2}"
+msgstr "Port para o Meitou na Oficina Steam, endossado pelo Meitou: {1}, por {2}"
+
+msgid "Meitou port, endorsed by Meitou: {1} by {2} (installed)"
+msgstr "Port para o Meitou, endossado pelo Meitou: {1}, por {2} (instalado)"
+
+msgid "Updated on the workshop on {1}, after Meitou last checked it: some new features may be missing"
+msgstr "Atualizado na Oficina em {1}, depois da última verificação do Meitou: alguns recursos novos podem faltar"
+
+msgid "Request it"
+msgstr "Pedir"
+
+msgid "Open the public wishlist of RE_Kenshi mods for Meitou, where you can ask for this one"
+msgstr "Abre a lista pública de pedidos de mods RE_Kenshi para o Meitou, onde você pode pedir este"
+
+msgid "Get the port"
+msgstr "Obter o port"
+
+msgid "Subscribe to this mod's Meitou port on the Steam workshop, or open its page"
+msgstr "Assina o port deste mod para o Meitou na Oficina Steam, ou abre a página dele"
+
+msgid "Meitou ports of your mods"
+msgstr "Ports dos seus mods para o Meitou"
+
+msgid "The plugins of these RE_Kenshi mods do not run in Meitou."
+msgstr "Os plugins destes mods RE_Kenshi não rodam no Meitou."
+
+msgid "Each has a port for Meitou on the Steam workshop, kept up by its maintainer and endorsed by Meitou:"
+msgstr "Cada um tem um port para o Meitou na Oficina Steam, mantido por seu responsável e endossado pelo Meitou:"
+
+msgid "Want to look at them on Steam?"
+msgstr "Quer vê-los na Steam?"
+
+msgid "Do you want to subscribe now?"
+msgstr "Quer assinar agora?"
+
+msgid "Subscribe"
+msgstr "Assinar"
+
+msgid "Maintained by"
+msgstr "Mantido por"
+
+msgid "Asking Steam to subscribe..."
+msgstr "Pedindo à Steam para assinar..."
+
+msgid "Steam did not subscribe to anything."
+msgstr "A Steam não assinou nada."
+
+msgid "Subscribed on Steam: {1}."
+msgstr "Assinado na Steam: {1}."
+
+msgid "Steam is still downloading; press Refresh when it is done."
+msgstr "A Steam ainda está baixando; clique em Atualizar quando terminar."
+
+msgid "Steam could not subscribe"
+msgstr "A Steam não conseguiu assinar"
+
+msgid "Steam gave no answer."
+msgstr "A Steam não respondeu."
+
+msgid "You can subscribe on the Steam workshop page instead."
+msgstr "Você pode assinar pela página da Oficina Steam."
+
+msgid "Open its page"
+msgstr "Abrir a página"
+
+msgid "Open {1} pages"
+msgstr "Abrir {1} páginas"
+
+msgid "No thanks"
+msgstr "Não, obrigado"
 
 msgid "nightly"
 msgstr "diária"
@@ -1167,12 +1254,6 @@ msgstr "Habitantes mantêm sua rotina"
 msgid "Townspeople you come back to after an hour or more are where their day puts them: in bed at night, at the counter, at their posts and seats. In the game they are where they stood when you left."
 msgstr "Os habitantes que você reencontra após uma hora ou mais estarão onde sua rotina diária os levaria: na cama à noite, no balcão, em seus postos ou assentos. No jogo original, eles permanecem onde estavam quando você saiu."
 
-msgid "Doors close behind"
-msgstr "Portas fecham após a passagem"
-
-msgid "A door someone opened by walking through it closes again a few seconds after the last person went through. In the game doors stay open."
-msgstr "Uma porta aberta pela passagem de alguém fecha novamente alguns segundos após a última pessoa atravessá-la. No jogo original, as portas permanecem abertas."
-
 msgid "Hover outline"
 msgstr "Contorno ao passar o cursor"
 
@@ -1562,3 +1643,24 @@ msgstr "{1} é procurado por {2} por {3}: recompensa de c.{4}"
 
 msgid "{1} has been caught committing {2}!"
 msgstr "{1} foi pego cometendo {2}!"
+
+msgid "RE_Kenshi mod"
+msgstr "Mod RE_Kenshi"
+
+msgid "Meitou port"
+msgstr "Port para o Meitou"
+
+msgid "Search mods"
+msgstr "Pesquisar mods"
+
+msgid "Show only the mods whose name or author holds this text"
+msgstr "Mostrar apenas os mods cujo nome ou autor contém este texto"
+
+msgid "No mods match the search."
+msgstr "Nenhum mod corresponde à pesquisa."
+
+msgid "Tick every mod the search shows"
+msgstr "Marcar todos os mods que a pesquisa mostra"
+
+msgid "Untick every mod the search shows"
+msgstr "Desmarcar todos os mods que a pesquisa mostra"

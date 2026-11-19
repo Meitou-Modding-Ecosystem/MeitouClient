@@ -618,8 +618,11 @@ public sealed partial class UiPainter : IDisposable
     public void Draw(IReadOnlyList<UiControl> controls, int width, int height, Vector2 mouse, string? active, float minimumTextPixels = 0,
         DebugOverlay.OverlayPass? pass = null)
     {
+        // An icon forgotten while it decoded (ForgetIcon) is not uploaded.
         for (int uploads = 0; uploads < IconUploadsPerFrame && _decodedIcons.TryDequeue(out var icon); uploads++)
-            Upload(icon.Name, icon.Image);
+        {
+            if (_requestedIcons.Contains(icon.Name)) Upload(icon.Name, icon.Image);
+        }
         if (_skinsReleased) LoadSkinTextures();
 
         bool owns = pass is null;
@@ -813,12 +816,6 @@ public sealed partial class UiPainter : IDisposable
     float ClampedScale(int height) => Math.Clamp(height / 1080f, 0.5f, 1.5f) * InterfaceScale;
 
     /// <summary>
-    /// A skin piece's rectangle times <paramref name="scale"/>.
-    /// </summary>
-    static UiRect Scaled(UiRect r, float scale) =>
-        scale == 1f ? r : new UiRect(r.X * scale, r.Y * scale, r.Width * scale, r.Height * scale);
-
-    /// <summary>
     /// The skin's image parts in the widget's state (MyGUI's SubSkin, MainSkin and TileRect).
     /// </summary>
     void PaintSkin(UiControl c, UiRect b, UiRect clip, string widgetState, int width, int height, DebugOverlay.OverlayPass pass)
@@ -830,8 +827,8 @@ public sealed partial class UiPainter : IDisposable
             // A toggled button (Checked) uses MyGUI's *_checked states, else looks pushed.
             bool on = c.Properties.GetValueOrDefault("Checked") == "true";
             string state = on ? widgetState + "_checked" : widgetState;
-            // Meitou: a skin's pieces are fixed pixels in the files; they grow with the UI scale, so that borders and radio buttons keep their
-            // size against the layout on a 4K screen (#495).
+            // A skin's pieces are fixed pixels in the files; Kenshi's MyGUI scales them when it loads the skin (ScaleManager: offsets floored,
+            // sizes and the skin's size ceiled), so borders and radio buttons keep their size against the layout on a 4K screen (#495).
             float scale = Scale(height);
             foreach (var part in skin.Parts)
             {
@@ -840,8 +837,9 @@ public sealed partial class UiPainter : IDisposable
                     && !part.States.TryGetValue("normal", out source))
                     continue;
 
+                var piece = MyGuiScale.Coord(part.Offset, scale);
                 // MyGUI's MainSkin always covers the whole widget (MainSkin::_setAlign sets Stretch over the parent's size).
-                var dest = part.Type == "MainSkin" ? b : Scaled(part.Offset, scale).AlignTo(b, skin.Width * scale, skin.Height * scale, part.Align);
+                var dest = part.Type == "MainSkin" ? b : piece.AlignTo(b, MyGuiScale.Size(skin.Width, scale), MyGuiScale.Size(skin.Height, scale), part.Align);
                 var tint = Colour(c.Properties.GetValueOrDefault("Colour"), Vector4.One) * new Vector4(1, 1, 1, Alpha(c.Properties));
                 if (part.Type == "TileRect")
                     PaintTileRect(c, part, state, atlas, atlasMask, source, dest, clip, tint, scale);
@@ -867,8 +865,10 @@ public sealed partial class UiPainter : IDisposable
         float tileW = size?.Length == 2 ? float.Parse(size[0], CultureInfo.InvariantCulture) : source.Width;
         float tileH = size?.Length == 2 ? float.Parse(size[1], CultureInfo.InvariantCulture) : source.Height;
         float tileScale = controlTileSize is null ? scale : 1;
-        tileW *= tileScale;
-        tileH *= tileScale;
+        // Kenshi's MyGUI scales a state's TileSize as a size (ceiled) when it loads the skin.
+        bool loadScaled = controlTileSize is null && size?.Length == 2;
+        tileW = loadScaled ? MyGuiScale.Size(tileW, tileScale) : tileW * tileScale;
+        tileH = loadScaled ? MyGuiScale.Size(tileH, tileScale) : tileH * tileScale;
         if (properties?.GetValueOrDefault("TileH") != "true") tileW = dest.Width;
         if (properties?.GetValueOrDefault("TileV") != "true") tileH = dest.Height;
         if (tileW > 0 && tileH > 0 && tint.W >= 1 && atlasMask?.Covers(source) == true) _opaqueRects.Add(dest.Intersect(clip));
@@ -917,7 +917,7 @@ public sealed partial class UiPainter : IDisposable
         if (c.Caption.Length == 0 && !focused) return;
         if (SkinShowsNoCaption(c)) return;
 
-        var textArea = UiTextLayout.ContentRect(_resources, c);
+        var textArea = UiTextLayout.ContentRect(_resources, c, Scale(height));
         if (textArea.Width <= 0 || textArea.Height <= 0) return;
         var textClip = clip.Intersect(textArea);
         string fontName = c.Properties.GetValueOrDefault("FontName") ?? TemplateFont(c.Skin) ?? "Kenshi_StandardFont_Medium";
@@ -1489,8 +1489,8 @@ public sealed partial class UiPainter : IDisposable
 
     /// <summary>
     /// Whether the image file <paramref name="path"/> (an item icon) is on the GPU and can be shown as an ImageBox's <c>ImageTexture</c> of <see
-    /// cref="IconTexture"/>. The first ask starts decoding it on a worker, <see cref="Draw"/> uploads it when done; a file that cannot be read stays
-    /// false.
+    /// cref="IconTexture"/>. The first ask starts decoding it on a worker, <see cref="Draw"/> uploads it when done; a file that cannot be read or
+    /// decoded, for whatever reason, stays false and counts as failed (<see cref="IconFailed"/>).
     /// </summary>
     public bool IconReady(string path)
     {
@@ -1504,14 +1504,33 @@ public sealed partial class UiPainter : IDisposable
                 {
                     _decodedIcons.Enqueue((name, TextureLoader.LoadFile(path, allMips: false).Levels[0]));
                 }
-                catch (Exception e) when (e is IOException or InvalidDataException or NotSupportedException)
+                catch (Exception)
                 {
+                    // Any failure (a file the decoder rejects throws other types too, a locked file UnauthorizedAccessException): never left
+                    // unobserved, and the icon stops counting as pending.
                     _failedIcons.TryAdd(name, true);
                 }
             });
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether the image file <paramref name="path"/>, asked for with <see cref="IconReady"/>, could not be read or decoded.
+    /// </summary>
+    public bool IconFailed(string path) => _failedIcons.ContainsKey(IconTexture(path));
+
+    /// <summary>
+    /// Frees the image file <paramref name="path"/>'s texture (a code mod's map marker image no marker shows any more); a later
+    /// <see cref="IconReady"/> reads it again.
+    /// </summary>
+    public void ForgetIcon(string path)
+    {
+        string name = IconTexture(path);
+        _requestedIcons.Remove(name);
+        _failedIcons.TryRemove(name, out _);
+        Forget(name);
     }
 
     /// <summary>

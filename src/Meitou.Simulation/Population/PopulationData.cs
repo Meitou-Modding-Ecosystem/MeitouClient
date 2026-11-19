@@ -311,8 +311,8 @@ public sealed class PopulationData
     int _buildingsRevision;
 
     /// <summary>
-    /// Counts the changes of the towns' building lists after the world was made (<see cref="TownEdits"/>); the host's caches of them are rebuilt when
-    /// it moves.
+    /// Counts the changes of the towns' building lists after the world was made (<see cref="TownEdits"/>, a building laid out afresh); the host's and
+    /// the systems' caches of them are rebuilt when it moves.
     /// </summary>
     public int BuildingsRevision => Volatile.Read(ref _buildingsRevision);
 
@@ -429,11 +429,32 @@ public sealed class PopulationData
         if (Layouts is null || sameLayouts && (naming is null || naming == b.Naming)) return b;
 
         var relaid = TownBuildings.Relay(Db, Layouts, b, interior, exterior, naming);
-        if (ReferenceEquals(relaid, b)) return b;
-
-        Sites[site].Relay(b, relaid);
-        lock (_turrets) _turrets.Remove(site);
+        if (!ReferenceEquals(relaid, b)) Replace(site, b, relaid);
         return relaid;
+    }
+
+    /// <summary>
+    /// Lays building <paramref name="b"/> of town <paramref name="site"/>, laid out as a ruin, out standing (<see cref="TownBuildings.Stand"/>): the
+    /// new building takes its place in <see cref="TownSite.Buildings"/> and is returned; <paramref name="b"/> itself when it is laid out standing or
+    /// there are no layouts.
+    /// </summary>
+    public TownBuilding Stand(int site, TownBuilding b)
+    {
+        if (Layouts is null) return b;
+
+        var stood = TownBuildings.Stand(Db, Layouts, b);
+        if (!ReferenceEquals(stood, b)) Replace(site, b, stood);
+        return stood;
+    }
+
+    /// <summary>
+    /// Puts <paramref name="relaid"/> in <paramref name="old"/>'s place in town <paramref name="site"/>'s list; the caches of the lists follow.
+    /// </summary>
+    void Replace(int site, TownBuilding old, TownBuilding relaid)
+    {
+        Sites[site].Relay(old, relaid);
+        lock (_turrets) _turrets.Remove(site);
+        Interlocked.Increment(ref _buildingsRevision);
     }
 
     /// <summary>
@@ -478,6 +499,11 @@ public sealed class PopulationData
     public Construction.LevelBuildingIds? LevelBuildingIds { get; set; }
 
     /// <summary>
+    /// The level buildings that draw power and that no town takes (<see cref="TownBuildings.Townless"/>); empty without level data.
+    /// </summary>
+    public IReadOnlyList<TownlessBuilding> Townless { get; set; } = [];
+
+    /// <summary>
     /// The town buildings' rooms and lamps for the sight tests (<see cref="SightMap"/>); null: everyone outdoors and unlit.
     /// </summary>
     public ISightSource? Sight { get; set; }
@@ -516,9 +542,14 @@ public sealed class PopulationData
     /// </summary>
     Dictionary<string, int>? _factionIndex;
     /// <summary>
-    /// A faction cache by squad template id; nothing fills or reads it.
+    /// The first faction listing each squad template, by template id, made on first use (<see cref="FactionOfTemplate"/>).
     /// </summary>
     Dictionary<string, int>? _templateFaction;
+
+    /// <summary>
+    /// The faction index a squad template's <c>faction</c> reference names, by template id (<see cref="HousedFaction"/>); -1 for none.
+    /// </summary>
+    readonly ConcurrentDictionary<string, int> _housedFaction = new(StringComparer.Ordinal);
 
     /// <summary>
     /// The turret buildings of each site, cached by <see cref="Turrets"/> (locked: the AI asks from worker threads).
@@ -635,12 +666,36 @@ public sealed class PopulationData
     public float RoadPreferenceOf(int faction) => faction >= 0 && faction < Factions.Count ? Factions[faction].RoadPreference : 0;
 
     /// <summary>
-    /// The faction owning a town building before any saved owner: the player's faction when the level data names it, else the town's faction whatever
-    /// the level data says, since the town populate gives the town faction every non-player building of the town (<c>FUN_1409370d0</c>:35-75,
-    /// <c>FUN_14092e4b0</c>:35-37).
+    /// The faction owning a town building before any saved owner (docs/game/factions-squads-towns.md "Building owner after populate"): the player's
+    /// faction when the level data names it; else, for a home, the faction its residents' template names (the housing <c>FUN_14092e4b0</c> ->
+    /// <c>FUN_140552140</c>:23 sets it, so a slave shop is the Slave Traders' and a shop its traders'); else the town's faction whatever the level
+    /// data says, since the town populate gives the town faction every non-player building of the town (<c>FUN_1409370d0</c>:35-75).
     /// </summary>
-    public int LevelOwnerOf(TownBuilding b, int townFaction) =>
-        b.OwnerFactionId is { } id && FactionIndex(id) is >= 0 and var faction && faction == PlayerFaction ? faction : townFaction;
+    public int LevelOwnerOf(TownBuilding b, int townFaction)
+    {
+        if (b.OwnerFactionId is { } id && FactionIndex(id) is >= 0 and var named && named == PlayerFaction) return named;
+
+        // The template the housing gave it (a town override's first), not the one a later squad stamped on it: only the housing sets the faction.
+        string housed = b.Naming?.SquadTemplate ?? b.ResidentsTemplate;
+        return housed.Length > 0 && HousedFaction(housed) is >= 0 and var residents ? residents : townFaction;
+    }
+
+    /// <summary>
+    /// The faction index a squad template's <c>faction</c> reference names (its first entry, as the housing reads it); -1 for no such template, no
+    /// reference, or a faction that is not loaded.
+    /// </summary>
+    int HousedFaction(string templateId) => _housedFaction.GetOrAdd(templateId, ReadHousedFaction);
+
+    /// <summary>
+    /// <see cref="HousedFaction"/> read from the game data.
+    /// </summary>
+    int ReadHousedFaction(string templateId)
+    {
+        if (Db.Find(templateId) is not { } record) return -1;
+
+        var faction = record.GetReferences("faction");
+        return faction.Count > 0 ? FactionIndex(faction[0].TargetStringId) : -1;
+    }
 
     /// <summary>
     /// The position of a faction id in <see cref="Factions"/> (the first when an id repeats), or -1. The index is built once.

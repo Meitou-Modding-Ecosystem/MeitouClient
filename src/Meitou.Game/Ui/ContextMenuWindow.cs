@@ -151,6 +151,22 @@ sealed class ContextMenuWindow(PlayerInterface player)
         NearestSelected(at, player.Selected()) is { } lead ? Lockpicking.Chance(level, lead.LockpickSkill) : null;
 
     /// <summary>
+    /// A trader's customer: the selected character nearest it that stands and is no animal; null when none does.
+    /// </summary>
+    CharacterSnapshot? Customer(CharacterSnapshot trader) => NearestSelected(trader.Position, player.Selected().Where(c => !c.Down && !c.Animal));
+
+    /// <summary>
+    /// Talk To (12) when the target has something to say to the talker: the first selected character that is no animal (an animal never talks, as
+    /// the quick click's receiver <c>FUN_1407fae70</c> skips them).
+    /// </summary>
+    void AddTalkVerb(List<(string, Action)> verbs, CharacterId id)
+    {
+        if (player.Selected().FirstOrDefault(c => !c.Animal) is not { } talker || !player.Session.World.CanTalk(id, talker.Id)) return;
+
+        verbs.Add(("Talk To", () => player.Say(new Simulation.Dialogue.TalkOrder(talker.Id, id) { Tick = player.Session.World.Tick })));
+    }
+
+    /// <summary>
     /// The one of <paramref name="candidates"/> nearest <paramref name="at"/>; null when there is none.
     /// </summary>
     static CharacterSnapshot? NearestSelected(Vector3 at, IEnumerable<CharacterSnapshot> candidates) =>
@@ -191,7 +207,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
     /// <summary>
     /// The verbs the selection has for a character (<c>FUN_1407a6bc0</c>, docs/game/ui-input.md "Context menu verbs"), in the original's labels.
     /// Prisoners, carried bodies, the player's own, hostile and other characters each get their branch's verbs; then the medic verbs and the shackle
-    /// verbs.
+    /// verbs; then the rows the mods' interface extensions add (<see cref="PlayerInterface.ModMenuVerbs"/>, which read Shift themselves).
     /// </summary>
     internal List<(string Caption, Action Give)> Verbs(CharacterSnapshot target)
     {
@@ -265,7 +281,9 @@ sealed class ContextMenuWindow(PlayerInterface player)
         }
 
         // Shift turns an order into a job (SquadPanel).
-        return [.. verbs.Select(v => (v.Item1, player.SquadWindows.JobOrOrder(v.Item1, id, v.Item2)))];
+        List<(string, Action)> rows = [.. verbs.Select(v => (v.Item1, player.SquadWindows.JobOrOrder(v.Item1, id, v.Item2)))];
+        rows.AddRange(player.ModMenuVerbs(target));
+        return rows;
     }
 
     /// <summary>
@@ -278,8 +296,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
     void PrisonerVerbs(List<(string, Action)> verbs, CharacterSnapshot target, PrisonView prison, IReadOnlyList<CharacterId> selection, bool down)
     {
         var id = target.Id;
-        if (!down && player.Session.World.CanTalk(id, selection[0]))
-            verbs.Add(("Talk To", () => player.Say(new Simulation.Dialogue.TalkOrder(selection[0], id) { Tick = player.Session.World.Tick })));
+        if (!down) AddTalkVerb(verbs, id);
 
         // 26 unless it is the player's and selected: Trade for the player's own, else Loot (a pickpocket while it is awake).
         if (target.CanOpenInventory && !(target.IsPlayer && selection.Contains(id))) verbs.Add(InventoryVerb(target));
@@ -348,19 +365,30 @@ sealed class ContextMenuWindow(PlayerInterface player)
     /// One of the player's own characters: another one than the selection is followed (31) or, unless down, guarded (45,
     /// <see cref="FollowOrder.Guard"/>), its inventory opened beside the selection's (26, labelled Trade for the player's own), and picked up (225),
     /// standing too when it carries no one (<c>FUN_1407a6bc0</c>, <b>Observed</b>). A selected one crawling by choice gets Stand Up (28, the
-    /// selection's order).
+    /// selection's order), then Put Down (69) when a selected character carries someone, so the carrier's portrait drops the body. A member of a squad the player does not lead (<see cref="PlayerInterface.Independent"/>, Meitou only) keeps its own
+    /// inventory and carries on standing: it is picked up only while down and gets no free Trade (26); a standing one keeping a shop a code mod
+    /// gave its squad (<see cref="CharacterSnapshot.IsTrader"/>) gets the paid Trade first.
     /// </summary>
     void OwnCharacterVerbs(List<(string, Action)> verbs, CharacterSnapshot target, IReadOnlyList<CharacterId> selection, bool down)
     {
         var id = target.Id;
+        bool independent = player.Independent(id);
 
         if (selection.Contains(id))
         {
             if (target.StayingLow)
                 verbs.Add(("Stand Up", () => player.Say(new StandUpCommand(selection) { Tick = player.Session.World.Tick })));
 
+            var carriers = player.Selected().Where(c => !c.Carrying.IsNone).Select(c => c.Id).ToArray();
+            if (carriers.Length > 0 && target.CarriedBy.IsNone) verbs.Add(PutDownVerb(carriers));
+
             return;
         }
+
+        // A member of an independent squad keeping a shop a code mod gave it (Meitou only): the paid Trade, sent by the selected standing character
+        // nearest it, as an NPC trader's.
+        if (independent && target.IsTrader && !down && Customer(target) is { } customer)
+            verbs.Add(("Trade", () => player.Say(new Simulation.Trading.OpenTrade(customer.Id, id) { Tick = player.Session.World.Tick })));
 
         // Bodyguard (45): follows and defends the target; with Shift it is the Bodyguard job (SquadPanel). Not for a down one, carried or not
         // (docs/game/ui-input.md "Context menu verbs").
@@ -368,9 +396,9 @@ sealed class ContextMenuWindow(PlayerInterface player)
             verbs.Add(("Bodyguard", () => player.Say(new FollowOrder(selection, id) { Guard = true, Tick = player.Session.World.Tick })));
 
         verbs.Add(("Follow", () => player.Say(new FollowOrder(selection, id) { Tick = player.Session.World.Tick })));
-        if (target.CarriedBy.IsNone && (down || target.Carrying.IsNone))
+        if (target.CarriedBy.IsNone && (down || (target.Carrying.IsNone && !independent)))
             verbs.Add(("Pick Up", () => player.Say(new PickUpOrder([], id) { Tick = player.Session.World.Tick })));
-        if (target.CanOpenInventory) verbs.Add(InventoryVerb(target));
+        if (target.CanOpenInventory && !independent) verbs.Add(InventoryVerb(target));
     }
 
     /// <summary>
@@ -475,8 +503,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
         verbs.Add(("Attack Unprovoked",
             () => player.Say(new AttackOrder(selection, id) { Tick = player.Session.World.Tick, Picked = true, Unprovoked = true })));
         verbs.Add(("Bodyguard", () => player.Say(new FollowOrder(selection, id) { Guard = true, Tick = player.Session.World.Tick })));
-        if (player.Session.World.CanTalk(id, selection[0]))
-            verbs.Add(("Talk To", () => player.Say(new Simulation.Dialogue.TalkOrder(selection[0], id) { Tick = player.Session.World.Tick })));
+        AddTalkVerb(verbs, id);
     }
 
     /// <summary>
@@ -488,11 +515,10 @@ sealed class ContextMenuWindow(PlayerInterface player)
         var id = target.Id;
         bool onTurret = player.Selected().LastOrDefault() is { Turret: not null };
         bool hostile = player.PointerPanel.Hostile(target);
-        if (player.Session.World.CanTalk(id, selection[0]))
-            verbs.Add(("Talk To", () => player.Say(new Simulation.Dialogue.TalkOrder(selection[0], id) { Tick = player.Session.World.Tick })));
+        AddTalkVerb(verbs, id);
 
         // The customer is the selected character nearest the trader that stands (as the quick order's lead), not the first selected.
-        if (target.IsTrader && !hostile && NearestSelected(target.Position, player.Selected().Where(c => !c.Down)) is { } customer)
+        if (target.IsTrader && !hostile && Customer(target) is { } customer)
             verbs.Add(("Trade", () => player.Say(new Simulation.Trading.OpenTrade(customer.Id, id) { Tick = player.Session.World.Tick })));
 
         if (onTurret)
