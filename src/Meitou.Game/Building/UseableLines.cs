@@ -42,12 +42,16 @@ sealed class UseableLines(PlayerInterface player)
 
     /// <summary>
     /// Adds <c>[EMPTY]</c> in Title (the uppercased translation of "Empty" in brackets, no value) when the selected UseableStuff, StorageBuilding
-    /// or LightBuilding has an inventory with no items (slot 40 section 3, after <c>Town:</c>).
+    /// or LightBuilding has an inventory with no items (slot 40 section 3, after <c>Town:</c>): a machine's storage, or a town container's
+    /// (<paramref name="detail"/>).
     /// </summary>
-    internal void AddEmptyLine(BuildingSelection.SelectedBuilding focus, string? record, List<PlayerInterface.HudLine> state)
+    internal void AddEmptyLine(BuildingSelection.SelectedBuilding focus, string? record, Simulation.Locks.BuildingDetail? detail,
+        List<PlayerInterface.HudLine> state)
     {
         if (DataOf(record) is not { } data || !Useable(data)) return;
-        if ((player.Production.Machine(focus.SiteId) ?? MachineOf(focus))?.Storage is not { Items.Count: 0 }) return;
+
+        bool emptyMachine = (player.Production.Machine(focus.SiteId) ?? MachineOf(focus))?.Storage is { Items.Count: 0 };
+        if (!emptyMachine && detail is not { Empty: true }) return;
 
         string caption = $"[{Loc.Tr("Empty").ToUpper(System.Globalization.CultureInfo.CurrentCulture)}]";
         state.Add(new(caption, "", PlayerInterface.TitleColour));
@@ -73,7 +77,7 @@ sealed class UseableLines(PlayerInterface player)
     /// <summary>
     /// Adds the section 6 lines of a UseableStuff, StorageBuilding or LightBuilding, in a town or not (the panel's town guard passes for any placed
     /// building): Workers (slot 155), then Max Skill Level for a training dummy, else Efficiency and Max efficiency (slot 154), then a consumer's
-    /// Power (slot 153). Left out: a bed's, and a consumer's with no power view (a seat or dummy spot of a house, or one with no level town).
+    /// Power (slot 153). Left out: a bed's, and a consumer's with no power view (<c>ProductionSystem.LevelPowerOf</c>).
     /// </summary>
     internal void AddStatsLines(BuildingSelection.SelectedBuilding focus, List<PlayerInterface.HudLine> stats)
     {

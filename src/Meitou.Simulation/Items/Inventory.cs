@@ -81,23 +81,10 @@ public sealed class Inventory(int width, int height)
     }
 
     /// <summary>
-    /// The rectangles the grid is split into (a building shop's stock, one per stock container, <see cref="Trading.Shop.ForBuilding"/>): an item lies
-    /// wholly inside one, the cells outside them hold nothing. Null: the whole grid is one.
-    /// </summary>
-    public IReadOnlyList<GridRegion>? Regions { get; init; }
-
-    /// <summary>
-    /// Whether a w x h footprint at (x, y) lies inside one of the <see cref="Regions"/> (always without them).
-    /// </summary>
-    public bool InRegion(int x, int y, int w, int h) => Regions is not { } regions || regions.Any(r => r.Contains(x, y, w, h));
-
-    /// <summary>
-    /// Whether a w x h footprint at (x, y) of <paramref name="section"/> overlaps no item and lies inside one of the <see cref="Regions"/> (other
-    /// bounds are the caller's to check).
+    /// Whether a w x h footprint at (x, y) of <paramref name="section"/> overlaps no item (the bounds are the caller's to check).
     /// </summary>
     public bool IsFree(string section, int x, int y, int w, int h)
     {
-        if (!InRegion(x, y, w, h)) return false;
         foreach (var i in Items)
         {
             if (i.Section != section) continue;
@@ -136,17 +123,28 @@ public sealed class Inventory(int width, int height)
     }
 
     /// <summary>
+    /// A copy of this inventory and of every item in it (<see cref="ItemInstance.Copy"/>).
+    /// </summary>
+    public Inventory Copy()
+    {
+        var copy = new Inventory(Width, Height) { StackBonusMinimum = StackBonusMinimum, StackBonusMult = StackBonusMult, Limited = Limited };
+        copy.Items.AddRange(Items.Select(i => i.Copy()));
+        return copy;
+    }
+
+    /// <summary>
     /// Puts an item in, honouring the stack limit of each inventory (<see cref="LimitOf"/>): first it tops up stacks of the same record and quality
     /// in the main grid, then in the backpack; what is left takes the first free cells of <c>main</c>, then of the backpack, at most a full stack per
     /// cell (the item itself goes into the last cell, split-off copies into the others). True when every unit found a place; otherwise what did not
     /// fit stays in <paramref name="item"/>'s <see cref="ItemInstance.Quantity"/> (the caller keeps or drops it) and the units placed stay placed.
     /// Units with a buyback receipt top up only stacks of the same trade and direction; with no free cell left they join plain stacks too and lose
     /// the receipt (docs/simulation.md, trading). <paramref name="mainShut"/>: the main grid takes nothing, only the backpack does (a live animal's,
-    /// <see cref="InventoryCommands.MainClosed"/>).
+    /// <see cref="InventoryCommands.MainClosed"/>). A container holding items never goes into the backpack (<see
+    /// cref="InventoryCommands.FitsInBag"/>).
     /// </summary>
     public bool Add(ItemInstance item, bool mainShut = false)
     {
-        var bag = Backpack?.Contents;
+        var bag = InventoryCommands.FitsInBag(item) ? Backpack?.Contents : null;
         if ((!mainShut && TopUp(this, item, false)) || (bag is not null && TopUp(bag, item, false))) return true;
         if (!mainShut && Place(this, "main", item)) return true;
         if (bag is not null && Place(bag, "backpack_content", item)) return true;
@@ -156,9 +154,10 @@ public sealed class Inventory(int width, int height)
     /// <summary>
     /// Whether one unit of <paramref name="item"/> would find a place in <see cref="Add"/> (a dry run, nothing changes): a stack of it in the main
     /// grid or the backpack with room left, or a free cell in either. The state <c>gotInventoryRoomForResources</c> (82, <c>FUN_14059bd80</c>: the
-    /// inventory, else the worn backpack's).
+    /// inventory, else the worn backpack's; never the backpack for a container holding items).
     /// </summary>
-    public bool HasRoomFor(ItemInstance item) => Room(this, "main", item) || Backpack?.Contents is { } bag && Room(bag, "backpack_content", item);
+    public bool HasRoomFor(ItemInstance item) =>
+        Room(this, "main", item) || InventoryCommands.FitsInBag(item) && Backpack?.Contents is { } bag && Room(bag, "backpack_content", item);
 
     /// <summary>
     /// Whether <paramref name="section"/> takes one unit of <paramref name="item"/> (a dry run): a stack of it with room left, or a free cell.
@@ -180,12 +179,12 @@ public sealed class Inventory(int width, int height)
     }
 
     /// <summary>
-    /// Whether two items may share a stack: same record, material and quality (as <see cref="InventoryCommands.Stackable"/>, <c>FUN_140715560</c>),
+    /// Whether two items may share a stack: same record, company and material (as <see cref="InventoryCommands.Stackable"/>, <c>FUN_14075d510</c>),
     /// stolen mark, death and unique flags, mod tag. The material keeps blueprints of different researches apart: they share their look record
     /// (#354).
     /// </summary>
-    static bool SameStack(ItemInstance a, ItemInstance b) => a.Record == b.Record && a.MaterialId == b.MaterialId && a.Quality == b.Quality
-            && a.ModTag == b.ModTag && a.Mark == b.Mark
+    internal static bool SameStack(ItemInstance a, ItemInstance b) => a.Record == b.Record && a.MaterialId == b.MaterialId
+            && a.CompanyId == b.CompanyId && a.ModTag == b.ModTag && a.Mark == b.Mark
         && a.Death == b.Death && a.Unique == b.Unique;
 
     /// <summary>
@@ -274,8 +273,8 @@ public sealed class Inventory(int width, int height)
 
     /// <summary>
     /// The items the windows list, each with its index in <see cref="All"/> (the number the drag tokens carry): this inventory's own and the worn
-    /// backpack's contents. The contents of a container carried in the grid are not listed (their cells would draw over the worn bag's in its window;
-    /// the original opens only the worn backpack's grid).
+    /// backpack's own items. The contents of a container carried in the grid or in the worn bag are not listed (their cells would draw over the bag's
+    /// in its window; the original opens only the worn backpack's grid).
     /// </summary>
     public IEnumerable<(int Index, ItemInstance Item)> Shown()
     {
@@ -285,9 +284,11 @@ public sealed class Inventory(int width, int height)
         {
             yield return (index++, i);
             if (i.Contents is not { } bag) continue;
+
+            bool open = ReferenceEquals(i, worn);
             foreach (var inner in bag.All())
             {
-                if (ReferenceEquals(i, worn)) yield return (index, inner);
+                if (open && bag.Items.Contains(inner)) yield return (index, inner);
                 index++;
             }
         }
@@ -359,20 +360,4 @@ public sealed class Inventory(int width, int height)
         h.Add(Rng.StableHash("ModTag"));
         h.Add(Rng.StableHash(tag));
     }
-}
-
-/// <summary>
-/// A rectangle of an inventory's cells (<see cref="Inventory.Regions"/>).
-/// </summary>
-public readonly record struct GridRegion(int X, int Y, int Width, int Height)
-{
-    /// <summary>
-    /// Whether the <paramref name="w"/> x <paramref name="h"/> cells at (<paramref name="x"/>, <paramref name="y"/>) lie inside the region.
-    /// </summary>
-    public bool Contains(int x, int y, int w, int h) => x >= X && y >= Y && x + w <= X + Width && y + h <= Y + Height;
-
-    /// <summary>
-    /// Whether <paramref name="item"/>'s top-left cell lies inside.
-    /// </summary>
-    public bool Holds(ItemInstance item) => item.X >= X && item.X < X + Width && item.Y >= Y && item.Y < Y + Height;
 }

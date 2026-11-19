@@ -64,6 +64,51 @@ public sealed class ItemFactory(GameDatabase db, GameConstants constants, Func<M
         .Select(r => r.StringId).OrderBy(id => id, StringComparer.Ordinal).FirstOrDefault());
 
     /// <summary>
+    /// The money denominations (value, <c>stackable</c>, record id) of <see cref="MoneyStacks"/>, found once.
+    /// </summary>
+    readonly Lazy<List<(int Value, int Stackable, string Id)>> _denominations = new(() => [
+        .. db.OfType(FcsRecordType.Item)
+            .Where(r => r.GetInt("item function") == Player.PlayerSystem.MoneyFunction && r.GetInt("value") > 0)
+            .Select(r => (Value: r.GetInt("value"), Stackable: r.GetInt("stackable"), Id: r.StringId))
+            .OrderByDescending(d => d.Value)
+            .ThenByDescending(d => d.Stackable)
+            .ThenBy(d => d.Id, StringComparer.Ordinal)
+    ]);
+
+    /// <summary>
+    /// <paramref name="amount"/> cats as money items (the item manager's <c>FUN_1401641d0</c>, <b>Verified</b>, decompile): its denominations
+    /// (<c>FUN_140165c10</c>) are every ITEM of <c>item function</c> 14 with a <c>value</c> above 0, dearest first and at equal value the larger
+    /// <c>stackable</c> first (the comparator <c>FUN_1401640a0</c> under a sort over reversed bounds); each takes amount / value of what is left, in
+    /// full stacks of its <c>stackable</c> and then the rest. Base data: String of Cats (10), then Cats (1), both <c>stackable</c> 100. A
+    /// <c>stackable</c> of 0 would divide by zero in the original; it counts 1 here.
+    /// </summary>
+    public List<ItemInstance> MoneyStacks(int amount)
+    {
+        var stacks = new List<ItemInstance>();
+        if (amount <= 0) return stacks;
+
+        foreach (var (value, stackable, id) in _denominations.Value)
+        {
+            int count = amount / value;
+            amount -= count * value;
+
+            int per = Math.Max(stackable, 1);
+            for (int full = count / per; full > 0; full--) AddMoney(stacks, id, per);
+            if (count % per > 0) AddMoney(stacks, id, count % per);
+        }
+
+        return stacks;
+    }
+
+    /// <summary>
+    /// Adds one stack of the money item <paramref name="id"/> to <paramref name="stacks"/>.
+    /// </summary>
+    void AddMoney(List<ItemInstance> stacks, string id, int quantity)
+    {
+        if (Create(id, quantity) is { } stack) stacks.Add(stack);
+    }
+
+    /// <summary>
     /// CHARACTER <c>money item prob</c> / <c>min</c> / <c>max</c> for a newly made character not of the player's faction
     /// (<c>RootObjectFactory::process</c>, <b>Verified</b>): when a roll in [0, 1) is at most the prob (so the data's 80-100 always pass), a stack of
     /// the money item worth U[min, max] goes into the inventory; one that does not fit is lost.
@@ -160,6 +205,8 @@ public sealed class ItemFactory(GameDatabase db, GameConstants constants, Func<M
             ColourId = ItemColours.Of(Db, Db.Find(info.Id))?.StringId ?? "",
             Type = type,
             EquipmentSection = info.Type is FcsRecordType.Armour or FcsRecordType.Item && Db.Find(info.Id) is { } worn ? SectionOf(worn) : "",
+            // Item::Item (FUN_14075faf0) stores the record's slot, a missing one read as 0; the Crossbow constructor (FUN_140898c90) then sets 0.
+            AttachSlot = info.Type == FcsRecordType.Crossbow ? 0 : Db.Find(info.Id)?.GetInt("slot") ?? 0,
             WornOnlyBy = info.WornOnlyBy,
             WornNeverBy = info.WornNeverBy,
             IsLocked = info.Type == FcsRecordType.Armour && Db.Find(info.Id) is { } locked && locked.GetBool("is locked"),
@@ -295,16 +342,47 @@ public sealed class ItemFactory(GameDatabase db, GameConstants constants, Func<M
     /// An <b>engine choice</b>: a character whose loadout rolled a crossbow gets one item of the crossbow's <c>ammo</c> (one stack of bolts: 10 to 40
     /// shots by the record's <c>charges</c>) unless its record's list already gave it some. Only 3 of the 40 base-game CHARACTER records with
     /// crossbows list bolts; how the original equips NPC crossbowmen with ammunition is <b>Unknown</b> (docs/simulation.md "Combat", ranged).
+    /// Meitou: a crossbow whose <c>ammo</c> is empty gives the first ITEM of its <c>meitou ammo</c> list, and any ITEM of that list the character
+    /// already holds counts as some (docs/modding.md "Ammunition"); entries that are missing or not ITEM records are passed over, as the crossbow does.
     /// </summary>
     void AddAmmo(Inventory inventory, GameRecord crossbow)
     {
         var refs = crossbow.GetReferences("ammo");
-        if (refs.Count == 0) return;
-        string ammo = refs[0].TargetStringId;
+        var extra = crossbow.GetReferences(Data.Gameplay.Combat.CrossbowData.ExtraAmmoList);
+        string ammo = refs.Count > 0 ? refs[0].TargetStringId : FirstItem(extra);
+        if (ammo.Length == 0) return;
+
         foreach (var i in inventory.All())
-            if (i.Record == ammo) return;
+            if (i.Record == ammo || extra.Count > 0 && Accepts(extra, i.Record)) return;
         if (Create(ammo) is { } bolts) inventory.Add(bolts);
     }
+
+    /// <summary>
+    /// Whether <paramref name="list"/> names <paramref name="record"/> and it is an ITEM record (a kind the crossbow loads).
+    /// </summary>
+    bool Accepts(IReadOnlyList<GameReference> list, string record)
+    {
+        foreach (var r in list)
+            if (r.TargetStringId == record) return IsItem(record);
+
+        return false;
+    }
+
+    /// <summary>
+    /// The first entry of <paramref name="list"/> that is an ITEM record; empty when none is.
+    /// </summary>
+    string FirstItem(IReadOnlyList<GameReference> list)
+    {
+        foreach (var r in list)
+            if (IsItem(r.TargetStringId)) return r.TargetStringId;
+
+        return "";
+    }
+
+    /// <summary>
+    /// Whether <paramref name="id"/> names an ITEM record.
+    /// </summary>
+    bool IsItem(string id) => Db.Find(id) is { Type: FcsRecordType.Item };
 
     /// <summary>
     /// A loadout weapon in its section and row; when another weapon already holds those cells (a two-row crossbow fills the back), in the hip when

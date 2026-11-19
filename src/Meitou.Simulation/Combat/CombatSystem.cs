@@ -121,6 +121,7 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
         LateDefences = Settings.LateDefences;
         GunnerFacesBarrel = Settings.GunnerFacesBarrel;
         PunchReachFix = Settings.PunchReachFix;
+        AnimalMovesFix = Settings.AnimalMovesFix;
         StuckLimit = Math.Clamp(Settings.StuckLimit, RangedTuning.MinStuckLimit, RangedTuning.MaxStuckLimit);
         _xp = new XpService(constants, options);
     }
@@ -163,6 +164,13 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     public bool GunnerFacesBarrel { get; set; }
 
     /// <summary>
+    /// An animal whose natural weapon was drawn from its manufacturer (<see cref="Fighter.WeaponDrawn"/>, the Swamp Turtle) picks its attacks and
+    /// defences from the elephant creature techniques, whose <c>attack1</c> / <c>attack2</c> clips its skeleton plays (<see
+    /// cref="CombatOptions.AnimalMovesFix"/>, Meitou fix; docs/game/animals.md "Natural weapon"); off: its weapon's own, as the game does.
+    /// </summary>
+    public bool AnimalMovesFix { get; set; }
+
+    /// <summary>
     /// A fist attack whose <c>attack distance</c> is negative but above -100 (base data: "ma badpunch", -4, the only punch up to martial arts 20)
     /// reads it as positive (<see cref="CombatOptions.PunchReachFix"/>, Meitou fix; docs/game/combat.md "Attack technique choice"); off: as written,
     /// as the game does.
@@ -197,6 +205,24 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     /// The relation events of the landed blows (<see cref="FactionDeeds.Blow"/>); null: blows change no relation (hand-built test worlds).
     /// </summary>
     public FactionDeeds? Deeds { get; set; }
+
+    /// <summary>
+    /// What the code mods add (their combat moves, <see cref="ModMove"/>); null: none. Set before the first tick.
+    /// </summary>
+    public SimulationExtensions? Extensions
+    {
+        get;
+        set
+        {
+            field = value;
+            _modMoves = value is { CombatMoves.Count: > 0 } mods ? new ModCombatMoves(mods.CombatMoves) : null;
+        }
+    }
+
+    /// <summary>
+    /// The mods' combat moves with this world's faults; null without any.
+    /// </summary>
+    ModCombatMoves? _modMoves;
 
     /// <summary>
     /// The crime system the player's assaults and hits on the police are reported to (null: no crimes).
@@ -266,7 +292,22 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     }
 
     /// <summary>
-    /// Adds every slot's fight state and zone hits, the log's length, the bolts and the turret manning to <paramref name="hasher"/>.
+    /// The first mod's move (<see cref="SimulationExtensions.CombatMoves"/>) for a character the combat system holds in no move or reaction of its
+    /// own (not attacking, blocking, dodging, stunned, stumbling or down, as of the last finished tick); null without one. Parallel-safe.
+    /// </summary>
+    public CombatMove? ModMove(World world, CharacterId id, long tick)
+    {
+        if (_modMoves is not { } mods) return null;
+
+        var s = StateOf(id);
+        if (s.Down || s.AttackTech >= 0 || s.ReactTech >= 0 || s.StumbleClip >= 0 || tick < s.StunUntil) return null;
+
+        return mods.Move(world, id, tick);
+    }
+
+    /// <summary>
+    /// Adds every slot's fight state and zone hits, the log's length, the bolts, the turret manning and the mods' faulted combat moves to
+    /// <paramref name="hasher"/>.
     /// </summary>
     public void Hash(ref StateHasher hasher)
     {
@@ -280,6 +321,7 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
         hasher.Add(_log.Count);
         _projectiles.Hash(ref hasher);
         _turretManning.Hash(ref hasher);
+        _modMoves?.Hash(ref hasher);
     }
 
     /// <summary>
@@ -445,9 +487,21 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
                 ? (TaskType.AttackAttackersOf, TaskSource.Reaction)
                 : (TaskType.AttackEnemies, TaskSource.Goal);
         var request = new TaskRequest(CharacterTask.Attack, row, order.Source ?? source) { Target = target, Job = order.Job };
+        bool again = table.Next[a].Task == (byte)CharacterTask.Attack && cold.Running?.Target == target;   // a fight re-ordered: not news
 
-        return TaskStart.Start(world, a, request) == StartResult.Started;
+        if (TaskStart.Start(world, a, request) != StartResult.Started) return false;
+        if (!again) world.Events.Fight(world, a, t, order.Cause ?? DefaultCause(order));
+        return true;
     }
+
+    /// <summary>
+    /// The event log's cause of a fight whose order gives none: the player's pick, else an attack order with no cause (the player's attack on all, a
+    /// battle or a tool's order).
+    /// </summary>
+    static string DefaultCause(AttackOrder order) =>
+        order.Picked
+            ? "the player's order"
+            : "an attack order (the player's on all, a battle's or a tool's)";
 
     /// <summary>
     /// Whether the victim is in melee combat mode, read before an order engages anyone (an attack on a fighting character is a lesser assault).
@@ -769,7 +823,7 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
             float step = MathF.Min(speed * dts, gap - stand);
 
             // Through the nav agent, as root motion: a wall stops the body's circle and it slides along it (docs/game/pathfinding.md "Walls").
-            var moved = world.Walkability.Slide(prev[i].Position, dir * step, CombatTuning.Footprint(cold));
+            var moved = world.Walkability.Slide(prev[i].Position, dir * step, CombatSteering.Radius(cold));
             float x = prev[i].Position.X + moved.X, z = prev[i].Position.Z + moved.Y;
             if (world.Walkability.IsWalkable(x, z, prev[i].Position.Y))
             {

@@ -174,30 +174,52 @@ public sealed partial class CombatSystem : IProjectileSource
     /// The aim point (<c>FUN_140436d10</c>): the target's spine (here <see cref="RangedTuning.AimHeight"/> above its feet) plus its velocity times
     /// the bolt's flight time over the distance from the barrel (the lead, <b>Verified</b> in the disassembly).
     /// </summary>
-    static Vector3 AimPoint(Vector3 barrel, in CharacterHot target, float shotSpeed)
+    static Vector3 AimPoint(Vector3 barrel, in CharacterHot target, CharacterCold? cold, float shotSpeed)
     {
-        var spine = target.Position + new Vector3(0, RangedTuning.AimHeight, 0);
+        // A lying body's spine is near the ground: the middle of its lying hull (Meitou; the original reads the posed Bip01 Spine2).
+        float height = cold is { Race: not null } && Lying(cold) ? HullHalf(cold).Y : RangedTuning.AimHeight;
+        var spine = target.Position + new Vector3(0, height, 0);
         float flight = Vector3.Distance(barrel, spine) / MathF.Max(shotSpeed, 1);
 
         return spine + target.Velocity * flight;
     }
 
     /// <summary>
+    /// Whether a character lies on the ground: prone (crawling, staying low) or down (knocked out or dead).
+    /// </summary>
+    static bool Lying(CharacterCold c) => c.Medical is { Prone: true } or { Incapacitated: true };
+
+    /// <summary>
     /// Half the size of a character's click hull (<c>CharMovement +0x3b0</c>, a kinematic PhysX box in collision group 0 that the rays of bolts and
     /// of the line of fire hit; built by <c>FUN_140661a70</c>, docs/game/combat.md "Line of fire and the hit shape"): the race's <c>hull size X, Y,
-    /// Z</c>, Y = max(X, Z) while it is not upright (prone state not 0), all times half the size factor (slot 0x390), Y also times the look's height
-    /// (the appearance's <c>characterHeight</c>). The box is not turned with the character.
+    /// Z</c>, Y = max(X, Z) while it is not upright (prone state not 0; Meitou: also while it is down, <see cref="Shootable"/>), all times half the
+    /// size factor (slot 0x390), Y also times the look's height (the appearance's <c>characterHeight</c>). The box is not turned with the character.
     /// </summary>
     internal static Vector3 HullHalf(CharacterCold c)
     {
         var race = c.Race!;
         float x = race.HullX, y = race.HullY, z = race.HullZ;
-        if (c.Medical is { Prone: true }) y = MathF.Max(x, z);
+        if (Lying(c)) y = MathF.Max(x, z);
 
         float k = 0.5f * (c.Medical?.ScaleK ?? 1);
         float height = c.Appearance is { } look ? CharacterShape.MovementScaleOf(look) : 1;
 
         return new Vector3(x * k, y * k * height, z * k);
+    }
+
+    /// <summary>
+    /// How far above the feet a character's name tag stands (<c>FUN_1406e9340</c>, docs/game/perception.md): the race's <c>hull size Y</c>, or
+    /// <c>hull size Z</c> while it is not upright, times the size factor (slot 0x390) and the look's height, plus 5. Fixed between posture changes, so
+    /// the tag does not follow the run's bob.
+    /// </summary>
+    internal static float NameTagHeight(CharacterCold c)
+    {
+        if (c.Race is not { } race) return CharacterSnapshot.PersonTagHeight;
+
+        float hull = Lying(c) ? race.HullZ : race.HullY;
+        float height = c.Appearance is { } look ? CharacterShape.MovementScaleOf(look) : 1;
+
+        return hull * (c.Medical?.ScaleK ?? 1) * height + 5;
     }
 
     /// <summary>
@@ -252,11 +274,12 @@ public sealed partial class CombatSystem : IProjectileSource
     }
 
     /// <summary>
-    /// Has a click hull for bolts and the line of fire: alive, with a body, not down or carried (the original takes the hull away while a whole-body
-    /// or carry ragdoll runs, <c>FUN_1405d0db0</c> → <c>FUN_14065fe40</c>, <b>Observed</b>; Meitou treats every down or carried body as ragdolled).
+    /// Has a click hull for bolts and the line of fire: alive, with a body, not carried (the original takes the hull away while a whole-body or carry
+    /// ragdoll runs, <c>FUN_1405d0db0</c> → <c>FUN_14065fe40</c>, <b>Observed</b>, and a down body is struck through its ragdoll's own bodies;
+    /// Meitou has no ragdoll bodies for bolts, so a down body keeps a lying hull, <see cref="HullHalf"/>).
     /// </summary>
     internal static bool Shootable(ReadOnlySpan<CharacterHot> state, CharacterTable table, int slot) =>
-        state[slot].Alive && table.Cold(slot) is { Medical.Incapacitated: false, CarriedBy.IsNone: true, Race: not null };
+        state[slot].Alive && table.Cold(slot) is { CarriedBy.IsNone: true, Race: not null, Medical: not null };
 
     /// <summary>
     /// The fire decision's line of fire (<c>FUN_140437ad0</c>, docs/game/combat.md "Line of fire and the hit shape"): a ray from
@@ -368,10 +391,19 @@ public sealed partial class CombatSystem : IProjectileSource
     }
 
     /// <summary>
-    /// The drawn-weapon kind of the fighter's melee weapon; none unarmed.
+    /// The drawn-weapon kind of the fighter's melee weapon; none unarmed. A person's WEAPON of no skill class (a <c>skill category</c> of 6 too)
+    /// animates as <c>1 handed</c>, the crossbow's kind, so it carries <see cref="WeaponKinds.MeleeMark"/> too and every "is the crossbow drawn"
+    /// test answers no for it, as the original's, which ask the item in hand whether it is a crossbow (docs/game/combat.md "Arms"). No base weapon
+    /// a person can hold is of that kind (only the creatures' natural weapons are). An animal's natural weapon keeps the plain kind, which those
+    /// tests read as a drawn crossbow, as before.
     /// </summary>
-    internal static WeaponKinds MeleeDrawn(Fighter f) =>
-        f.Weapon is { } w && !f.Unarmed ? HandHold.OfCategory(w.Data.AnimationCategory).Weapon : WeaponKinds.None;
+    internal static WeaponKinds MeleeDrawn(Fighter f)
+    {
+        if (f.Weapon is not { } w || f.Unarmed) return WeaponKinds.None;
+
+        var kind = HandHold.OfCategory(w.Data.AnimationCategory).Weapon;
+        return kind == WeaponKinds.OneHanded && !f.IsAnimal ? kind | WeaponKinds.MeleeMark : kind;
+    }
 
     /// <summary>
     /// Chooses crossbow or melee for a fighting character that carries a crossbow (the planner's desires, docs/game/combat.md "Fight lifecycle and
@@ -450,7 +482,7 @@ public sealed partial class CombatSystem : IProjectileSource
     /// </summary>
     static bool CanShoot(in CombatSlot s, CharacterCold cold, CrossbowInstance x)
     {
-        bool hasAmmo = x.InfiniteAmmo || Ammunition.Find(cold.Inventory, x.Data.AmmoId) is not null;
+        bool hasAmmo = x.InfiniteAmmo || Ammunition.FirstCarried(cold.Inventory, x.Data) >= 0;
         return (s.Loaded > 0 || hasAmmo) && cold.Medical is not { BothArmsWork: false }
             && cold.Medical is not { Prone: true } && cold.WaterState != 3;
     }
@@ -486,7 +518,8 @@ public sealed partial class CombatSystem : IProjectileSource
         var x = cold.Fighter!.Crossbow!;
         var barrel = Barrel(prev[i]);
         float h = RangedFormulas.HeightFactor(barrel.Y, prev[t].Position.Y);
-        bool inRange = RangedFormulas.InRange(Vector3.DistanceSquared(prev[i].Position, prev[t].Position), x.Stats.Range, h);
+        var (range, _) = Flight(x, s.LoadedKind);
+        bool inRange = RangedFormulas.InRange(Vector3.DistanceSquared(prev[i].Position, prev[t].Position), range, h);
         if (s.RangedState == (byte)RangedStates.Closing)
         {
             Close(world, i, t, ref s, barrel, inRange, dt);
@@ -514,7 +547,7 @@ public sealed partial class CombatSystem : IProjectileSource
         s.RangedState = (byte)RangedStates.Reloading;
         if (s.ReloadLeft <= 0)
         {
-            if (!x.InfiniteAmmo && Ammunition.Find(cold.Inventory, x.Data.AmmoId) is null)
+            if (!x.InfiniteAmmo && Ammunition.FirstCarried(cold.Inventory, x.Data) < 0)
             {
                 s.Dry = true;
                 return;
@@ -527,17 +560,38 @@ public sealed partial class CombatSystem : IProjectileSource
         }
 
         s.ReloadLeft -= dt;
-        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Crossbows, dt, RangedFormulas.CrossbowXp);
-        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Dexterity, dt, RangedFormulas.DexterityReloadXp);
+        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Crossbows, dt, RangedFormulas.CrossbowXp, ExperienceSource.Ranged);
+        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Dexterity, dt, RangedFormulas.DexterityReloadXp, ExperienceSource.Ranged);
         if (s.ReloadLeft > 0) return;
 
         s.ReloadLeft = 0;
         s.Loaded = x.NumShots;
+        s.LoadedKind = LoadedKind(cold, x);
         cold.CrossbowShots = s.Loaded;
         s.Steady = RangedFormulas.SteadyAim;
         s.RangedState = (byte)RangedStates.Aiming;
         if (!x.InfiniteAmmo) effects.Emit(i, i, ReloadEffect);
     }
+
+    /// <summary>
+    /// Meitou (docs/modding.md "Ammunition"): the ammunition a finished reload loads from a crossbow with a list: the first kind carried, in the
+    /// crossbow's order; the first when none is left (the reload still loads, as before the list). Null for a crossbow without a list (every
+    /// base-game one), without a search.
+    /// </summary>
+    static AmmoData? LoadedKind(CharacterCold cold, CrossbowInstance x)
+    {
+        if (x.Data.Ammo is null) return null;
+
+        int k = x.Data.AmmoCount > 1 ? Ammunition.FirstCarried(cold.Inventory, x.Data) : 0;
+        return x.Data.KindAt(Math.Max(k, 0));
+    }
+
+    /// <summary>
+    /// The range and shot speed the shooter and its bolts use: the crossbow's, times the loaded ammunition's multipliers when it has one
+    /// (docs/modding.md "Ammunition").
+    /// </summary>
+    static (float Range, float Speed) Flight(CrossbowInstance x, AmmoData? kind) =>
+        kind is null ? (x.Stats.Range, x.Stats.ShotSpeed) : (x.Stats.Range * kind.RangeMult, x.Stats.ShotSpeed * kind.SpeedMult);
 
     /// <summary>
     /// The controller's state 1: walking towards the target, the closing timer from 0 (<c>FUN_140438c70</c> clears it only on entering the state).
@@ -600,16 +654,17 @@ public sealed partial class CombatSystem : IProjectileSource
     {
         var x = cold.Fighter!.Crossbow!;
         s.RangedState = (byte)RangedStates.Aiming;
-        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Perception, dt, RangedFormulas.PerceptionXp);
-        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Crossbows, dt, RangedFormulas.CrossbowXp);
+        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Perception, dt, RangedFormulas.PerceptionXp, ExperienceSource.Ranged);
+        _xp.Continuous(cold.Stats!, cold.Race!, StatsEnumerated.Crossbows, dt, RangedFormulas.CrossbowXp, ExperienceSource.Ranged);
         if (s.Steady > 0)
         {
             s.Steady -= dt;
             if (s.Steady > 0) return;
         }
 
-        var aim = AimPoint(barrel, world.Characters.Previous[t], x.Stats.ShotSpeed);
-        switch (LineOfFire(world, i, t, barrel, aim, cold.Faction, x.Stats.Range))
+        var (range, speed) = Flight(x, s.LoadedKind);
+        var aim = AimPoint(barrel, world.Characters.Previous[t], world.Characters.Cold(t), speed);
+        switch (LineOfFire(world, i, t, barrel, aim, cold.Faction, range))
         {
             case 0:
                 StartClosing(ref s);
@@ -631,14 +686,19 @@ public sealed partial class CombatSystem : IProjectileSource
     #region Shots and reloads
 
     /// <summary>
-    /// A finished reload: one bolt is taken from the shooter's inventory.
+    /// A finished reload: one bolt of the kind loaded (<see cref="CombatSlot.LoadedKind"/>, else the crossbow's <c>ammo</c>) is taken from the
+    /// shooter's inventory; observers hear it (<see cref="Items.ItemUseKind.Ammunition"/>).
     /// </summary>
     void ApplyReload(World world, in Effect e)
     {
         var cold = world.Characters.Cold(e.Source);
         if (cold?.Fighter?.Crossbow is not { } x) return;
 
-        Ammunition.UseOne(cold.Inventory, x.Data.AmmoId);
+        string ammo = _write[e.Source].LoadedKind?.StringId ?? x.Data.AmmoId;
+        if (!Ammunition.UseOne(cold.Inventory, ammo, out bool unitGone)) return;
+
+        var shooter = world.Characters.IdOf(e.Source);
+        Items.ItemUseObservers.Report(world, Items.ItemUseKind.Ammunition, ammo, shooter, null, 1, unitGone);
     }
 
     /// <summary>
@@ -654,8 +714,11 @@ public sealed partial class CombatSystem : IProjectileSource
         var ac = table.Cold(a);
         if (ac?.Fighter?.Crossbow is not { } x || ac.Stats is null || ac.Medical is null || !prev[t].Alive) return;
 
+        // Meitou: the loaded ammunition (this tick's slot, the shot's own); null for a base-game crossbow.
+        var ammo = _write[a].LoadedKind;
+        var (_, leadSpeed) = Flight(x, ammo);
         var barrel = Barrel(prev[a]);
-        var aim = AimPoint(barrel, prev[t], x.Stats.ShotSpeed);
+        var aim = AimPoint(barrel, prev[t], table.Cold(t), leadSpeed);
         var to = aim - barrel;
         if (to.LengthSquared() < 1e-6f) return;
 
@@ -669,6 +732,13 @@ public sealed partial class CombatSystem : IProjectileSource
         float w = Rng.Float(Rng.Hash(world.Seed, key, RngPurpose.Ranged, counter + 2));
         var dir = RangedFormulas.Deviate(Vector3.Normalize(to), u * deviation, spin);
         var (damage, range, speed) = RangedFormulas.Bolt(x.Stats, h, w);
+        if (ammo is not null)
+        {
+            damage *= ammo.DamageMult;
+            range *= ammo.RangeMult;
+            speed *= ammo.SpeedMult;
+        }
+
         _projectiles.Add(new Projectile
         {
             Id = _projectiles.NextId(),
@@ -686,7 +756,8 @@ public sealed partial class CombatSystem : IProjectileSource
             Damage = damage,
             Avoidance = RangedFormulas.FriendlyAvoidance(Eff(ac, StatsEnumerated.FriendlyFire)),
             Passed = -1,
-            Mesh = x.Data.LiveAmmoMesh,
+            Mesh = ammo is { LiveAmmoMesh.Length: > 0 } ? ammo.LiveAmmoMesh : x.Data.LiveAmmoMesh,
+            Ammo = ammo,
         });
         ShotAt(world, t, ac.Faction);
         Sound(world, SoundKind.Shot, a, -1, prev[a].Position);
@@ -726,18 +797,24 @@ public sealed partial class CombatSystem : IProjectileSource
     /// A bolt in a body (<c>FUN_140439c90</c>): a packet of pierce = the bolt's damage, bleed 2, no penetration, through the hit pipeline with hit
     /// direction 6 (the part by its <c>hit</c> weight alone), armour and toughness, the global damage multiplier applied once more there
     /// (<b>Observed</b>, so bolts scale with its square). No block, no dodge. The victim takes "hit taken" XP; the shooter gains none for a hit. A
-    /// heavy hit staggers as a melee one does.
+    /// heavy hit staggers as a melee one does. False, nothing done, when a code mod's hit filter cancels it (<see cref="ICombatHitFilter"/>): the
+    /// bolt flies on past the victim. Meitou: a bolt of a listed ammunition (<see cref="Projectile.Ammo"/>) scales the bleed by its multiplier.
     /// </summary>
-    internal void BoltHit(World world, in Projectile p, int v, bool intended)
+    internal bool BoltHit(World world, in Projectile p, int v, bool intended)
     {
         var table = world.Characters;
         var prev = table.Previous;
         var dc = table.Cold(v);
-        if (dc is null || dc.Medical is null || dc.Race is null) return;
+        if (dc is null || dc.Medical is null || dc.Race is null) return true;
+
+        var packet = p.Ammo is { } ammo
+            ? new DamagePacket(0, 0, p.Damage, 0, RangedFormulas.BoltBleed * ammo.BleedMult, 0)
+            : new DamagePacket(0, 0, p.Damage, 0, RangedFormulas.BoltBleed, 0);
+        var shooter = new CharacterId(p.Shooter, p.ShooterGeneration);
+        if (!world.CombatHitFilters.Pass(world, CombatHitSource.Projectile, shooter, table.IdOf(v), p.Id, -1, intended, ref packet)) return false;
 
         int now = (int)world.Tick;
         ref var d = ref _write[v];
-        var packet = new DamagePacket(0, 0, p.Damage, 0, RangedFormulas.BoltBleed, 0);
         var ctx = MakeContext(world, v, dc);
         var events = _hitEvents;
         events.Clear();
@@ -781,10 +858,13 @@ public sealed partial class CombatSystem : IProjectileSource
 
         if (observe && part >= 0)
         {
-            world.ObserveCombatHit(new CombatHit(world.Tick, CombatHitSource.Projectile, new(p.Shooter, p.ShooterGeneration), table.IdOf(v),
+            world.ObserveCombatHit(new CombatHit(world.Tick, CombatHitSource.Projectile, shooter, table.IdOf(v),
                 p.Id, -1, part, damage, absorbed, prev[v].Position, p.Direction, prev[v].Yaw,
                 -1, false, intended, wasAlive, wasIncapacitated));
         }
+
+        if (death) DeathObservers.Report(world, v, shooter, DeathSite.Bolt);
+        return true;
     }
 
     /// <summary>
@@ -848,7 +928,8 @@ public sealed partial class CombatSystem : IProjectileSource
         var state = table.Previous;
         if (p.Shooter >= state.Length || !state[p.Shooter].Alive || state[p.Shooter].Generation != p.ShooterGeneration) return;
 
-        if (table.Cold(p.Shooter) is { Stats: { } stats, Race: { } race }) _xp.Continuous(stats, race, StatsEnumerated.FriendlyFire, 1, amount);
+        if (table.Cold(p.Shooter) is { Stats: { } stats, Race: { } race })
+            _xp.Continuous(stats, race, StatsEnumerated.FriendlyFire, 1, amount, ExperienceSource.Ranged);
     }
 
     #endregion

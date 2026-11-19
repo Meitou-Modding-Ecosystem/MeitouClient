@@ -209,16 +209,28 @@ sealed class OrdersPanel(PlayerInterface player)
     }
 
     /// <summary>
-    /// A jobs row: the type's text and the building, training dummy or character it targets. The engineer works every site, not the one it was
-    /// ordered on, so its row is plain "Engineer" (<b>Observed</b> in the original by players, #348/#353).
+    /// The name a mod registered for its own job type (docs/modding.md "Mod jobs"); null for any other type.
+    /// </summary>
+    string? ModJobName(Data.Gameplay.Ai.TaskType type) => player.Session.World.Systems
+        .OfType<Simulation.Player.PlayerSystem>()
+        .FirstOrDefault()?.Extensions?.JobTypes.GetValueOrDefault(type);
+
+    /// <summary>
+    /// A jobs row: the type's text (a mod's job: the name it registered) and the building, rock, training dummy or character it targets. The engineer
+    /// works every site, not the one it was ordered on, so its row is plain "Engineer" (<b>Observed</b> in the original by players, #348/#353).
     /// </summary>
     string JobRowText(Simulation.Production.PermaJob job)
     {
-        string text = Loc.Tr(Simulation.Production.PermaJobs.Text(job.Type) ?? job.Type.ToString());
+        string name = Simulation.Production.PermaJobs.Text(job.Type) ?? ModJobName(job.Type) ?? job.Type.ToString();
+        string text = Loc.Tr(name);
         if (job.Type == Data.Gameplay.Ai.TaskType.JobBuilder) return text;
 
         if (job.Site is { } id && player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == id) is { } site)
             return text + ": " + player.Build.SiteName(site);
+
+        // A rock is no registry building: its id names its BUILDING (an Iron Ore deposit, a Stone outcrop).
+        if (job.Site is { } rockId && Simulation.Production.ProductionSystem.NaturalRecord(rockId) is { } rock)
+            return text + ": " + (player.Build.Services?.ItemName(rock) ?? rock);
 
         if (job.Site is { } dummyId && player.Session.CurrentSnapshot.Dummies.FirstOrDefault(d => d.Id == dummyId) is { } dummy)
             return text + ": " + (player.Build.Services?.ItemName(dummy.Record) ?? dummy.Record);

@@ -338,6 +338,12 @@ public sealed class PendingCrime
     /// </summary>
     public CharacterId Victim { get; set; } = CharacterId.None;
     /// <summary>
+    /// The victim when it is a building's holder of goods (its <see cref="StealSource.Id"/>): a thief caught taking out of a building's window
+    /// (<c>FUN_140794810</c> passes the window's building as the victim, <b>Verified</b> decompile); null for any other. The witness function
+    /// (<c>FUN_140854d10</c>) resolves only a CHARACTER victim, so it reads this one as none.
+    /// </summary>
+    public string? VictimHolder { get; set; }
+    /// <summary>
     /// Game seconds the crime stays fresh: counted down by the crime tick, cleared at or below 0; a witness sets it to 20 again.
     /// </summary>
     public float Timer { get; set; }
@@ -416,7 +422,7 @@ public sealed record CrimeSettings
 }
 
 /// <summary>
-/// What the crime system did: a crime set pending, seen, booked, or a bounty that expired.
+/// What the crime system did: a crime set pending, seen, booked, or ended without a bounty; a bounty that expired or was cleared.
 /// </summary>
 public enum CrimeEventKind
 {
@@ -435,15 +441,43 @@ public enum CrimeEventKind
     /// <summary>
     /// A bounty expired.
     /// </summary>
-    Expired
+    Expired,
+    /// <summary>
+    /// A bounty was removed other than by expiry: paid as a fine or a bail, served or released from prison, cleared by dialogue or the debug menu.
+    /// </summary>
+    Cleared,
+    /// <summary>
+    /// A pending crime ended, booked or not: its timer ran out, a crime of another code replaced it, or the character's change of side dropped it
+    /// (recruited, bought free, dismissed, its squad stored off screen).
+    /// </summary>
+    Lapsed,
 }
 
 /// <summary>
-/// One crime log line: the tick, what happened, the culprit, the crime code, the faction, the amount and the witness (<see cref="CharacterId.None"/>
-/// for none).
+/// One crime log line (and a crime observer's report, <see cref="ICrimeObserver"/>): the tick, what happened, the culprit, the crime code (none
+/// for an expiry or a clearing, whose entry holds several), the faction (the victim's for <see cref="CrimeEventKind.Pending"/> and
+/// <see cref="CrimeEventKind.Lapsed"/>, the witness's for <see cref="CrimeEventKind.Witnessed"/>, the booking faction's for
+/// <see cref="CrimeEventKind.Booked"/>, the entry's for <see cref="CrimeEventKind.Expired"/> and <see cref="CrimeEventKind.Cleared"/>), the amount
+/// (the bounty in all, for a booking, an expiry or a clearing) and the witness (<see cref="CharacterId.None"/> for none; the speaker who assigned
+/// a bounty by dialogue).
 /// </summary>
 public readonly record struct CrimeEvent(long Tick, CrimeEventKind Kind, CharacterId Culprit, CrimeCode Code, int Faction,
-    int Amount, CharacterId Witness);
+    int Amount, CharacterId Witness)
+{
+    /// <summary>
+    /// The pending crime's victim (<see cref="CharacterId.None"/> for none, and for an expiry).
+    /// </summary>
+    public CharacterId Victim { get; init; } = CharacterId.None;
+    /// <summary>
+    /// The faction the pending crime was against (-1 for an expiry or a clearing).
+    /// </summary>
+    public int VictimFaction { get; init; } = -1;
+    /// <summary>
+    /// The pending crime's victim when it is a building's holder of goods (<see cref="PendingCrime.VictimHolder"/>: the shop or store robbed); null
+    /// otherwise.
+    /// </summary>
+    public string? VictimHolder { get; init; }
+}
 
 /// <summary>
 /// What the crime rules need to know of the factions: who books bounties and whose goods are free.

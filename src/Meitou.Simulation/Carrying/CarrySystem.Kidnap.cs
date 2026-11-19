@@ -83,12 +83,16 @@ public sealed partial class CarrySystem
         // FUN_14034ffa0).
         void Train(float amount)
         {
-            if (cold.Stats is { } stats && cold.Race is { } race)
-                (_xp ??= new XpService(Constants, _bodyOptions)).Continuous(stats, race, StatsEnumerated.Assassination, 1, amount);
+            if (cold.Stats is not { } stats || cold.Race is not { } race) return;
+
+            var xp = _xp ??= new XpService(Constants, _bodyOptions);
+            xp.Continuous(stats, race, StatsEnumerated.Assassination, 1, amount, ExperienceSource.Assassination);
         }
         if (success)
         {
-            victim.KidnapVictim = true;   // Task_Kidnapping vfunc 2 flags the victim of a roll that took (status +0xe9)
+            // Task_Kidnapping vfunc 2 flags the victim of a roll that took (status +0xe9); only the player's order 246 builds that task, so an NPC
+            // kidnapper's sleeper is never flagged (docs/game/carry-loot.md "The kidnap victim flag").
+            if (cold.Running is { Row: Meitou.Data.Gameplay.Ai.TaskType.KidnapOrder }) victim.KidnapVictim = true;
             if (victim.Medical is { Incapacitated: false } medical)
             {
                 float assassination = cold.Stats?[StatsEnumerated.Assassination] ?? 0;
@@ -122,7 +126,13 @@ public sealed partial class CarrySystem
                 victim.OrderQueue.Clear();   // order 116 Getting out of bed replaces the whole queue (FUN_1405d20d0, clear flag 1)
                 _engaged.Engage(world, Aggro, b, i);
             }
-            else world.Defer(new Combat.AttackOrder([victimId], kidnapperId) { Tick = world.Tick + 1, Source = TaskSource.Reaction });
+            else
+            {
+                world.Defer(new Combat.AttackOrder([victimId], kidnapperId)
+                {
+                    Tick = world.Tick + 1, Source = TaskSource.Reaction, Cause = "woke up being kidnapped",
+                });
+            }
         }
         return false;
     }

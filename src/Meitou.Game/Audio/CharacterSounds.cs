@@ -330,9 +330,13 @@ public sealed class CharacterSounds
     /// </summary>
     Vector3 _camera;
     /// <summary>
-    /// The frame count (<see cref="BeginFrame"/>) and the next impact pool slot.
+    /// The frame count (<see cref="BeginFrame"/>).
     /// </summary>
-    int _frame, _poolAt;
+    int _frame;
+    /// <summary>
+    /// The next impact pool slot (unsigned, so it wraps instead of turning negative after 2^31 point sounds).
+    /// </summary>
+    uint _poolAt;
     /// <summary>
     /// The next character's game object id.
     /// </summary>
@@ -723,20 +727,6 @@ public sealed class CharacterSounds
         Jobs++;
     }
 
-    /// <summary>
-    /// A body fed into a machine (<c>FUN_1403567a0</c>): <c>Character_Drop_Person</c> with the body's <c>Armor_Worn</c>, 1000 units. The exe posts
-    /// it on the body's object as it destroys the body; the body is gone from the snapshot by now, so a pooled object at its last place
-    /// (<paramref name="at"/>) takes it (<b>engine choice</b>).
-    /// </summary>
-    public void FedToMachine(Vector3 at, int armourMaterial)
-    {
-        if (_player.HeardDistanceSquared(at, _camera) >= EventLimit) return;
-        ulong id = _pool[_poolAt++ % _pool.Length];
-        _player.SetPosition(id, at);
-        _player.SetSwitch("Armor_Worn", ArmourName(armourMaterial), id);
-        _player.Post("Character_Drop_Person", id);
-        Jobs++;
-    }
 
     #endregion
 
@@ -838,7 +828,7 @@ public sealed class CharacterSounds
     public void TurretShot(Vector3 at)
     {
         if (_player.HeardDistanceSquared(at, _camera) >= EventLimit) return;
-        ulong id = _pool[_poolAt++ % _pool.Length];
+        ulong id = NextPooled();
         _player.SetPosition(id, at);
         _player.SetSwitch("Weapons", "Turret", id);
         _player.Post("Attack", id);
@@ -853,7 +843,7 @@ public sealed class CharacterSounds
     public void WallBreak(Vector3 at, bool fix)
     {
         if (_player.HeardDistanceSquared(at, _camera) >= EventLimit) return;
-        ulong id = _pool[_poolAt++ % _pool.Length];
+        ulong id = NextPooled();
         _player.SetPosition(id, at);
         if (fix) _player.SetSwitch("Break", "Gate", id);
         _player.Post("Break", id);
@@ -867,11 +857,26 @@ public sealed class CharacterSounds
     public void BoltStuck(Vector3 at, int surface)
     {
         if (_player.HeardDistanceSquared(at, _camera) >= EventLimit) return;
-        ulong id = _pool[_poolAt++ % _pool.Length];
+        ulong id = NextPooled();
         _player.SetPosition(id, at);
         _player.SetSwitch("Impacts", SurfaceName(surface, false) is { Length: > 0 } name ? name : "Stone", id);
         _player.Post("Impact", id);
         Impacts++;
+    }
+
+    /// <summary>
+    /// The next impact pool object, round robin.
+    /// </summary>
+    ulong NextPooled() => _pool[_poolAt++ % (uint)_pool.Length];
+
+    /// <summary>
+    /// Where the tracked character <paramref name="key"/>'s object was last placed; false when it has no object (too far to be heard).
+    /// </summary>
+    public bool TryPlace(ulong key, out Vector3 at)
+    {
+        bool tracked = _entries.TryGetValue(key, out var e);
+        at = tracked ? e!.Position : default;
+        return tracked;
     }
 
     /// <summary>
@@ -900,7 +905,7 @@ public sealed class CharacterSounds
     void PointImpact(Vector3 at, string impacts)
     {
         if (_player.HeardDistanceSquared(at, _camera) >= EventLimit) return;
-        ulong id = _pool[_poolAt++ % _pool.Length];
+        ulong id = NextPooled();
         _player.SetPosition(id, at);
         _player.SetSwitch("Impacts", impacts, id);
         _player.Post("Impact", id);

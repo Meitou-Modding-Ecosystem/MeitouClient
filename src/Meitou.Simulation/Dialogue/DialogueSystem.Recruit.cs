@@ -29,7 +29,7 @@ public sealed partial class DialogueSystem
         {
             return true;
         }
-        if (PlayerHeads(world) >= _data.Bodies.Constants.MaxFactionSize)
+        if (SquadManagement.CappedHeads(world) >= _data.Bodies.Constants.MaxFactionSize)
         {
             world.Post("It looks like your squad is a little full.");
             c.Ended = true;
@@ -45,18 +45,6 @@ public sealed partial class DialogueSystem
     }
 
     /// <summary>
-    /// The living player characters that have not died (the faction size cap counts them).
-    /// </summary>
-    internal static int PlayerHeads(World world)
-    {
-        var table = world.Characters;
-        int heads = 0;
-        for (int i = 0; i < table.Next.Length; i++)
-            if (table.Next[i].Alive && table.Cold(i) is { IsPlayer: true, DiedTick: < 0 }) heads++;
-        return heads;
-    }
-
-    /// <summary>
     /// The player's active squad (<c>FUN_1407f5520</c>): the cached one (<see cref="PlayerState.Squad"/>), else the squad of the first selected
     /// character, else the first squad of the player's faction (the squad of the dead is skipped: the original takes the second squad when the first
     /// is it, <c>FUN_1407f4960</c>); null with none. The talker's squad is never a fallback.
@@ -69,7 +57,7 @@ public sealed partial class DialogueSystem
         {
             return selectedSquad;
         }
-        return SquadManagement.PlayerSquads(world).FirstOrDefault();
+        return SquadManagement.LedSquads(world).FirstOrDefault();
     }
 
     /// <summary>
@@ -79,8 +67,8 @@ public sealed partial class DialogueSystem
     /// </summary>
     static void ExtraSquadAtTheCap(World world, PopulationData data, Squad active, GameConstants limits)
     {
-        if (PlayerHeads(world) >= limits.MaxFactionSize || active.Members.Count + 1 <= limits.MaxSquadSize
-            || SquadManagement.PlayerSquads(world).Count < limits.MaxSquads)
+        if (SquadManagement.CappedHeads(world) >= limits.MaxFactionSize || active.Members.Count + 1 <= limits.MaxSquadSize
+            || SquadManagement.LedSquads(world).Count < limits.MaxSquads)
         {
             return;
         }
@@ -130,8 +118,6 @@ public sealed partial class DialogueSystem
     internal static bool JoinPlayer(World world, PopulationData data, int slot)
     {
         var table = world.Characters;
-        var me = table.IdOf(slot);
-        var mc = table.Cold(slot)!;
         var limits = data.Bodies.Constants;
         if (ActiveSquad(world) is not { } squad) return false;
         ExtraSquadAtTheCap(world, data, squad, limits);
@@ -141,6 +127,21 @@ public sealed partial class DialogueSystem
                 data.Factions[world.Player.Faction].Name is { Length: > 0 } f ? f : "Nameless");
         }
 
+        Join(world, data, slot, squad);
+        return true;
+    }
+
+    /// <summary>
+    /// The character at <paramref name="slot"/> leaves its squad and joins the player's squad <paramref name="squad"/> as a player character, as a
+    /// recruit does: the player's faction, orders and class, no AI, jobs or uniform marks, written as a new member at the next save; it leads the
+    /// squad when the squad has no leader. The caller has checked the squad and the caps.
+    /// </summary>
+    internal static void Join(World world, PopulationData data, int slot, Squad squad)
+    {
+        var table = world.Characters;
+        var me = table.IdOf(slot);
+        var mc = table.Cold(slot)!;
+        world.Events.Line(world, "recruit", $"{EventLog.Who(world, slot)} joins the player's squad");
         Leave(world, me, mc);
         mc.Faction = world.Player.Faction;
         mc.RoadPreference = data.RoadPreferenceOf(mc.Faction);
@@ -152,7 +153,7 @@ public sealed partial class DialogueSystem
         mc.Ai = null;
         mc.Engaged = false;
         mc.Fleeing = false;
-        mc.Pending = null;
+        Crime.CrimeSystem.DropPending(world, slot, mc);
         mc.Jobs.Clear();   // an NPC's list, if any, does not carry over
         // a recruit's clothes are no longer a faction's uniform (dialogue.md "Recruiting")
         if (mc.Inventory is { } kit)
@@ -164,7 +165,6 @@ public sealed partial class DialogueSystem
         TaskStart.Stand(table, slot);
         squad.Members.Add(me);
         if (squad.Leader.IsNone) squad.Leader = me;
-        return true;
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public sealed partial class DialogueSystem
             if (slave.IsImprisoned) world.Fixtures.Release(world, id);
             if (tc.IsPlayer || tc.Faction == world.Player.Faction)
             {
-                if (PlayerHeads(world) >= _data.Bodies.Constants.MaxFactionSize || !JoinPlayer(world, s, tc)) break;
+                if (SquadManagement.CappedHeads(world) >= _data.Bodies.Constants.MaxFactionSize || !JoinPlayer(world, s, tc)) break;
             }
             else if (world.Squads.Find(tc.SquadId) is { } theirs)
             {

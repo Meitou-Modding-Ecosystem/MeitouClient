@@ -65,6 +65,20 @@ public static class CharacterFacts
         && world.Platoons.Find(squad.PlatoonId)?.Campaign is { Phase: 0 };
 
     /// <summary>
+    /// The character's platoon is a <c>UniquePlatoon</c> (<c>Platoon</c> vfunc <c>0xb0</c> returns the platoon itself only for that class,
+    /// <c>FUN_1409b0680</c>, the base <c>FUN_1407f22f0</c> 0; <b>Verified</b>): one made from an UNIQUE_SQUAD_TEMPLATE, or a saved PLATOON with
+    /// <c>special</c> (<c>FUN_14057c6f0</c>). Engine reading: a character with no squad is in no such platoon (the original asks its faction's
+    /// default platoon, <c>FUN_1406b9c60</c>).
+    /// </summary>
+    public static bool UniquePlatoon(World world, Meitou.Data.GameDatabase? db, CharacterCold cold)
+    {
+        if (cold.SquadId < 0 || world.Squads.Find(cold.SquadId) is not { } squad) return false;
+        if (db?.Find(squad.TemplateId) is { Type: Meitou.Data.Fcs.FcsRecordType.UniqueSquadTemplate }) return true;
+
+        return world.Platoons.Find(squad.PlatoonId)?.Saved?.Source.Record.Bools.GetValueOrDefault("special") == true;
+    }
+
+    /// <summary>
     /// <c>Character</c> slot 6 <c>isDown</c> (vfunc 0x30, <c>FUN_1405c9e10</c>, <b>Verified</b>): dead or out cold, playing dead (which is
     /// unconscious to everyone), ragdolled or carried. A crawler is not down. A ragdoll is only ever whole for an incapacitated character, so
     /// <see cref="Ragdolls.RagdollSystem.IsRagdoll"/> adds nothing the first test lacks, and is kept for the original's reading.
@@ -136,6 +150,18 @@ public static class CharacterFacts
     /// </summary>
     internal static bool InCombatMode(CombatSystem combat, CharacterTable table, CharacterId id, CharacterCold cold, bool melee, bool ranged) =>
         combat.IsInCombatMode(table, id, cold, melee, ranged);
+
+    /// <summary>
+    /// <c>Character::isStealthMode</c> (<c>FUN_1405c9750</c>, <b>Verified</b> disassembly: it calls <c>isInCombatMode(1, 1)</c> first): the Sneak
+    /// order, and not in combat mode, melee or ranged.
+    /// </summary>
+    internal static bool StealthMode(World world, int slot, CharacterCold cold)
+    {
+        if ((cold.Orders & Player.CharacterOrders.Sneak) == 0) return false;
+
+        var table = world.Characters;
+        return world.SystemOf<CombatSystem>() is not { } combat || !combat.IsInCombatMode(table, table.IdOf(slot), cold, melee: true, ranged: true);
+    }
 
     /// <summary>
     /// Slot 126, "A regards B as friendly" (<c>FUN_1407923d0</c>, <see cref="DialogueSystem.RegardsFriendly(World, int, int)"/>), by slot.

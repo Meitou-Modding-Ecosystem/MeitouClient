@@ -113,6 +113,11 @@ public sealed class CharacterCold
     /// </summary>
     public string Name { get; set; } = "";
     /// <summary>
+    /// The character's lasting id (<see cref="LastingIds"/>); none until a code mod asks for one. Given only by <see cref="LastingIds"/>, so two
+    /// characters never share one.
+    /// </summary>
+    public LastingId LastingId { get; internal set; }
+    /// <summary>
     /// The character's faction, a position in the world's faction list.
     /// </summary>
     public int Faction { get; set; }
@@ -315,7 +320,9 @@ public sealed class CharacterCold
     public CharacterAnimation? Animation { get; set; }
 
     /// <summary>
-    /// The kind of weapon drawn in the right hand (None while sheathed): the stance animations are chosen for.
+    /// The kind of weapon drawn in the right hand (None while sheathed): the stance animations are chosen for
+    /// (<see cref="Data.Gameplay.HandHold.OfDrawn"/>); a drawn crossbow is plain <c>1 handed</c>, a person's melee weapon of no skill class
+    /// <c>1 handed</c> with <see cref="Data.Gameplay.WeaponKinds.MeleeMark"/>.
     /// </summary>
     public Data.Gameplay.WeaponKinds DrawnWeapon { get; set; }
 
@@ -375,9 +382,27 @@ public sealed class CharacterCold
     /// </summary>
     public List<StuckBolt>? StuckBolts { get; set; }
     /// <summary>
-    /// The character's stats (null: none).
+    /// The character's stats (<see cref="Stats"/>).
     /// </summary>
-    public CharacterStats? Stats { get; set; }
+    CharacterStats? _stats;
+
+    /// <summary>
+    /// The character's stats (null: none). New stats take over the old ones' binding to the code mods' experience filters
+    /// (<see cref="CharacterStats.BindExperience"/>), so a character whose stats are replaced in the world (the editor) stays filtered; stats taken
+    /// off (null) lose it, so they keep no world alive.
+    /// </summary>
+    public CharacterStats? Stats
+    {
+        get => _stats;
+        set
+        {
+            if (ReferenceEquals(_stats, value)) return;
+
+            if (value is null) _stats?.UnbindExperience();
+            else value.TakeExperienceBinding(_stats);
+            _stats = value;
+        }
+    }
     /// <summary>
     /// The character's medical state (null: none).
     /// </summary>
@@ -513,6 +538,24 @@ public sealed class CharacterCold
     public float MedicalBudgetSeconds { get; set; }
 
     /// <summary>
+    /// The top speed S a recompute would give now (<see cref="Bodies.TopSpeedDelay"/>), from the last body step (null: none yet). Derived, not hashed
+    /// or saved.
+    /// </summary>
+    public float? TopSpeedNow { get; set; }
+
+    /// <summary>
+    /// The stats' top speed S (CharStats <c>+0x17c</c>, the information panel's run speed) as last recomputed (<see cref="Bodies.TopSpeedDelay"/>;
+    /// null: not yet). Derived, not hashed or saved.
+    /// </summary>
+    public float? StatsTopSpeed { get; set; }
+
+    /// <summary>
+    /// The mover's top speed (CharMovement <c>+0xb4</c>, <see cref="CharacterHot.MaxSpeed"/>), one periodic update behind <see cref="StatsTopSpeed"/>
+    /// (<see cref="Bodies.TopSpeedDelay"/>; null: not yet). Derived, not hashed or saved.
+    /// </summary>
+    public float? MoverTopSpeed { get; set; }
+
+    /// <summary>
     /// The original's <c>CharBody::amIdle</c> (<see cref="BodySystem"/>): standing still out of combat with no task, refreshed only while the
     /// character is not down, so a knock-out keeps the value it had before. Derived, not hashed or saved.
     /// </summary>
@@ -548,8 +591,9 @@ public sealed class CharacterCold
     /// <summary>
     /// The status byte <c>+0x114</c> ("ordered", docs/game/economy.md 11.6): set on an attacker by the assault booking of an ordered attack
     /// (<c>FUN_140334070</c>), cleared when its fight ends (<see cref="Combat.CombatSystem"/> <c>EndFight</c>, the stand-in for the attack task's
-    /// end, <c>FUN_1405c91c0</c>); a victim with it set is not assaulted again. The original also sets it at ordered task starts and for the cannibal
-    /// assault package's squad (not modelled). Not saved; hashed while set.
+    /// end, <c>FUN_1405c91c0</c>); a victim with it set is not assaulted again. Also set on every member of a squad running a war assault package
+    /// (20, 32) on each package step (<c>FUN_14028a4e0</c>, <c>AiSystem.StepWar</c>), and cleared on them by the first step after that package
+    /// stops running. The original also sets it at ordered task starts (not modelled). Not saved; hashed while set.
     /// </summary>
     public bool Ordered { get; set; }
 
@@ -776,6 +820,18 @@ public sealed class CharacterCold
     public CharacterId CarriedBy { get; set; } = CharacterId.None;
 
     /// <summary>
+    /// The partner of a carry this character was in when its squad left the world (null: none): the original writes the link into the unloading
+    /// platoon's record before its members are destroyed, and the destroy lets the partner go (docs/formats/save.md "Carry links"). Linked again once
+    /// both are in the world (<see cref="Carrying.CarrySystem"/>); saved as the <c>carrying</c> link. Runtime only otherwise; not hashed.
+    /// </summary>
+    public CharacterCold? CarryRelink { get; set; }
+
+    /// <summary>
+    /// Whether this character was the carrier of <see cref="CarryRelink"/> (else the carried one).
+    /// </summary>
+    public bool CarryRelinkIsCarrier { get; set; }
+
+    /// <summary>
     /// While carried: lifted awake by a friendly carrier (the player's Pick Up on a standing squad mate), so it stays on the shoulder until put down
     /// rather than being set down as one that came round.
     /// </summary>
@@ -792,6 +848,12 @@ public sealed class CharacterCold
     /// saved, not hashed and read by no system. A carried body is drawn on its carrier's shoulder whatever this says.
     /// </summary>
     public DrawAnchor? DrawAnchor { get; set; }
+
+    /// <summary>
+    /// The floating progress bar a code mod shows over this character (docs/modding.md "Task bars"; null: none): published as the snapshot's
+    /// <see cref="CharacterSnapshot.Bar"/> ahead of the game's own bars, for any character; not saved, not hashed and read by no system.
+    /// </summary>
+    public TaskBar? ModTaskBar { get; set; }
 
     /// <summary>
     /// The rigid meshes code mods hang on this character's bones (docs/modding.md "Bone meshes"), in the order first set: replaced as a whole on each
@@ -1024,7 +1086,8 @@ public sealed class CharacterCold
 
     /// <summary>
     /// The prison sentence as the original stores it (docs/game/economy.md 11.5): the start in <see cref="World.GameHours"/> and the length in game
-    /// hours (save keys <c>sentence</c>, <c>psts</c>); served when start + length is not after now. Length 0: none (served).
+    /// hours (save keys <c>sentence</c>, <c>psts</c>); served when start + length is not after now. Start and length 0: no sentence (served); a start
+    /// with length 0: a sentence under an hour, served.
     /// </summary>
     public double SentenceStart { get; set; }
     /// <summary>
@@ -1124,6 +1187,13 @@ public sealed class CharacterCold
     public int SlaveMaster { get; set; } = -1;
 
     /// <summary>
+    /// An NPC slave's job 187 is gone though it stays a slave of its master: DA 28 split it into a squad of its own, whose perma-job wipe takes the
+    /// job (<c>FUN_1405ce4e0</c> -> <c>FUN_140507280</c>), so it plans with its own lists, not the master's Slave list (<see cref="Ai.AiSystem.ObeyedRoles"/>).
+    /// Cleared by every slave state change and reset, which add the job again. Saved as <c>meitou slave disobeys</c> (<see cref="Saving.SlaveSave"/>); not hashed.
+    /// </summary>
+    public bool ObedienceLost { get; set; }
+
+    /// <summary>
     /// Its head is shaven (<c>CharacterHuman::isHeadShaven</c>, Character vslot 124 <c>0x3e0</c>: the appearance's <c>shaved</c>, <b>Verified</b>;
     /// false in every other class). Processing a slave shaves it and an ex-slave's hair grows back once it is free
     /// (<see cref="Kidnap.CaptiveSystem"/>, <see cref="Locks.FixtureRegistry.LayLow"/>) or the in-play editor opens on it
@@ -1176,6 +1246,13 @@ public sealed class CharacterCold
     /// it needs no attack target and ends when the door opens. Hashed with <see cref="Bashing"/>.
     /// </summary>
     public bool BashErrand { get; set; }
+
+    /// <summary>
+    /// A walker's way through the locked door <see cref="Bashing"/> names (rows 80 / 78 unlock it when it is the walker's, 287 / 81 bash it;
+    /// docs/game/locks.md "Locked doors on the way"): the walk's goal and speed, taken up again once the door is open. Null for any other bash.
+    /// Hashed with <see cref="Bashing"/>.
+    /// </summary>
+    public (System.Numerics.Vector2 Goal, byte Mode)? DoorWay { get; set; }
 
     /// <summary>
     /// The fixture whose lock this character cuts or breaks by order (Use Tools 285, Use Strength 286; <see cref="Locks.LockSystem"/>; null: none).
@@ -1325,9 +1402,15 @@ public sealed class CharacterCold
     public string? OperateFunctionality { get; set; }
 
     /// <summary>
-    /// The ITEM the operator holds while its operate task runs (the functionality's <c>special tool</c>); derived, not hashed.
+    /// The ITEM the operator holds at its machine (the functionality's <c>special tool</c>, while <see cref="OperateToolHeld"/>); derived, not hashed.
     /// </summary>
     public string? OperateTool { get; set; }
+
+    /// <summary>
+    /// The operator has reached its machine and holds <see cref="OperateTool"/>: not on the walk there or a haul trip (the original's walk is
+    /// task 1 Moving, before <c>Task_OperateMachine</c> attaches the tool); derived, not hashed.
+    /// </summary>
+    public bool OperateToolHeld { get; set; }
 
     /// <summary>
     /// The machine's <see cref="Meitou.Data.Gameplay.Construction.MachineData.HungerRate"/> while its operate task runs; derived, not hashed.
@@ -1391,6 +1474,16 @@ public sealed class CharacterCold
     /// The task the start path last set (see <see cref="TaskSetTick"/>).
     /// </summary>
     internal byte TaskSet;
+
+    /// <summary>
+    /// The table boundary (<see cref="CharacterTable.Ticks"/>, a paused step counting) of the last end through <see cref="TaskStart.End"/>, and its
+    /// reason (<see cref="Ended"/>): the action log's (<see cref="ActionLog"/>). Not saved or hashed.
+    /// </summary>
+    internal long EndedTick = -1;
+    /// <summary>
+    /// Why the task ended at <see cref="EndedTick"/>.
+    /// </summary>
+    internal TaskEnd Ended;
 }
 
 /// <summary>
@@ -1432,6 +1525,10 @@ public sealed class CharacterTable
     /// Where in a tick the table is (see <see cref="Phase"/>).
     /// </summary>
     TablePhase _phase = TablePhase.Outside;
+    /// <summary>
+    /// The characters in the table that have a lasting id, by that id (<see cref="LastingIds"/>); null until one has.
+    /// </summary>
+    Dictionary<LastingId, CharacterId>? _lasting;
 
     /// <summary>
     /// Limbs cut off in the tick (the character's slot, the limb slot 0 to 3, whether the limb's item drops): the population system rebuilds the
@@ -1454,6 +1551,12 @@ public sealed class CharacterTable
     /// Slots ever used: every character is in 0..HighWater-1.
     /// </summary>
     public int HighWater => _highWater;
+
+    /// <summary>
+    /// The world's watch on characters entering and leaving the table, set only while a code mod's hook needs it (<see cref="CharacterWatch"/>);
+    /// null otherwise.
+    /// </summary>
+    internal CharacterWatch? Watch { get; set; }
 
     /// <summary>
     /// Characters alive.
@@ -1512,6 +1615,30 @@ public sealed class CharacterTable
     }
 
     /// <summary>
+    /// The character in the table that has lasting id <paramref name="id"/>; <see cref="CharacterId.None"/> when none has (never given, its squad
+    /// out of the world, or removed).
+    /// </summary>
+    internal CharacterId FindLasting(LastingId id) =>
+        _lasting is not null && _lasting.TryGetValue(id, out var found) && TryResolveNext(found, out int slot) && _cold[slot]?.LastingId == id
+            ? found
+            : CharacterId.None;
+
+    /// <summary>
+    /// Notes that the character <paramref name="character"/> has lasting id <paramref name="id"/> (its cold state holds it).
+    /// </summary>
+    internal void IndexLasting(LastingId id, CharacterId character) => (_lasting ??= [])[id] = character;
+
+    /// <summary>
+    /// How many characters in the table have a lasting id.
+    /// </summary>
+    internal int LastingCount => _lasting?.Count ?? 0;
+
+    /// <summary>
+    /// A save is under way (set by its capture, cleared when the next tick begins): no lasting id may be given (<see cref="LastingIds.GetOrGive"/>).
+    /// </summary>
+    internal bool SaveHold { get; set; }
+
+    /// <summary>
     /// Where in a tick the table is: spawns and removals in the wrong phase throw.
     /// </summary>
     internal TablePhase Phase
@@ -1536,6 +1663,7 @@ public sealed class CharacterTable
     internal void BeginTick()
     {
         Ticks++;
+        SaveHold = false;
         Array.Copy(_previous, _next, _highWater);
         _inTick = true;
     }
@@ -1586,7 +1714,10 @@ public sealed class CharacterTable
         if (!_inTick) _previous[slot] = state;
         this._cold[slot] = cold;
         Spawns++;
-        return new CharacterId(slot, generation);
+        var id = new CharacterId(slot, generation);
+        if (!cold.LastingId.IsNone) IndexLasting(cold.LastingId, id);
+        Watch?.Added(id, cold);
+        return id;
     }
 
     /// <summary>
@@ -1604,8 +1735,18 @@ public sealed class CharacterTable
             throw new InvalidOperationException("characters are removed in the commit or the slow world only (a phase reads them as alive)");
 
         if (!TryResolveNext(id, out int slot)) return false;
+        if (Watch is { } watch)
+        {
+            watch.Removing(slot, _cold[slot]!);
+
+            // A code mod's death observer told of this character that removed it itself (against its contract, and disabled for it): it is gone,
+            // and freeing the slot again would hand it to two characters.
+            if (!TryResolveNext(id, out _)) return true;
+        }
+
         _next[slot].Alive = false;
         if (!_inTick) _previous[slot].Alive = false;
+        if (_cold[slot] is { LastingId.IsNone: false } lasting) _lasting?.Remove(lasting.LastingId);
         _cold[slot] = null;
         _free.Push(slot);
         return true;
@@ -1924,7 +2065,7 @@ public sealed class CharacterTable
             hasher.Add(k.InWhat is { } w ? Rng.StableHash(w) : 0UL);
         }
 
-        if (k.SentenceLength > 0)
+        if (k.SentenceStart > 0 || k.SentenceLength > 0)
         {
             hasher.Add(k.SentenceStart);
             hasher.Add(k.SentenceLength);
@@ -1991,6 +2132,12 @@ public sealed class CharacterTable
             if (k.BashOrdered) hasher.Add(0x4F726473);
             if (k.BashWall) hasher.Add(0x57616C6C);
             if (k.BashErrand) hasher.Add(0x45727264);
+            if (k.DoorWay is { } way)
+            {
+                hasher.Add(way.Goal.X);
+                hasher.Add(way.Goal.Y);
+                hasher.Add((int)way.Mode);
+            }
         }
 
         if (k.ForcingLock is { } force)

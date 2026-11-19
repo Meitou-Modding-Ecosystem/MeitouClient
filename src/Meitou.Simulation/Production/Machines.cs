@@ -30,6 +30,17 @@ public sealed class InputSlot(RecipeInput recipe)
     /// The level taken from items, one item = 1 (the save's <c>consumption amount-&lt;k&gt;</c>).
     /// </summary>
     public float Level { get; set; }
+
+    /// <summary>
+    /// A crafting bench's section the bound craft takes nothing from (<b>Verified</b>, <c>CraftingBuilding::vfunc_182</c> <c>FUN_1402bb470</c>):
+    /// the original clears its item and disables it while it is empty, so it takes no item.
+    /// </summary>
+    public bool Idle { get; set; }
+
+    /// <summary>
+    /// Whether the section takes units of <paramref name="record"/>: its item, unless it is <see cref="Idle"/>.
+    /// </summary>
+    public bool Takes(string record) => !Idle && Item == record;
 }
 
 /// <summary>
@@ -199,7 +210,7 @@ public sealed class CraftState
 /// A complete player building that works or stores (docs/simulation.md "Production"): its recipe slots, storage grid and farm. Made by
 /// <see cref="ProductionSystem"/> when the site completes (or loads complete) and dropped with the site; serial phases only.
 /// </summary>
-public sealed class Machine
+public sealed class Machine : IPowerDraw
 {
     /// <summary>
     /// The site id of the building.
@@ -213,6 +224,11 @@ public sealed class Machine
     /// Where the building stands (its items drop here when it goes).
     /// </summary>
     public System.Numerics.Vector3 Position { get; init; }
+    /// <summary>
+    /// The items the machine held as saved once its saved inventory was read (null: none read); a save that finds them unchanged leaves that
+    /// record as it was (<c>Saving/MachineSave</c>).
+    /// </summary>
+    public IReadOnlyList<Meitou.Data.Save.SaveItem>? LoadedItems { get; set; }
     /// <summary>
     /// The recipe inputs, by section.
     /// </summary>

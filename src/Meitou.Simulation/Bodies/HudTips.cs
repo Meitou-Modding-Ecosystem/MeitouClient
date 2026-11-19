@@ -321,7 +321,7 @@ static class HudTips
         if (p.Constants is { } constants)
         {
             float carryStrength = p.Eff(StatsEnumerated.Strength, StatUse.Hunger | StatUse.Limbs | StatUse.DamageState | StatUse.LimbItems);
-            int carryWeight = (int)(carryStrength + constants.EncumbranceBase);
+            int carryWeight = (int)CarryModified(carryStrength + constants.EncumbranceBase, p.Stats);
             strengthTip.Add((Loc.Tr("Max carry weight:"), Loc.Tr("{1,num}%", carryWeight)));
         }
         if (p.Hc is { } c) strengthTip.Add((Loc.Tr("Blunt weapon damage:"), Int(c.Blunt)));
@@ -417,6 +417,13 @@ static class HudTips
     static float Lerp(float t, float a, float b) => (b - a) * t + a;
 
     /// <summary>
+    /// A "Max carry weight" readout's capacity with the character's code mod carry modifiers (<see cref="CarryModifiers.Apply"/>), as
+    /// <see cref="Encumbrance.WindowCapacity"/> applies them.
+    /// </summary>
+    static float CarryModified(float capacity, CharacterStats? stats) =>
+        stats?.CarryModifiersOrNull is { } modifiers ? modifiers.Apply(capacity) : capacity;
+
+    /// <summary>
     /// The Strength and Toughness readouts of <see cref="StatsWindow"/>.
     /// </summary>
     static Dictionary<StatsEnumerated, IReadOnlyList<StatReadout>> AttributeReadouts(
@@ -428,7 +435,7 @@ static class HudTips
         {
             float strengthTotal = stats[StatsEnumerated.Strength] * stats.Scale
                 * med.StatMultiplier(StatsEnumerated.Strength, StatUse.Hunger | StatUse.Limbs | StatUse.DamageState | StatUse.LimbItems, factors);
-            int carryKg = (int)(strengthTotal + constants.EncumbranceBase);
+            int carryKg = (int)CarryModified(strengthTotal + constants.EncumbranceBase, stats);
             strength.Add(new("Max carry weight:", Loc.Tr("{1,num} kg", carryKg)));
         }
         if (cold.Extended is { } x) strength.Add(new("Strength XP rate (walking):", Loc.Tr("{1,num}%", (int)(x.StrengthXp * 100))));
@@ -604,10 +611,11 @@ static class HudTips
     }
 
     /// <summary>
-    /// The extended lines' tooltips (<c>FUN_140895350</c>); the run speed's rows are the host's (<see cref="ExtendedTips"/>).
+    /// The extended lines' tooltips (<c>FUN_140895350</c>); the run speed's rows are the host's (<see cref="ExtendedTips"/>), the sneak row only in
+    /// <paramref name="stealthMode"/> (<see cref="CharacterFacts.StealthMode"/>).
     /// </summary>
-    public static ExtendedTips Extended(
-        CharacterCold cold, MedicalState med, RaceData race, CharacterStats stats, ExtendedStats x, GameConstants? constants)
+    public static ExtendedTips Extended(CharacterCold cold, MedicalState med, RaceData race, CharacterStats stats, ExtendedStats x,
+        GameConstants? constants, bool stealthMode)
     {
         float e = cold.Fighter?.EncumbranceFactor ?? 1;
         bool carrying = !cold.Carrying.IsNone;
@@ -654,7 +662,7 @@ static class HudTips
         else if (x.Idle) hunger.Add((Loc.Tr("Idle:"), Mult(MedicalState.IdleHungerRate)));
 
         // FUN_140895350's sneak row: t = max((s - 40) / 60, 0) of the stealth term s, which is in 0..1, then lerp(12, S, t), so the cap reads 12.
-        float? sneak = (cold.Orders & CharacterOrders.Sneak) != 0 ? 12 + (x.RunSpeed - 12) * MathF.Max((Orders.Stealth(cold) - 40) / 60, 0) : null;
+        float? sneak = stealthMode ? 12 + (x.RunSpeed - 12) * MathF.Max((Orders.Stealth(cold) - 40) / 60, 0) : null;
         return new ExtendedTips(
             athletics, strength, toughness, hunger, stats.Athletics, Speed.LegFactor(med), med.LegItemFactor(StatsEnumerated.Athletics), sneak,
             cold.Fighter?.AthleticsFactor ?? 1);

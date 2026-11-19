@@ -30,6 +30,11 @@ sealed class WorkFunctionality(PopulationData data)
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _maxOperators = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The BuildingFunction of each building record, by its string id (<see cref="FunctionOf"/>).
+    /// </summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _functions = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// How near a worker must come to its building's position: the functionality's <c>use range</c> (the original's <c>UseableStuff</c> reach,
     /// <c>maxUseRange</c>, docs/game/buildings-production.md "Work distance"), <see cref="AiSystem.WorkReach"/> for a building without one.
     /// </summary>
@@ -60,11 +65,25 @@ sealed class WorkFunctionality(PopulationData data)
     }
 
     /// <summary>
+    /// The BUILDING_FUNCTIONALITY (string id) of a home piece pretend-operated (a workstation or training dummy), null without one: its
+    /// <c>animation events</c> go on the work clip as for a worker's building (<see cref="FunctionalityOf"/>).
+    /// </summary>
+    public string? PieceFunctionalityOf(HomeSpot piece) =>
+        data.Db.Find(piece.Record ?? "")?.GetReferences("functionality") is [var link, ..] ? link.TargetStringId : null;
+
+    /// <summary>
     /// The BUILDING_FUNCTIONALITY (string id) of a worker's building, null without one: <c>Task_OperateMachine</c>, which the original runs for 189 /
     /// 190's act-outs (87, 221), adds its <c>animation events</c> to the work clip each update (docs/audio.md "Machine work").
     /// </summary>
     public string? FunctionalityOf(TownBuilding b) =>
         data.Db.Find(b.BuildingId)?.GetReferences("functionality") is [var link, ..] ? link.TargetStringId : null;
+
+    /// <summary>
+    /// The ITEM (string id) a worker holds in the <c>hands</c> point at functionality <paramref name="functionality"/>: its <c>special tool</c>
+    /// (a mine's Pickaxe, a farm's Hoe), which <c>Task_OperateMachine</c> attaches for 189 / 190's act-outs too; null for none.
+    /// </summary>
+    public string? ToolOf(string? functionality) =>
+        data.Db.Find(functionality ?? "")?.GetReferences("special tool") is [var tool, ..] ? tool.TargetStringId : null;
 
     /// <summary>
     /// The hunger rate of a worker at a building: its functionality's <c>hunger rate</c> (1 without one), which <c>Task_OperateMachine</c>'s set-up
@@ -81,4 +100,12 @@ sealed class WorkFunctionality(PopulationData data)
     public int MaxOperatorsOf(TownBuilding building) => _maxOperators.GetOrAdd(building.BuildingId, id =>
         data.Db.Find(id)?.GetReferences("functionality") is [var link, ..] && data.Db.Find(link.TargetStringId) is { } function
             ? function.GetInt("max operators", 1) : int.MaxValue);
+
+    /// <summary>
+    /// The BuildingFunction of building record <paramref name="record"/>: its functionality's <c>function</c>, as a level building's
+    /// (<see cref="TownBuilding.Function"/>); -1 without one.
+    /// </summary>
+    public int FunctionOf(string record) => _functions.GetOrAdd(record, id =>
+        data.Db.Find(id)?.GetReferences("functionality") is [var link, ..] && data.Db.Find(link.TargetStringId) is { } function
+            ? function.GetInt("function", -1) : -1);
 }

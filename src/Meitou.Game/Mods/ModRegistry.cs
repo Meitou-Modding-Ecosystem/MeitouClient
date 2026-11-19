@@ -48,9 +48,21 @@ sealed class ModRegistrations
     /// </summary>
     public Dictionary<int, string> RecordTypes { get; } = [];
     /// <summary>
+    /// The combat move sources, in registration order.
+    /// </summary>
+    public List<CombatMoveSource> CombatMoves { get; } = [];
+    /// <summary>
     /// The item use handlers by item record string id.
     /// </summary>
     public Dictionary<string, ItemUseHandler> ItemUses { get; } = new(StringComparer.Ordinal);
+    /// <summary>
+    /// The mod's own job types and their names.
+    /// </summary>
+    public Dictionary<Data.Gameplay.Ai.TaskType, string> JobTypes { get; } = [];
+    /// <summary>
+    /// The mod's own NPC goal types and their names.
+    /// </summary>
+    public Dictionary<Data.Gameplay.Ai.TaskType, string> GoalTypes { get; } = [];
     /// <summary>
     /// The equipment slots, in registration order.
     /// </summary>
@@ -60,6 +72,10 @@ sealed class ModRegistrations
     /// </summary>
     public List<Meitou.Simulation.Production.ModJobKind> Jobs { get; } = [];
     /// <summary>
+    /// The wear rules, in registration order.
+    /// </summary>
+    public List<Data.Gameplay.WearRule> WearRules { get; } = [];
+    /// <summary>
     /// The medical meters, in registration order.
     /// </summary>
     public List<ModMeter> Meters { get; } = [];
@@ -68,17 +84,37 @@ sealed class ModRegistrations
     /// </summary>
     public List<ModSkill> Skills { get; } = [];
     /// <summary>
+    /// The status effects, in registration order, each with its stat amounts as copied when the mod asked.
+    /// </summary>
+    public List<(StatusEffect Effect, StatusEffectModifier[] Modifiers)> StatusEffects { get; } = [];
+    /// <summary>
     /// The player interface extensions.
     /// </summary>
     public List<IUiExtension> Ui { get; } = [];
+    /// <summary>
+    /// The folder of the mod each interface extension belongs to (its map marker images are files under it).
+    /// </summary>
+    public Dictionary<IUiExtension, string> UiFolders { get; } = new(ReferenceEqualityComparer.Instance);
     /// <summary>
     /// The debug menu's commands.
     /// </summary>
     public List<ModDebugCommand> DebugCommands { get; } = [];
     /// <summary>
+    /// The key actions.
+    /// </summary>
+    public List<Game.Host.Input.ModKeyAction> KeyActions { get; } = [];
+    /// <summary>
+    /// The world states the mod claimed.
+    /// </summary>
+    public List<Simulation.Factions.ModWorldState> WorldStates { get; } = [];
+    /// <summary>
     /// The combat hit feeds.
     /// </summary>
     public List<ModHitFeed> HitFeeds { get; } = [];
+    /// <summary>
+    /// The faction tab list arrangers.
+    /// </summary>
+    public List<ModFactionList> FactionLists { get; } = [];
     /// <summary>
     /// The mod's settings group; null when it registered none.
     /// </summary>
@@ -105,6 +141,25 @@ sealed class ModHitFeed(string owner, Action<IReadOnlyList<CombatHit>> run)
 }
 
 /// <summary>
+/// A mod's arrangement of the faction tab's list (<see cref="ModContext.ArrangeFactionList"/>); faulted once it threw.
+/// </summary>
+sealed class ModFactionList(string owner, Func<IReadOnlyList<FactionListRow>, IReadOnlyList<FactionListRow>> run)
+{
+    /// <summary>
+    /// The id of the mod that registered it.
+    /// </summary>
+    public string Owner => owner;
+    /// <summary>
+    /// The rows to show for the rows given.
+    /// </summary>
+    public Func<IReadOnlyList<FactionListRow>, IReadOnlyList<FactionListRow>> Run => run;
+    /// <summary>
+    /// Set once it threw; a faulted arranger is not called again.
+    /// </summary>
+    public bool Faulted { get; set; }
+}
+
+/// <summary>
 /// A system a mod's factory made, for its save data: the mod and the name it was registered under.
 /// </summary>
 sealed record ModSystemTag(string ModId, string Name);
@@ -123,6 +178,18 @@ sealed class ModRegistry
     /// </summary>
     readonly Dictionary<string, string> _itemUseOwners = new(StringComparer.Ordinal);
     /// <summary>
+    /// The owner of each mod job type.
+    /// </summary>
+    readonly Dictionary<Data.Gameplay.Ai.TaskType, string> _jobTypeOwners = [];
+    /// <summary>
+    /// The owner of each mod NPC goal type.
+    /// </summary>
+    readonly Dictionary<Data.Gameplay.Ai.TaskType, string> _goalTypeOwners = [];
+    /// <summary>
+    /// The world states mods claimed, by WORLD_EVENT_STATE string id.
+    /// </summary>
+    readonly Dictionary<string, Simulation.Factions.ModWorldState> _worldStates = new(StringComparer.Ordinal);
+    /// <summary>
     /// The mod and name each world's mod system was made under (weakly held, gone with the world).
     /// </summary>
     readonly ConditionalWeakTable<ITickSystem, ModSystemTag> _made = new();
@@ -136,13 +203,25 @@ sealed class ModRegistry
     /// </summary>
     public List<IUiExtension> Ui { get; } = [];
     /// <summary>
+    /// The folder of the mod each interface extension belongs to.
+    /// </summary>
+    public Dictionary<IUiExtension, string> UiFolders { get; } = new(ReferenceEqualityComparer.Instance);
+    /// <summary>
     /// Every mod's debug menu commands, in load order.
     /// </summary>
     public List<ModDebugCommand> DebugCommands { get; } = [];
     /// <summary>
+    /// Every mod's key actions, in load order, numbered from <see cref="Game.Host.Input.InputBindings.FirstModAction"/>.
+    /// </summary>
+    public List<Game.Host.Input.ModKeyAction> KeyActions { get; } = [];
+    /// <summary>
     /// Every mod's combat hit feeds, in load order.
     /// </summary>
     public List<ModHitFeed> HitFeeds { get; } = [];
+    /// <summary>
+    /// Every mod's faction tab list arrangers, in load order.
+    /// </summary>
+    public List<ModFactionList> FactionLists { get; } = [];
     /// <summary>
     /// The record types' names by type number.
     /// </summary>
@@ -183,19 +262,62 @@ sealed class ModRegistry
         foreach (var (code, handler) in r.Effects)
             Claim(ModCodeKind.DialogueEffect, code, mod, () => Simulation.DialogueEffects[code] = handler);
         foreach (var (type, name) in r.RecordTypes) Claim(ModCodeKind.RecordType, type, mod, () => RecordTypes[type] = name);
+        foreach (var source in r.CombatMoves) Simulation.CombatMoves.Add(new ModCombatMove(mod, source));
         foreach (var (record, handler) in r.ItemUses)
         {
             _itemUseOwners[record] = mod;
             Simulation.ItemUses[record] = Guarded(mod, record, handler);
         }
+        foreach (var (type, name) in r.JobTypes)
+        {
+            _jobTypeOwners[type] = mod;
+            Simulation.JobTypes[type] = name;
+            Simulation.TaskOwners[type] = mod;
+        }
+        foreach (var (type, name) in r.GoalTypes)
+        {
+            _goalTypeOwners[type] = mod;
+            Simulation.GoalTypes[type] = new ModGoalType(mod, name);
+            Simulation.TaskOwners[type] = mod;
+        }
         foreach (var slot in r.Slots) ModSlots.Add(slot);
         foreach (var job in r.Jobs) Meitou.Simulation.Production.ModJobs.Add(job);
+        foreach (var rule in r.WearRules) Data.Gameplay.WearRules.Add(mod, rule);
         foreach (var meter in r.Meters) ModMeters.Add(meter);
         foreach (var skill in r.Skills) ModSkills.Add(skill);
+        foreach (var (effect, modifiers) in r.StatusEffects) StatusEffects.Add(effect, modifiers);
         Ui.AddRange(r.Ui);
+        foreach (var (extension, folder) in r.UiFolders) UiFolders[extension] = folder;
         DebugCommands.AddRange(r.DebugCommands);
+        foreach (var state in r.WorldStates)
+        {
+            _worldStates[state.Record] = state;
+            global::Meitou.Simulation.Factions.ModWorldStates.Claim(state);
+        }
+        foreach (var action in r.KeyActions)
+        {
+            action.Action = Game.Host.Input.InputBindings.FirstModAction + KeyActions.Count;
+            KeyActions.Add(action);
+        }
         HitFeeds.AddRange(r.HitFeeds);
+        FactionLists.AddRange(r.FactionLists);
         if (r.Settings is not null) Settings.Add(r.Settings);
+    }
+
+    /// <summary>
+    /// The world states mods claimed.
+    /// </summary>
+    public IReadOnlyCollection<Simulation.Factions.ModWorldState> WorldStates => _worldStates.Values;
+
+    /// <summary>
+    /// Throws when another mod (or this one) claimed the world state <paramref name="record"/> already.
+    /// </summary>
+    public void CheckWorldStateFree(string record, ModRegistrations pending, string mod)
+    {
+        if (_worldStates.TryGetValue(record, out var owner))
+            throw new InvalidOperationException($"World state '{record}' is claimed by mod '{owner.Owner}'.");
+        if (pending.WorldStates.Any(s => s.Record == record))
+            throw new InvalidOperationException($"World state '{record}' is claimed twice by mod '{mod}'.");
     }
 
     /// <summary>
@@ -207,6 +329,44 @@ sealed class ModRegistry
             throw new InvalidOperationException($"The use of item '{record}' is taken by mod '{owner}'.");
         if (pending.ItemUses.ContainsKey(record))
             throw new InvalidOperationException($"The use of item '{record}' is registered twice by mod '{mod}'.");
+    }
+
+    /// <summary>
+    /// Throws when job type <paramref name="type"/> is below the mods' range, another mod (or this one) holds it already as a job type, or another
+    /// mod holds it as an NPC goal type (one task type number has one owning mod; that mod may claim it as both).
+    /// </summary>
+    public void CheckJobTypeFree(Data.Gameplay.Ai.TaskType type, ModRegistrations pending, string mod)
+    {
+        if ((int)type < SimulationExtensions.FirstModCode)
+        {
+            string reason = $"Mod job types start at {SimulationExtensions.FirstModCode}; lower numbers are the game's tasks.";
+            throw new ArgumentOutOfRangeException(nameof(type), type, reason);
+        }
+        if (_jobTypeOwners.TryGetValue(type, out var owner))
+            throw new InvalidOperationException($"Job type {type} is taken by mod '{owner}'.");
+        if (_goalTypeOwners.TryGetValue(type, out var goalOwner) && goalOwner != mod)
+            throw new InvalidOperationException($"Task type {type} is taken by mod '{goalOwner}' as an NPC goal type.");
+        if (pending.JobTypes.ContainsKey(type))
+            throw new InvalidOperationException($"Job type {type} is registered twice by mod '{mod}'.");
+    }
+
+    /// <summary>
+    /// Throws when NPC goal type <paramref name="type"/> is below the mods' range, another mod (or this one) holds it already as a goal type, or
+    /// another mod holds it as a job type (one task type number has one owning mod; that mod may claim it as both).
+    /// </summary>
+    public void CheckGoalTypeFree(Data.Gameplay.Ai.TaskType type, ModRegistrations pending, string mod)
+    {
+        if ((int)type < SimulationExtensions.FirstModCode)
+        {
+            string reason = $"Mod goal types start at {SimulationExtensions.FirstModCode}; lower numbers are the game's tasks.";
+            throw new ArgumentOutOfRangeException(nameof(type), type, reason);
+        }
+        if (_goalTypeOwners.TryGetValue(type, out var owner))
+            throw new InvalidOperationException($"Goal type {type} is taken by mod '{owner}'.");
+        if (_jobTypeOwners.TryGetValue(type, out var jobOwner) && jobOwner != mod)
+            throw new InvalidOperationException($"Task type {type} is taken by mod '{jobOwner}' as a job type.");
+        if (pending.GoalTypes.ContainsKey(type))
+            throw new InvalidOperationException($"Goal type {type} is registered twice by mod '{mod}'.");
     }
 
     /// <summary>

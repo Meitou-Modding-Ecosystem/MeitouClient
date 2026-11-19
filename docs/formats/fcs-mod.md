@@ -28,11 +28,39 @@ remove1406bf680, rename1406bfb70. These are facts, not translated binary logic.
 
 ## Game loader
 
-Native accepts8..17;17 skips declared header,16 reads version/skips4strings,8..15 headerless.
-nextId: the data's counter restarts at 0 per file and ends at least at that file's nextId ([ids](zones.md#containers-and-ids)). byteSize ignored; flags from15,vec3/vec4 from9. Only flag0/1 affect merge.
-Silently truncate at NUL and byte limits: keys64, names/IDs/ref/instance identities512,
-string/filename4096. Prior types have integer IDs/extra tags and older refs; partial support is
-not a complete old-format specification.
+**Verified** (decompile 1.0.68: loader `FUN_1406c0b50`, its table readers `FUN_1406c9320`, `FUN_1406ca320`, `FUN_1406c9990`, `FUN_1406ca670`,
+`FUN_1406ca9e0`, `FUN_1406c9ce0`, filter test `FUN_1406c8f50`; entry list `FUN_14086ab20`). The layout of every type the game loads, file
+type T = first int, 8..17 (anything else fails, [below](#files-that-fail-to-load)):
+- Header: T 17 a uint length, then skipped; T 16 the version int, then four strings skipped by their lengths; T 8..15 none. Then `nextId`
+  (the data's counter restarts at 0 per file and ends at least at it, [ids](zones.md#containers-and-ids)) and the record count.
+- Record: uint byteSize (ignored), int type, int id, name, string id; uint flags from T 15 (bit 0 MODIFIED only logs a missing base, bit 1
+  RENAMED renames an existing record). Below 15 there are no flags: no log, and an existing record is always renamed.
+- Tag block, T 11, 13, 14 only: int count × (string key, byte), filling a per-record filter (a repeated key overwrites). A non-empty filter
+  keeps a value only when its key has a non-zero byte, and a reference only when `-ref-<target>` has; a removal reference passes regardless.
+  A filter is emptied when the file's path contains `.base`. A GLOBAL_CONSTANTS (type 27) record with tags in T 11 or 13 fills no filter and
+  queues box "Mod Warning": "The mod named '<path>' is out of date. Re-save it in the construction set.\nModifications to the
+  GLOBAL_CONSTANTS will be lost, you'll have to set them again, sorry!", untranslated (`FUN_140742130` → `FUN_1406e7230` sets title and text
+  without the translation call the other boxes use), in the same queue as the failure boxes.
+- Tables in file order: bool (1 byte, non-zero is true), float, int, vec3 and vec4 (only from T 9), string, filename; each pair overwrites.
+- References: int lists × (list name, int n × (target, int v0, from T 11 int v1, v2)); below 11 v1 = v2 = 0. A repeated list name adds to it;
+  an empty list touches nothing.
+- Instances: int n × (id, target, 3 floats position, 4 floats rotation w x y z, int states × state). From T 15 id and states are strings.
+  Below, the id is an int k, giving `<k>-<entry name>`, and a state is an int k: the string id of this file's earlier record with numeric id
+  k, else `<k>-<container name>-INGAME`, which a later record of the file with id k then takes as its string id. Both are printed into
+  their buffer ([strings](#strings)) with a 512-byte bound, unterminated when that long (the print at `1406c2238` gets the state's int).
+- Entry name: `base` for gamedata.base, the mod's name (file stem) for a `.mod`: core entries `FUN_14086ab20`, discovered ones
+  `FUN_14086f7a0`, which `FUN_1408693a0` looks up by the `mods.cfg` stem; a translation file (wrapper `FUN_1406c29a0`) has none.
+  The container name is the entry name, else the path after its last `/` or `\`.
+
+No installed file has a type below 16 (**Observed**: 553 `.mod`/`.base`/`.translation` files of the install, its Workshop folder and
+downloaded mods; types 16 and 17 only). The editor (FCS `GameData.load`) differs: it reads the tag block in T 12 too, v1/v2 from T 10, and
+names old instances `<k>-<file name with extension>`; the game is followed. FCS always saves T 17 with a fresh header for a file that had
+none (version 1, empty strings, save counter 1, nothing merged, no delete requests; `GameData.save`, `writeHeader`).
+
+Meitou (`FcsGameLoader`, used by `GameDatabase` for data and translation files; `FcsReader` stays the lossless reader of 15..17 for saves,
+levels and tools): reads all of the above. A record below 15 gets flags RENAMED, which loads the same. `FcsWriter` writes a file of a type
+below 15 as FCS does. **Observed** (scratch comparison of both readers over the 553 files): identical records, except that the game loader
+drops the position and states of a removed instance and creates no list from an empty one.
 
 ### Files that fail to load
 
@@ -40,7 +68,7 @@ not a complete old-format specification.
 `FUN_140872d70`, which ignore its result; `mods.cfg` reader `FUN_1408693a0`):
 - The loader fails only when the file does not open or its first int (the type) is outside 8..17; the latter logs
   `[GameDataContainer::load] Invalid data file '<path>' (Version: <n>)`. Past that check it has no failure exit and never tests the stream,
-  so a truncated or damaged file counts as loaded, silently, with the records read before the damage.
+  so a truncated or damaged file counts as loaded, silently ([damaged files](#damaged-files)).
 - `gamedata.base` failing: log `[Mods] Failed to load gamedata.base.`, box "Error!" / "Failed to load the core '{1}' file." with
   `gamedata.base`; it stays first in the file list (its level folder is still read). A core `.mod` failing: log
   `[Mods] Failed to load core mod: <name>`, the same box with `<name>.mod`, left out of the list. Loading goes on either way.
@@ -48,11 +76,31 @@ not a complete old-format specification.
   data). After all mods, one box "Mod error(s) (Ignored files)": "Failed to load the following mod(s):" and a line per name. Loading goes on.
 - A `mods.cfg` name with no mod on disk is logged (`[Mods] Mod '<name>...`) and skipped before loading; it is not in the box.
 
-Meitou (`GameDatabase.LoadDataFile`, `FcsReader.HasKnownType`, `DataLoadErrors`): a file that does not open or has a type the reader does
-not know is left out (`GameDatabase.NotLoaded`, issue `DataFileNotLoaded`) and has no level layer; one that fails later keeps the records
-read whole before the problem (issue `DataFileDamaged`). The log lines go to the console log (`log.txt`) when the world loads; the boxes
-open, one after another, the first time the title screen opens. **Engine choices**: types 8..14 are left out (the reader knows 15..17); past
-the damage the original reads on without a defined result, Meitou stops there.
+Meitou (`GameDatabase.LoadDataFile`, `FcsGameLoader.Opens`, `DataLoadErrors`): a file that does not open or has a type outside 8..17 is left
+out (`GameDatabase.NotLoaded`, issue `DataFileNotLoaded`) and has no level layer; a file shorter than 4 bytes too, as
+its type is never read (Meitou choice: the original would go on with whatever its variable held). The log lines go to the console log
+(`log.txt`) when the world loads; the boxes, "Mod Warning" ones included (issue `OutdatedConstants`), open one after another in load order the
+first time the title screen opens.
+
+### Damaged files
+
+**Verified** (MSVCP100 `basic_istream::read`, `ignore`, `seekg` and OgreMain `Quaternion()`, `Vector3()` disassembled; frame layouts of the
+loader functions in the decompile):
+- A read at the end copies the bytes left into its target and fails the stream; on a failed stream every read, skip and seek does nothing and
+  leaves its target as it was. A skip reaching the end marks it, which fails the next read; a seek before the start fails the stream.
+- So past the end the loader repeats the values it last read: the loader's own variables, the three name buffers and the shared value buffer
+  keep their contents (a value's length variable is set to 0 before each read, so a fully unread value is `""`). Remaining list entries thus
+  set the last pair, reference or instance again, and an instance's remaining states add the last state again. A record's rotation starts as
+  w 1, x y z 0; its position keeps the last one read. The state length variable holds 2 before the first state is read (1 for a file
+  without an entry name): its stack slot keeps a flag stored at the start (`1406c0d5c`), only the register copy is cleared.
+- Each table reader keeps its count, key length, key and value in its own frame, never set before their reads. A table read after the stream
+  failed (always the bool table of the next record) therefore runs on leftover stack contents, and so does any loader variable or buffer byte
+  that no read of this file filled: what follows is not decided by the file.
+
+Meitou (`FcsGameLoader`, `LoaderStream`, `LoaderValue`, `LoaderBuffer`): models the stream, the variables and the buffers as above, applying
+each record as it is read (a record counts from its fixed fields on, as the loader merges it from there), and stops at the first use of a
+value no read filled, keeping everything applied before (Meitou choice: there is nothing the file decides after it). The value buffer starts
+zeroed for each load order and is carried through its files. Issue `DataFileDamaged` says whether it stopped.
 
 Core files→core translation→ordered mods→first mod translation→postpasses→world leveldata.
 GLOBAL CONSTANTS lookup by name AND type27. Postpass resolves refs. **Verified** (`FUN_1406c34f0`, `GameDatabase.AddWallMasters`):
@@ -68,6 +116,17 @@ indices track creation/last update but their full uses unknown.
 - **Verified** (`kenshi_x64.exe`'s byte-string to `MyGUI::UString` imports are the `std::string` and `const char*` constructors and
   `assign(std::string)`): text reaches the UI through MyGUI's UTF-8 reading, which shows a byte that does not start a well-formed sequence
   as the code point of its value ([mygui](mygui.md#text-of-game-strings)). A Latin-1 name therefore shows as Latin-1; Windows-1252 bytes 0x80 to 0x9F become C1 controls.
+- **Verified** (frame and global layouts in the decompile of the functions named in [Game loader](#game-loader) and `FUN_1406bc480`): each
+  string is copied into a fixed buffer and then taken up to its first NUL. Buffers: 64 bytes per table call for value keys; one 4096-byte
+  global for string and filename values; three adjacent 512-byte frame buffers, A (names, tag keys, list names, instance ids), B right after
+  it (string ids, reference targets, instance targets) and C after B (states). A length L read as unsigned: L up to the size reads L bytes and
+  puts the terminator at L; a larger L (a negative one too) reads size bytes, seeks over the rest (back for a negative L) and cuts at size - 1.
+  L equal to the size puts the terminator one past the buffer: A's on B's first byte and B's on C's, so the string runs on into its
+  neighbour's contents when taken (a 512-byte name continues with its string id, a list name with each reference's target, an instance id with
+  its target, a target with its instance's last state); C's and every key buffer's on the stack cookie, so the /GS check ends the process when
+  that function returns, unless the cookie byte was 0; the value buffer's on an unused global byte, keeping the 4096 bytes.
+- Meitou (`FcsGameLoader`): the same buffers and rules; for a 64-byte key and a 512-byte state, where the original dies, it keeps the string
+  whole, as the original reads it when it lives. **Observed** (the 553 files above): no string reaches a limit or holds a NUL.
 - Meitou (`FcsReader`, `FcsWriter`, `LosslessUtf8`): every string is decoded as UTF-8, a byte outside a valid sequence kept as the lone
   surrogate U+DC00 + byte, and encoded back to the same bytes. The mapping is one-to-one, so ordinal comparison is the game's byte comparison;
   `boost::hash` orders (`BoostHashOrder.StringHash`) hash the stored bytes. Text is drawn through `MyGuiText.Runes`, MyGUI's reading.
@@ -82,7 +141,8 @@ indices track creation/last update but their full uses unknown.
 **Verified** FcsSchemaTests.Record_type_names_match_fcs_def_against_base_game checks78 used types;
 record census/runner-up matching statistics are not additional format rules. fcs.def declares
 sections/field defaults/types/ranges/enums/category headings; undeclared saved keys may still be
-valid. Infer kind from schema declaration, not an item's display name. Schema details follow.
+valid, and the editor keeps them ([below](#editor-and-undeclared-fields)). Infer kind from schema
+declaration, not an item's display name. Schema details follow.
 
 ## File
 
@@ -107,8 +167,8 @@ Record  records[recordCount]
 
 - FCS also accepts file types 1–15 (old formats without this header, and with different record
   layouts); it rejects anything else. The game accepts **8–17** (see [Game loader](#game-loader));
-  type 15 is the header-less layout used by the world `.zone`/`.level` files. Our reader supports 15, 16 and 17
-  only. Old mods are rare: since game version 0.92 mods are re-saved as 17 (Observed: of 50 Steam
+  type 15 is the header-less layout used by the world `.zone`/`.level` files. `FcsReader` supports 15, 16 and 17,
+  `FcsGameLoader` 8 to 17. Old mods are rare: since game version 0.92 mods are re-saved as 17 (Observed: of 50 Steam
   workshop mods, 25 are type 16 and 25 type 17).
 - FCS always writes type 17 with both bookkeeping sections. `Dialogue.mod` (9 bytes: save counter 1,
   no merges, no delete section) was presumably written by an older editor (Observed from the byte
@@ -160,6 +220,14 @@ Verified by the round-trip: bools are always 0/1, no record repeats a key within
 reference list name, and the `byteSize` values in rebirth.mod equal the real record sizes (the writer
 recomputes them and the output is identical).
 
+## Fields Meitou adds
+
+Records may store fields fcs.def does not declare; the game ignores them. Meitou reads ARMOUR `metalness` (float, 0 to 1, -1 none: how
+much of the item's bare-metal parts is metal; [character renderer "Metal"](../character-renderer.md)). The editor lists such a stored field
+under `misc` and keeps it, but sets only declared ones (its Set Field Value needs a declared default), so a modder adds
+`metalness: -1.0 "Meitou: metal of the bare parts, 0 to 1; -1 none"` under `[ARMOUR]` in the editor's fcs.def; new armour made in the mod
+then stores -1. **Verified** in the decompiled editor (`ObjectPropertyBox.addGridItem`, `SetFieldValue.bOk_Click`, `Item.setMissingValues`).
+
 ## Schema: `fcs.def` (Verified by `FcsSchema` parsing the whole file)
 
 `Meitou.Data.Fcs.FcsSchema` parses it. Text, one section per record type:
@@ -202,9 +270,18 @@ Leader AI Goals: AI_TASK (0, 24,0) "...val0 and val1 is start and finish time...
   also has many enums built in (e.g. `DialogConditionEnum`, `DialogActionEnum`) that aren't in the
   .def files; the dialogue ones are in [dialogue](../game/dialogue.md#enums).
 
+### Editor and undeclared fields
+
+**Verified** (editor decompile: `GameData.Item.load`, `Item.save`, the `Cleanup` window): the editor
+does not filter a record's fields by `fcs.def` when it loads a file; every key read goes into the
+record's table (only the tag filter of the older file types applies), and saving writes back
+every key of the active mod's table. So a field `fcs.def` does not declare survives a load and a
+save in the editor. The Cleanup window's "Remove deprecated fields" deletes, among the values the
+active mod set, the fields `fcs.def` does not define on records whose type it defines.
+
 ## Item categories
 
-What tells item records apart, for lists of every item (the debug menu's Drop item picker, `DebugItemCatalog`). The record type is the first level;
+What tells item records apart, for lists of every item (the debug menu's Items window, `DebugItemCatalog`). The record type is the first level;
 the second is one int field per type (names from the editor's built-in enums, **Verified** by decompiling `forgotten construction set.exe`: they are not in
 `fcs_enums.def`; the item counts are **Observed** on the vanilla install, 568 named item records):
 

@@ -107,6 +107,7 @@ sealed class NewGameLaunch(GameHost host)
                         world.RestoreSeed(seed);
                         world.Player.BanditsLoot = nextDifficulty.BanditsLoot;
                         spawned = built.Population!.StartPlayer(world, chosen);
+                        world.TellReady(fromSave: false);
                     });
                 }
                 catch (Exception e)
@@ -134,8 +135,8 @@ sealed class NewGameLaunch(GameHost host)
                 host.SettleNewWorld();
                 host.Player.Notice(Loc.Tr("Started {1}", chosen.Name));
                 ShowStartHints();
-                // The start's characters are made in the editor first (docs/characters.md "Character editor").
-                host.CharacterEditor.PendingCreation = [.. spawned.Members];
+                // The start's characters, of every start squad, are made in the editor first (docs/characters.md "Character editor").
+                host.CharacterEditor.PendingCreation = [.. SquadManagement.PlayerSquads(host.Session.World).SelectMany(s => s.Members)];
                 return null;
             }));
         host.SkyArrival?.ClimbAtOnce();

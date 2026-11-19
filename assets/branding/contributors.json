@@ -28,16 +28,16 @@
     "areas": "Slaves, Squads, Saves"
   },
   "dmlen": {
-    "commits": 9,
-    "areas": "Benchmarks, Proton saves, Tracers"
+    "commits": 10,
+    "areas": "Benchmarks, Crossbow bolt tracers"
   },
   "lucasskrewer": {
     "commits": 23,
     "areas": "Benchmark results, Animal hunger"
   },
   "dxseba": {
-    "commits": 3,
-    "areas": "Footprints, Combat hits, Mesh buffers"
+    "commits": 17,
+    "areas": "Blood prints, Ragdolls, Crossbow bolts"
   },
   "dfdffish": {
     "commits": 17,
@@ -48,16 +48,16 @@
     "areas": "Mod settings"
   },
   "teppum": {
-    "commits": 51,
-    "areas": "Animals, Inventory, Medic, Bandits, Dialogue"
+    "commits": 125,
+    "areas": "Code mods, Squads, Logging, Bounties"
   },
   "robgreen490": {
     "commits": 4,
     "areas": "UI scaling, Inventory rendering"
   },
   "deseven": {
-    "commits": 15,
-    "areas": "Metal, Debug menu, Launcher"
+    "commits": 32,
+    "areas": "Metal rendering, Debug menu"
   },
   "mattresspad": {
     "commits": 3,

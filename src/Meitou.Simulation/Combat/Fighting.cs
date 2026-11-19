@@ -474,9 +474,9 @@ public sealed class PursuitSystem(CombatSystem combat) : ITickSystem
         if ((uint)t >= (uint)prev.Length || !prev[t].Alive || prev[t].Generation != target.Generation) return true;
 
         var next = table.Next;
-        var water = WaterCost.Of(cold.WaterFactor, next[i].MaxSpeed, cold.Race, cold.SwimSpeed);
+        var water = WaterCost.Of(cold.WaterFactor);
         var path = world.Walkability is IAgentWalkability agent
-            ? agent.FindPath(next[i].Position, prev[t].Position, cold.FootprintRadius, water, cold.RoadPreference)
+            ? agent.FindPath(next[i].Position, prev[t].Position, CombatSteering.Radius(cold), water, cold.RoadPreference)
             : world.Walkability.FindPath(next[i].Position, prev[t].Position);
 
         return path.Points.Count > 0 && !EndsShort(path.Points[^1], prev[t].Position, cold, table.Cold(t), endReach);
@@ -658,7 +658,10 @@ public sealed class RetaliationSystem(CombatSystem combat) : ITickSystem, IDecis
             var table = world.Characters;
             if (owner.Plan(world, slot, out _) is var foe && foe < 0) return;
 
-            world.Defer(new AttackOrder([table.IdOf(slot)], table.IdOf(foe)) { Tick = world.Tick + 1, Defensive = true, Source = TaskSource.Goal });
+            world.Defer(new AttackOrder([table.IdOf(slot)], table.IdOf(foe))
+            {
+                Tick = world.Tick + 1, Defensive = true, Source = TaskSource.Goal, Cause = "self-defence: it was attacked",
+            });
         }
     }
 
@@ -871,7 +874,10 @@ public sealed class RetaliationSystem(CombatSystem combat) : ITickSystem, IDecis
         {
             var table = world.Characters;
             int a = owner.SelfFoe(world, slot);
-            world.Defer(new AttackOrder([table.IdOf(slot)], table.IdOf(a)) { Tick = world.Tick + 1, Defensive = true, Source = TaskSource.Goal });
+            world.Defer(new AttackOrder([table.IdOf(slot)], table.IdOf(a))
+            {
+                Tick = world.Tick + 1, Defensive = true, Source = TaskSource.Goal, Cause = "protecting an ally under attack",
+            });
         }
     }
 
@@ -1035,7 +1041,10 @@ public sealed class RetaliationSystem(CombatSystem combat) : ITickSystem, IDecis
         }
 
         foreach (var (foe, joiners) in _byFoe)
-            world.Defer(new AttackOrder(joiners, new CharacterId(foe, next[foe].Generation)) { Tick = world.Tick + 1, Defensive = true });
+            world.Defer(new AttackOrder(joiners, new CharacterId(foe, next[foe].Generation))
+            {
+                Tick = world.Tick + 1, Defensive = true, Cause = "joining its squad's fight",
+            });
     }
 
     /// <summary>
@@ -1089,7 +1098,8 @@ public sealed class RetaliationSystem(CombatSystem combat) : ITickSystem, IDecis
     /// <paramref name="attacker"/> within <see cref="ImmediateReach"/> of it, in slot order, never against a character of their own faction: the rows
     /// need state 16 (no threat within 40 of the followed character, <c>FUN_14059de10</c> on its <c>+0x2b0</c>), which 13 "Attacking attackers of"
     /// provides (docs/game/ai-tasks.md "Precedence"); the fight is a step of the row, which the decision step follows again after it
-    /// (<see cref="MovementSystem.FollowAgain"/>). A bodyguard's own attacker within 40 (45's <c>!39</c>) is <see cref="SelfDefends"/>.
+    /// (<see cref="MovementSystem.FollowAgain"/>). A follow order running its own row is not one: the threat ends it
+    /// (<see cref="PlayerOrders.FollowRowRuns"/>). A bodyguard's own attacker within 40 (45's <c>!39</c>) is <see cref="SelfDefends"/>.
     /// </summary>
     static void Guards(World world, CharacterTable table, int slot, int attacker, List<CharacterId> defenders, HashSet<int> taken, List<int> guards)
     {
@@ -1106,7 +1116,7 @@ public sealed class RetaliationSystem(CombatSystem combat) : ITickSystem, IDecis
                 continue;
             }
             if (next[s].Task != (byte)CharacterTask.Follow || c.Running is not { } run || !Production.PermaJobs.Follows(run.Row)
-                || !run.Runs(CharacterTask.Follow)
+                || !run.Runs(CharacterTask.Follow) || PlayerOrders.FollowRowRuns(c)
                 || !Helps(table, s, taken))
                 continue;
 

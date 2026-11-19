@@ -54,7 +54,8 @@ public sealed partial class DialogueSystem
             18 or 20 or 50 or 52 or 53 or 54 or 55 or 78 => SpeakerSquadCondition(world, dc, me, mc, subjectId, s),
             27 or 28 or 29 or 30 or 41 or 42 or 44 or 45 or 71 or 79 => BodyCondition(dc, s),
             11 or 16 or 17 or 31 or 49 or 57 or 58 or 60 or 68 or 70 or 73 or 74 or 75 => PlaceCondition(world, dc, me, mc, other, subjectId, sF),
-            59 or 61 or 62 or 64 or 65 or 77 => KindCondition(dc, mc, s, meF),
+            59 or 61 or 62 or 64 or 65 => KindCondition(dc, mc, s, meF),
+            77 => Bool(dc, IsRecruitable(world, s)),
             _ => Bool(dc, false),
         };
     }
@@ -253,17 +254,11 @@ public sealed partial class DialogueSystem
         switch (dc.Condition)
         {
             case 11: return Bool(dc, HouseLocked(world, mc));   // the speaker's squad, whatever `who` says
-            case 16:
-                {
-                    var whom = subjectId == me ? other : subjectId;
-                    return Bool(dc, Position(world, whom) is { } p && Position(world, me) is { } q && Vector3.DistanceSquared(p, q) < 67600);
-                }
+            case 16: return Bool(dc, InTalkingRange(world, subjectId == me ? other : subjectId, me));
             case 17: return Bool(dc,
                 mc.SquadId >= 0 && world.Squads.Find(mc.SquadId)?.HomeBuilding is { } home && Position(world, subjectId) is { } inside
                 && InBuilding(home, inside));
-            case 31: return Bool(dc,
-                Position(world, subjectId) is { } where && TownAt(where) is >= 0 and var town
-                && (town >= _data.SiteFactions.Count || _data.SiteFactions[town] != world.Player.Faction));
+            case 31: return Bool(dc, InNonPlayerTown(world, mc, subjectId));
             // TOWN_HAS_FORTIFICATIONS_WALLS: S's current town has a gate building (Town slot 97 FUN_140929910 finds one); S in no town reads false.
             case 49: return Bool(dc, Position(world, subjectId) is { } gated && HasGates(world, gated));
             // WITHIN_TOWN_WALLS: S's gate code above 0 (Character slot 35, docs/game/pathfinding.md "Gate codes"); no gate pass yet reads as the open
@@ -284,22 +279,16 @@ public sealed partial class DialogueSystem
                 return _population is not null && Position(world, me) is { } standing && PlayerTownAt(world, standing) is { } ownTown
                     && Num3(dc, _population.TownLevel(world, ownTown.Number));
             case 74: return Num3(dc, PlayersBestTownLevel(world));
-            case 75:
-                return Bool(dc,
-                    Position(world, subjectId) is { } loc && TownAt(loc) is >= 0 and var ptown && ptown < _data.SiteFactions.Count
-                    && world.Player.Faction >= 0
-                && _data.SiteFactions[ptown] == world.Player.Faction);
+            case 75: return Bool(dc, InPlayerTown(world, subjectId));
             default: return Bool(dc, false);
         }
     }
 
     /// <summary>
-    /// The conditions on what S is: a slave (owned by the speaker's faction), shackled, of the speaker's race group, not of the law, trader,
-    /// diplomat or military classes.
+    /// The conditions on what S is: a slave (owned by the speaker's faction), shackled, of the speaker's race group.
     /// </summary>
     bool KindCondition(DialogueCondition dc, CharacterCold mc, CharacterCold s, int meF)
     {
-        bool b = dc.Value > 0;
         switch (dc.Condition)
         {
             case 59: return Bool(dc, s.SlaveState is 1 or 2);
@@ -310,11 +299,39 @@ public sealed partial class DialogueSystem
             case 65: return Bool(dc,
                 s.Race is not null && mc.Race is not null
                 && _dialogue.RaceGroupOf(s.Race.StringId)?.Group == _dialogue.RaceGroupOf(mc.Race.StringId)?.Group);
-            case 77:
-                return s.NpcClass is FundamentalType.LawEnforcement or FundamentalType.Trader or FundamentalType.Diplomat or FundamentalType.Military
-                    ? !b : b;
             default: return Bool(dc, false);
         }
+    }
+
+    /// <summary>
+    /// The combat level at which DC 77 calls a character not recruitable (<c>DAT_1416ad4b0</c>, 25.0).
+    /// </summary>
+    const float RecruitableLevelLimit = 25;
+
+    /// <summary>
+    /// DC 77 IS_RECRUITABLE (<c>FUN_140676950</c> case 0x4d, <b>Verified</b> decompile): no while the player's faction holds CONSTANTS
+    /// <c>max faction size</c> characters, for a subject of combat level 25 or more (<see cref="CombatLevel"/>) or of the law, military, trader or
+    /// diplomat classes; yes otherwise.
+    /// </summary>
+    bool IsRecruitable(World world, CharacterCold s)
+    {
+        if (Factions.SquadManagement.CappedHeads(world) >= _data.Bodies.Constants.MaxFactionSize) return false;
+        if (s.Stats is { } stats && CombatLevel(stats) >= RecruitableLevelLimit) return false;
+
+        return s.NpcClass is not (FundamentalType.LawEnforcement or FundamentalType.Military or FundamentalType.Trader or FundamentalType.Diplomat);
+    }
+
+    /// <summary>
+    /// A character's combat level (<c>FUN_140885050</c>, <b>Verified</b> decompile): the mean of the better of martial arts and melee attack, of
+    /// dodge and melee defence, and of dexterity and strength, as stored.
+    /// </summary>
+    static float CombatLevel(CharacterStats stats)
+    {
+        float attack = Math.Max(stats.Stored(StatsEnumerated.MartialArts), stats.Stored(StatsEnumerated.MeleeAttack));
+        float defence = Math.Max(stats.Stored(StatsEnumerated.Dodge), stats.Stored(StatsEnumerated.MeleeDefence));
+        float body = Math.Max(stats.Stored(StatsEnumerated.Dexterity), stats.Stored(StatsEnumerated.Strength));
+
+        return (attack + defence + body) / 3;
     }
 
     /// <summary>
@@ -376,6 +393,65 @@ public sealed partial class DialogueSystem
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// DC 16 TARGET_IN_TALKING_RANGE (<c>FUN_140676950</c> case 0x10, <b>Verified</b>): both on the same floor (<c>getFloor</c>, vfunc <c>+0x60</c>)
+    /// and nearer than <see cref="TalkingRange"/>.
+    /// </summary>
+    static bool InTalkingRange(World world, CharacterId whom, CharacterId me)
+    {
+        var table = world.Characters;
+        if (!table.TryResolveNext(whom, out int w) || !table.TryResolveNext(me, out int m)) return false;
+        if (world.Sight.FloorOf(w, table.Previous[w].Position) != world.Sight.FloorOf(m, table.Previous[m].Position)) return false;
+
+        return Vector3.DistanceSquared(table.Next[w].Position, table.Next[m].Position) < TalkingRange * TalkingRange;
+    }
+
+    /// <summary>
+    /// DC 31 IN_A_NON_PLAYER_TOWN (<c>FUN_140676950</c> case 0x1f): S's status town (<see cref="Ai.AiSystem.StatusTownAt"/>, kept out to 1.5 x
+    /// its radius once entered, as S's next status update would write it) is set and not of the player's faction, and is no nest or nest marker;
+    /// ruins count only when they are the speaker's squad's home town.
+    /// </summary>
+    bool InNonPlayerTown(World world, CharacterCold mc, CharacterId subject)
+    {
+        var town = StatusTownOf(world, subject);
+        if (town.IsNone || PlayerOwned(world, town)) return false;
+        if (town.Site < 0) return world.Buildings.FindTown(town.PlayerTown) is not null;
+
+        var type = _data.Sites[town.Site].Town.Type;
+        if (type is TownType.Nest or TownType.NestMarker) return false;
+        if (type != TownType.Ruins) return true;
+
+        return world.Squads.Find(mc.SquadId)?.Ai?.HomeTown == town;
+    }
+
+    /// <summary>
+    /// DC 75 IN_A_PLAYER_TOWN (<c>FUN_140676950</c> case 0x4b, <b>Verified</b>): S's status town is set and of the player's faction (its faction's
+    /// <c>+0x250</c>), whatever its type.
+    /// </summary>
+    bool InPlayerTown(World world, CharacterId subject) => StatusTownOf(world, subject) is { IsNone: false } town && PlayerOwned(world, town);
+
+    /// <summary>
+    /// S's status town (the original's status <c>+0x88</c>, through Character slot 14) as S's next status update would write it
+    /// (<see cref="Ai.AiSystem.StatusTownAt"/>: kept out to 1.5 x its radius once entered); none for a character that does not resolve.
+    /// </summary>
+    CampaignTown StatusTownOf(World world, CharacterId subject)
+    {
+        var table = world.Characters;
+        if (!table.TryResolveNext(subject, out int s) || table.Cold(s) is not { } sc) return CampaignTown.None;
+
+        return Ai.AiSystem.StatusTownAt(_data, world, table.Next[s].Position, sc.StatusTown);
+    }
+
+    /// <summary>
+    /// Whether the town is the player's faction's: a player outpost the player owns, or a placed town whose faction is the player's.
+    /// </summary>
+    bool PlayerOwned(World world, CampaignTown town)
+    {
+        if (town.Site < 0) return world.Buildings.FindTown(town.PlayerTown) is { } built && built.Owner == world.Player.Faction;
+
+        return world.Player.Faction >= 0 && town.Site < _data.SiteFactions.Count && _data.SiteFactions[town.Site] == world.Player.Faction;
     }
 
     /// <summary>

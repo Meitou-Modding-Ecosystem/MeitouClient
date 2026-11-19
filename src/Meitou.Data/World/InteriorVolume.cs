@@ -43,6 +43,18 @@ public sealed record InteriorVolume(string PlacementId, Vector2[] Footprint, flo
     public IReadOnlyList<string> MaskMeshes { get; init; } = [];
 
     /// <summary>
+    /// An <c>interior terrain</c> building with a mask mesh reaching under the terrain it stands in (the Ash Dome Ruins): its mask holds the ground
+    /// the building is walked on (docs/render-interior-cut.md, "Interior terrain").
+    /// </summary>
+    public bool MaskHoldsGround { get; init; }
+
+    /// <summary>
+    /// A building with a mask mesh whose <c>interior</c> list draws nothing, so its rooms' floors, ramps and inner walls are parts of its shell (the
+    /// Ash Dome, the Ash Dome Ruin, the Ancient Factory; <b>Verified</b>, a scan of the install's merged records: the only three).
+    /// </summary>
+    public bool ShellHoldsRooms { get; init; }
+
+    /// <summary>
     /// The building's node (position, rotation, <c>scale</c>) the mask meshes are placed with.
     /// </summary>
     public Matrix4x4 Node { get; init; } = Matrix4x4.Identity;
@@ -358,9 +370,10 @@ public sealed record InteriorVolume(string PlacementId, Vector2[] Footprint, flo
     /// The volume of a building placed at <paramref name="position"/> / <paramref name="rotation"/>, or null when it has no <c>interior mask</c> part
     /// with a readable collision file, or is a gateway and <paramref name="gateways"/> is false (a gateway is walked under, not entered: no room, but
     /// its hull still answers the audio ray, <see cref="IsGateway"/>). <paramref name="collision"/> loads a record's collision path (shared, cached).
+    /// <paramref name="ground"/> is the terrain's height at the building, when known: what <see cref="MaskHoldsGround"/> is told by.
     /// </summary>
     public static InteriorVolume? For(GameDatabase db, GameRecord building, string placementId, Vector3 position, Quaternion rotation,
-        InteriorCollisions collision, bool gateways = false)
+        InteriorCollisions collision, bool gateways = false, float? ground = null)
     {
         bool gateway = building.GetBool("is gateway");
         if (gateway && !gateways) return null;
@@ -389,6 +402,10 @@ public sealed record InteriorVolume(string PlacementId, Vector2[] Footprint, flo
         if (points.Count < 3) return null;
         var hull = ConvexHull2(points);
         if (hull.Length < 3) return null;
+
+        // The terrain is such a building's floor (docs/render-interior-cut.md, "Interior terrain"): a mask holding it cuts the ground walked on.
+        bool holdsGround = ground is { } level && building.GetBool("interior terrain") && meshes.Any(m => ReachesUnder(collision, m, node, level));
+
         return new InteriorVolume(placementId, hull, yMin, yMax)
         {
             Ambience = building.GetInt("interior ambience"),
@@ -396,6 +413,8 @@ public sealed record InteriorVolume(string PlacementId, Vector2[] Footprint, flo
             Cavernous = building.GetBool("cavernous"),
             IsGateway = gateway,
             MaskMeshes = meshes,
+            MaskHoldsGround = holdsGround,
+            ShellHoldsRooms = meshes.Count > 0 && !building.GetReferences("interior").Any(r => DrawsMesh(db, r.TargetStringId, 0)),
             Node = node,
             _maskCorners = [.. corners],
             _pieces = [.. pieces],
@@ -403,6 +422,28 @@ public sealed record InteriorVolume(string PlacementId, Vector2[] Footprint, flo
             _roofCover = new Lazy<RoofCover>(() => RoofCover.For(db, building, placementId, position, rotation, collision)),
             _drawnMask = new Lazy<Vector3[]>(() => [.. meshes.SelectMany(m => collision.RenderTriangles(m)).Select(v => Vector3.Transform(v, node))]),
         };
+    }
+
+    /// <summary>
+    /// Whether the part <paramref name="partId"/> or one of its <c>parts</c> (a few levels down) names a render mesh.
+    /// </summary>
+    static bool DrawsMesh(GameDatabase db, string partId, int depth)
+    {
+        if (db.Find(partId) is not { } part) return false;
+        if (part.GetPath("phs or mesh").Contains(".mesh", StringComparison.OrdinalIgnoreCase)) return true;
+        return depth < 3 && part.GetReferences("parts").Any(r => DrawsMesh(db, r.TargetStringId, depth + 1));
+    }
+
+    /// <summary>
+    /// Whether the mask mesh at <paramref name="recordPath"/>, placed with <paramref name="node"/>, reaches under the height
+    /// <paramref name="level"/>: by its lowest placed vertex. False for a missing or unreadable mesh.
+    /// </summary>
+    static bool ReachesUnder(InteriorCollisions collision, string recordPath, Matrix4x4 node, float level)
+    {
+        foreach (var v in collision.RenderTriangles(recordPath))
+            if (Vector3.Transform(v, node).Y < level) return true;
+
+        return false;
     }
 
     /// <summary>
@@ -683,6 +724,27 @@ public sealed class InteriorCollisions(GameInstall install)
     }
 
     /// <summary>
+    /// The render meshes' stored bounds boxes in their own space, by record path (null for a missing or unreadable one).
+    /// </summary>
+    readonly ConcurrentDictionary<string, (Vector3 Min, Vector3 Max)?> _renderBounds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The bounds box a part's render mesh stores, in its own space; null when the path is empty or the file is missing or unreadable.
+    /// </summary>
+    public (Vector3 Min, Vector3 Max)? RenderBounds(string recordPath) =>
+        string.IsNullOrWhiteSpace(recordPath) ? null : _renderBounds.GetOrAdd(recordPath, LoadBounds);
+
+    /// <summary>
+    /// Reads a render mesh's stored bounds; null when it does not resolve or read.
+    /// </summary>
+    (Vector3 Min, Vector3 Max)? LoadBounds(string recordPath)
+    {
+        if (CollisionPaths.Resolve(install, recordPath) is not { } path) return null;
+
+        return Ogre.OgreMeshReader.TryReadBounds(path, out var b) && b.Max.X >= b.Min.X ? (b.Min, b.Max) : null;
+    }
+
+    /// <summary>
     /// Every triangulated vertex of the file's shapes, or null when the path is empty or the file is missing or unreadable.
     /// </summary>
     public Vector3[]? Vertices(string recordPath) => Mesh(recordPath)?.Vertices;
@@ -699,7 +761,7 @@ public sealed class InteriorCollisions(GameInstall install)
     /// </summary>
     CollisionMesh? Load(string recordPath)
     {
-        if (CollisionPaths.Resolve(install, recordPath) is not { } path) return null;
+        if (CollisionPaths.ResolveCollision(install, recordPath) is not { } path) return null;
         CollisionFile file;
         try { file = CollisionFile.ReadFile(path); }
         catch (Exception e) when (e is InvalidDataException or IOException or System.Xml.XmlException or FormatException) { return null; }

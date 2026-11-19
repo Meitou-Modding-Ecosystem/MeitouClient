@@ -43,6 +43,11 @@ of the pivot at the zoom distance).
   (`DAT_141689854`) on the wall-clock stopwatch of [Music](#music). A loaded `SFX_Amb_<Biome>` bank whose deadline has passed (strictly) is
   unloaded, which ends what still plays from it. Nothing is unloaded, music or ambience, while any bank load is pending: one pending word
   (`+0x1d8`) holds the music loads (bits 0..3), the ambience loads (bits 4..13) and the start-up banks (bit 16).
+  **A failed load** (**Verified**, the bank pass and its loader `FUN_1402586e0`, which returns bank id 0 when `LoadBank` does not succeed): the
+  pending bit is cleared whatever the result, the bank's id stays 0 and nothing is posted (no `Enter_`; for music no `Biomes` switch and no
+  remembered `_Play`), so unloads go on. The load is asked for again only at the next state change into that biome (`FUN_140258940`, day/night
+  included) or the next music change into that index (`FUN_1402587a0`). **Meitou:** `WwisePlayer.LoadBank` reads a bank whose last load failed
+  again; `MusicDirector` drops a failed pending bank with nothing remembered; the ambience's failed load is not pending.
   **Meitou** (`AmbienceDirector.UnloadStale`, called by `AudioSystem.Update` after the music): the same rule on the director's summed real
   seconds; a load pending is the current biome's bank or music bank not loaded yet, and each holds back the other's unloads too. The ten biome banks share four actor-mixers, and Canyons, Forest and
   Plains share a few WEMs (5 Canyons/Forest, 3 Canyons/Plains, 3 Forest/Plains; **Verified**, their DIDX and HIRC ids), so `UnloadBank` keeps an object or recording another loaded bank lists.
@@ -201,7 +206,16 @@ power, `FUN_140258260` destroys), the building set-up `FUN_14055c240`, its loade
 - **Foliage** (**Verified**, the instance placement `FUN_1406d2410` by disassembly, the cell update `FUN_1406cc470`). After an instance is added to its foliage cell, and only while the cell holds fewer than 100
   emitters, the **first** entry of the FOLIAGE_MESH's `sounds` is rolled by its `chance` and makes an emitter at the instance's position + the entry's values (no rotation, no scale). The child meshes the
   placement scatters round an instance go through the same function. The cell update runs the range test of its emitters and the cell's teardown (`FUN_1406cca00`) ends them (**Observed**: per frame and
-  on unload, from the callee lists). **Not in Meitou**: no base-game data uses it.
+  on unload, from the callee lists). The cell is **one zone's** foliage object (**Verified**: `FUN_1406d3e30` constructs it, with the zone at `+0x80`
+  whose coordinates seed the layers, and places every layer of the zone into it; the zone loader `FUN_1409ffad0` builds one per loaded zone at
+  `+0x100`; the emitter list is its `lektor<SoundEmitter*>` at `+0xe8`, count `+0xf0`). So the cap is 100 emitters per zone across all its layers, in
+  placement order: an instance is added, then its emitter is rolled, then its children are placed. The roll is the C runtime's `rand()`
+  (`FUN_1409b1c10`), not the placement's generator, and the point is the instance's unsnapped one (TreeLoader3D snaps its own copy; the add
+  `FUN_1406d2050` / `FUN_140a46460` only copies it). No base-game, Newwworld, Dialogue or rebirth FOLIAGE_MESH lists `sounds` (above): only mods.
+  **Meitou** (`FoliageLayout.Place` fills `FoliageZone.Emitters` right after each instance, `FoliageLayout.MaxEmitters` 100, only for a complete
+  placement; `FoliageMesh.Sound`; `FoliageEmitters`, `WorldAudio`): the zones within the farthest foliage emitter's range of the eye are placed in full on a
+  worker (with the player's towns of the renderer) and their emitters added, dropped 1000 units beyond; the roll is a stable hash of the zone and the
+  instance's index; nothing runs when no mesh has a sound.
 
 #### Machine sounds (Meitou)
 
@@ -247,7 +261,7 @@ the counter to 8; the counter counts down every frame and posts `Turret_Mvt_Stop
 The turning parts are the BUILDING_PART records with `rotation function` 5 (ROTATION_TARGET): in order, each takes the aim point in its own frame and turns by its error (yaw part, `rotation axis` Y: `atan2(x, z)`; pitch part: `atan2(-y, √(x²+z²))`) limited to
 ± the turning speed × frame time (efficiency × `aim speed` × (1 + 0.01 × damage), [combat](game/combat.md#turrets)). A shot posts `Attack` on the building's object with the `Weapons` switch `Turret`. **Unknown:** the
 idle behaviour of a manned turret without a target. **Meitou:** the simulation fires turrets and publishes who mans which turret and its aim point (`CharacterSnapshot.Turret`, outside the hash).
-`TurretAudio` keeps a display-only copy of each manned turret's parts within 4000 units, turned toward that aim point by the rule above in game time at efficiency 1 (`TurretSounds`, `TurretRig`),
+`TurretAudio` keeps a display-only copy of each manned turret's parts within 4000 units (stretched by the Sound range, [hearing range](#hearing-range)), turned toward that aim point by the rule above in game time at efficiency 1 (`TurretSounds`, `TurretRig`),
 and posts the two events on an object of its own at the turret (a start beyond 3000 units from the eye is dropped; **engine choice**). The gun mesh turns with the simulation's angles ([render-objects](render-objects.md#turrets)). A shot
 (`SoundKind.TurretShot`) posts `Attack` with `Weapons` = `Turret` on a pooled object at the muzzle (**engine choice**).
 To hear it: a town under attack whose guards man their turrets, or a player character sent to a turret with an enemy in range.
@@ -305,7 +319,10 @@ through one helper (`FUN_1405c9a70(char, event, maxSqDist)`): **dropped when the
   break works; a click that holds the Stop) and `Character_Unlock_Fail` (a bare Stop, slot 3 of Task_PickLock and Task_UnlockDoor, so at every end of the task, success included;
   all **Verified**: strings, callers and the bank's actions), `Character_Lock` (Task_LockDoor), `Character_Bed` with `Bed` = `Get_In` / `Get_Out`,
   `Character_Pick_Up_Ground` (`Task_Pickup` slot 2, 1000 units, after the `Inventory_Items` switch, which the bank ignores; posted when any of the stack went into the inventory, not when nothing fitted), `Character_Pick_Up_Person` / `Character_Drop_Person` (on the carried person, with its `Armor_Worn`), `Character_Loot` (character target) / `Character_Inspect`,
-  `Character_Consume` with `Consume` = `Eat` (200 units) and `Sell_Item` (200 units). `Character_Building_Materials` is posted but **no bank has it** (silent). Involuntary drops (knock-out, ragdoll) are silent.
+  `Character_Consume` with `Consume` = `Eat` (200 units) and `Sell_Item` (200 units). `Character_Building_Materials` (`Task_AddMaterialsToBuilding` slot 1 `FUN_140351e20`,
+  1000 units) is posted but **no bank has it** (**Verified**: its hash `4537CE1A` is no event of any of the install's 24 banks, `meitou-tools audio <bank>`), so it is silent. Involuntary drops (knock-out, ragdoll) are silent.
+  `Sell_Item` and `Character_Inspect` set no switch first (neither poster calls the switch helper) and read none: each is one plain Sound in `SFX_General_Bank`
+  (**Verified**, dumped), so they play whatever the object's switches are (**Observed**, `audio render`: about −56 and −45 dBFS RMS in their first second).
   `Character_Drop_Ground`, `Taunt` and `Create_Character` are posted on the GUI object ([Interface](#interface)).
 - **Machine work** (**Verified**, decompile): each update of `Task_OperateMachine` (slot 2 `FUN_14035bc90`, once `tryOperate` passes and the clip, the functionality's `animation` else
   `stonemine`, plays) and of `Task_UseTrainingDummy` (slot 2 `FUN_14035c1e0`) adds the BUILDING_FUNCTIONALITY's `animation events` to that clip on the operator (`FUN_140065280`, `FUN_140064e10`;
@@ -320,17 +337,28 @@ through one helper (`FUN_1405c9a70(char, event, maxSqDist)`): **dropped when the
   without a bone or when the bone's height comes out 0). Ground events share the clip's event list and cursor with the sounds (`FUN_140064690` calls each event's own fire), so only the
   dominant clip fires them. Under the water height (the depth is the water height less the point's height, so the ankle bone, not the sole): the BIOMES record's `water effects` entry
   (v0 depth, v1 speed) with the greatest v0 at most the depth, then greatest v1 at most the speed, at the water surface, no turn; the biome is the one under the point (`FUN_140a0ac00`,
-  the footsteps' lookup), else the record `EMPTY`; none when no entry fits. Dry: only when the ground ray's hit has the null handle (type `0xb`, the terrain; **Observed**); the biome's
-  `ground effects` slot for the overlay channel at the point (`FUN_140a16f70`, the footsteps' channel pick), fired when the speed is at least its min speed and `rand()`/32768 is at most
-  its chance; a bone puts the point on the terrain. Slots (biome loader `FUN_140a13750`): an entry's v0 above 2 is lowered by one, then 0..4 picks the slot; v1 is the min speed, v2 x 0.01
-  the chance. The effect spawns through a pool (none when full) only inside the camera frustum widened by 100 units (`FUN_140a08c00`, `FUN_1406ae7b0`, the constant at
-  `DAT_141683250`). Data (`gamedata.base` dump): 59 BIOMES list `ground effects`
-  (`Dustkick01`, `01a`, `01b`, `01c`; min speed 0, 30 or 40; chance 100), 70 list `water effects` (`Watersplash` v0 0, `WadingFoam` v0 3; v1 0); a farmer standing at work (speed 0) kicks
-  dust only where the slot's min speed is 0 (**Observed**). The EFFECT records (**Verified**, probe of the user's load order): `Watersplash` is system `Footsplashes01` (three one-particle
+  the footsteps' lookup), else the record `EMPTY`; none when no entry fits. Dry (the point above the water height): only when the ground ray's hit has the null handle (the
+  movement's `+0x340` hit handle type `0xb`: the terrain, not a building floor or foliage; the field `FUN_14065df80` reads for the footsteps' building branch); the biome's
+  `ground effects` slot for the overlay channel at the point (`FUN_140a16f70`, the footsteps' channel pick: `FUN_140a16c90`, A above `0xA0` 4, B 3, G 2, R 2, else 0; nothing while the
+  tile loads), fired when the speed (character vfunc `0x48`: the movement's speed at `+0xb8`, 0 for a character that is down or dead) is at least its min speed and `rand()`/32768 is at
+  most its chance; a bone puts the point on the terrain (the height at the bone's X/Z), no bone leaves the character's position. Slots (biome loader `FUN_140a13750`): an entry's v0
+  above 2 is lowered by one, then 0..4 picks the slot, a later entry for a slot replaces an earlier one; v1 is the min speed, v2 x 0.01 the chance. The effect spawns only inside the
+  camera frustum widened by 100 units (`FUN_140a08c00`, `FUN_1406ae7b0`, the constant at `DAT_141683250`), through a pool of 100 instances (the world's constructor `FUN_140a0ccd0`;
+  none spawns when it is full) that retires an instance when its particle system has stopped or it is 10 s old (`FUN_14040be00`, the float at `DAT_14167fad4`); the instance stands at
+  the point with no turn. Data (`gamedata.base` dump, **Verified** by probe): 59 BIOMES list `ground effects`, four entries each: EFFECT records `Dustkick01`, `01a`, `01b`, `01c`,
+  which all name the one particle system `Dustkick01`; v0 0..5, min speed 0, 4, 30, 40 or 130 (mostly 40 or 30, running; 0 kicks for a standing farmer too), chance always 100; slot
+  1 is never read (no overlay pixel gives channel 1). 70 list `water effects` (`Watersplash` v0 0, `WadingFoam` v0 3; v1 0); a farmer standing at work (speed 0) kicks dust only
+  where the slot's min speed is 0 (**Observed**). The EFFECT records (**Verified**, probe of the user's load order): `Watersplash` is system `Footsplashes01` (three one-particle
   crowns, 7 to 14 units, standing on the surface, gone in 0.2 to 0.5 s), `WadingFoam` is `WadingFoam` (flat foam on the water: a base for 1 s, splashes for 0.8 to 2 s, a residue
-  for 11 s that wanders 0.4 units a tenth of a second and turns, emitted over 0.4 to 2.5 s). So a foot whose ankle bone stays above the water (ankle-deep water) shows nothing.
+  for 11 s that wanders 0.4 units a tenth of a second and turns; each emitter is forced, one burst at its start, the 0.4 to 2.5 s `duration` only ends it). So a foot whose ankle bone
+  stays above the water (ankle-deep water) shows no water effect; it takes the dry half.
   **Meitou** (`GameHost.Splashes`): the water half, as above, on the snapshot's dominant layer with the sounds' cursor; the system is fired with `ParticleRenderer.Burst` for 3 s
-  (its emitters stop at their own `duration`); the speed is the shown snapshots' horizontal speed. The dry half (dust) and the farms are not done.
+  (its emitters stop at their own `duration`); the speed is the shown snapshots' horizontal distance over the ticks between them. The dry half is `Effects.DryGroundEffects`: the
+  biome's slots, a character on a building floor refused (`CharacterAudio.FloorSurface`, the null-handle test), the 100-instance pool kept by counting kicks for 10 s of the frame
+  clock, `Dustkick01` fired with `Burst` for 0.25 s (its emitters are forced). With `contactfoam` a foot over wet ground takes the shallow splash instead of dust. A machine's ground
+  events (the farms' `Impact Farm`, no bone, speed 0) ride on the operator's clip as its sounds do; only a biome slot with min speed 0 kicks dust for a farmer (**Verified**:
+  `FUN_140065330` reads the biome only). Debug: `ground-at`, `dust-stats` ([agent-playtest](agent-playtest.md)). **Observed** (`t_desert_gold`, a runner on sand): a faint cloud
+  behind each step, 9 kicks in about a second of running.
 
 Meitou (`CharacterSounds`, `AnimationSoundEvents`, `GroundSurfaces` in `Meitou.Game.Audio`; `CharacterAudio`): characters within 1100 units of the eye get an object (dropped past 1400, or when they leave the snapshot);
 the host hands each character's place, facing, speed (horizontal distance between the last two snapshots over the tick) and animation layers (`AnimationLayer.Length` and `.Definition`, added to the snapshot) every frame.
@@ -355,15 +383,22 @@ on the GUI object with `Inventory_Items` of the item, `FUN_140715560`), that `It
 `Character_Inspect` (**Verified**, `Task_Loot_Order` start `FUN_140354dc0`: `Character_Loot` for a character target, else `Character_Inspect`, 1000 units; containers, storage, furnaces and the
 other loot targets of [ui-input](game/ui-input.md) are order 26): on the opener when a container's window opens (`ContainerAccess.ContainerWorkers`, `SoundKind.Inspected`) and when a player storage the
 building menu walked the selection to opens (`BuildMode.UpdateStorageOpening`). `Sell_Item` from shoppers (**Verified**, `FUN_1409a14b0`: after a unit is bought, whether or not the buyer keeps it, when the
-price is above 0, with the price floater; 200 units on the shopper): `NpcTrade.Buy` (`SoundKind.NpcBought`). `Character_Drop_Person` at the corpse machine (**Verified**, `Task_FeedCorpseIntoMachine` slot 3
-`FUN_1403567a0`: on the body as it is destroyed, after its `Armor_Worn`, 1000 units): the body is gone from the snapshot when the sound plays, so it posts on a pooled object at the body's last place with the
-armour of the previous snapshot (`CharacterSounds.FedToMachine`; **engine choice**). **No trigger in Meitou:** `Character_Unlock_Fail` as a sound of its own (it is only the loop's Stop; a failed roll posts nothing,
-as in the exe), `Character_Building_Materials` (no bank has it).
+price is above 0; 200 units on the shopper): it and the price floater are both inside the test of the GUI's shown flag (GUI `+0x330`, `DAT_142133ae0`, flipped by the
+hide-interface action `FUN_1406e2a20`; set means shown, **Observed** from its readers), so neither happens while the interface is hidden. `NpcTrade.Buy` queues the floater
+(`Floater.Price`) and `SoundKind.NpcBought`; the host posts `Sell_Item` only while `PlayerInterface.UiVisible` (the floater: [ui-screens](game/ui-screens.md#8-damage-floaters)).
+`Character_Drop_Person` at the corpse machine (**Verified**, `Task_FeedCorpseIntoMachine` slot 3 `FUN_1403567a0`): the body is destroyed first (`FUN_140799af0`
+only puts it in the world's dying map with a 5.0 timer, counted down by the characters' frame time `DAT_142133794` in `FUN_14079d8a0`), then its `Armor_Worn`
+is set from the character's cached body armour (`+0x68c`, refreshed by `FUN_1405d28b0` from Character slots 51 and 52, which also redo the worn-gear totals `FUN_140887030`: equip and unequip, **Observed**)
+and the sound posts on its object, 1000 units; the deletion 5 game seconds later stops everything on that object and unregisters it (character destructor
+`FUN_140622a80`). Meitou: the simulation's event carries the body armour (`World.BodyArmourMaterial`, `SoundEvent.Armour`); `FedBodySounds` gives each body an
+object of its own at its last place and ends it after 5 game seconds (real time × speed, 0.01 a frame at speed 0). **No trigger in Meitou:**
+`Character_Unlock_Fail` as a sound of its own (it is only the loop's Stop; a failed roll posts nothing, as in the exe), `Character_Building_Materials` (no bank has it).
 Meitou's wardens have no unlock loop (their rounds only start the click); the player's lock picking loops as the exe's `Task_PickLock`.
 Machine work: while an operator works (the player's operate task, or an AI worker's or obedient slave's standing work at its building's functionality clip: `CharacterCold.ActionWork`),
 the snapshot's `WorkEvents` (functionality and clip) has the host give that clip's layer its events with the functionality's added (`AnimationSoundEvents.Attach`), kept until the layer
-is gone; a clip still playing when its worker starts at another machine takes that machine's events too, as the exe's instance would. Not covered: the town's training dummies, which
-Meitou's AI stands at with no clip. The simulation's time of a looping clip that is neither synched nor a side step runs on past its length; the host wraps
+is gone; a clip still playing when its worker starts at another machine takes that machine's events too, as the exe's instance would. The town's training dummies and the
+home's workstations are pretend-operated by 43 / 275 through 221, the same `Task_OperateMachine` (**Verified**, `FUN_14035bc90`: no exception for function 7 but the XP),
+so their sitters play the functionality's clip with its events (the dummies' `Dummy` impacts): `AiSystem.PretendOperate` sets `ActionWork` too. The simulation's time of a looping clip that is neither synched nor a side step runs on past its length; the host wraps
 its fraction, so the events of `stonemine`, `chop down static` and the swim clips fire on every pass, as the exe's cursor does.
 
 **Unarmed `Weapons`** (`FUN_1402b4570`, when a technique is chosen): the switch becomes `HtH_Punch` when the technique's last blow uses limb 0 or 1 (the arms, **Verified**) else `HtH_Kick`, with `_Robot` appended for a robot (**Observed**: the exe also appends it when a limb check on the attacker's race says robotic limbs). Meitou applies it when the animation of a COMBAT_TECHNIQUE valid
@@ -392,14 +427,14 @@ the exe's). Posts are unconditional unless noted. Events that are not in `SFX_Ge
 | `UI_Generator` (`Generator` = `On` / `Off`); `Building_Lock_Unlock` (`Build_Lock` = the state being *left*) | machine power switch; door Security button (`FUN_140547060` sets `Build_Lock` to `Lock_Building` when the door's lock flag is set, else `Unlock_Building`, posts, then flips the flag: **Verified**, decompiled) |
 | `Dialogue_Choice` (`Dialogue_Choice` = `Continue_Conversation`) | a reply picked |
 | `Notifications` (`Notifications` = `Building_Complete`, `Thing_Complete`, `Bounty_Fulfilled`, `New_Biome`) | construction finished; research or blueprint learned, a dismantle finished; a bounty paid; the HUD biome banner appearing ([Biome banner](game/ui-screens.md#biome-banner), `MainBarGUI::vfunc_10`, **Verified**) |
-| `Slider`, `Create_Character` | data-panel slider; the character editor's Done, and a jailer's release of a prisoner of the player's faction that is no slave (`Task_ReleasePrisoner` start `FUN_1403570a0`, with "{1} has been released from prison."; slave state `FUN_1405c8aa0` 0) |
+| `Slider`, `Create_Character` | a mouse button (any) going down on a data panel's editable slider (`DataPanelLine_SliderEditable`: `FUN_1406f8c60` binds `FUN_1406f65a0` to its bar's pressed event, widget `+0x118`; MyGUI's ScrollBar re-raises a press on its arrows, track and thumb as its own, **Observed** from MyGUI 3.2.2's `ScrollBar::notifyMousePressed`): the new game's advanced options, the options' `Auto save time (minutes)` and `Font Size`, two level-editor windows; the plain data-panel sliders (the volumes) and the character editor's bars post nothing (**Verified**: the only creators are `FUN_1409151d0`, `FUN_1403f0260`, `FUN_140773480`, `FUN_14010d8d0`, and `FUN_1406f65a0` is the only `Slider` poster); the character editor's Done, and a jailer's release of a prisoner of the player's faction that is no slave (`Task_ReleasePrisoner` start `FUN_1403570a0`, with "{1} has been released from prison."; slave state `FUN_1405c8aa0` 0) |
 | `Prospect_Click`; `Prospect_Results` | the HUD Prospect button when it gives a character the prospecting task (`FUN_140721800`; closing the open window is silent); the Prospecting Results window shown (`FUN_14049f180`), a second after the click ([Prospecting](game/ui-screens.md#prospecting)) |
 | `Research_Tab` (`Research_Tabs`) | a pick in the overview research tab's type list (`ResearchTypeList`; `FUN_14049b5e0`, not for a deselect); the switch value is the list item's text, the RESEARCH `category`. **Verified** bank: five values, `Industry` and `Defense` resolved by hash, three **Unknown**; an unmatched value is silent |
 
 `Inventory_Items` (`FUN_14075e360`, **Verified**): WEAPON and CROSSBOW by `material` (`Weapon_Metal`, `Weapon_Wood`); ARMOUR by `material type` (`Fabric`, `Leather`, `Robotic_Component`, `Steel_Bar`); ITEM, CONTAINER, NEST_ITEM
 and MAP_ITEM by `inventory sound` (`Backpack`, `Building_Material`, `Fabric`, `Flour`, `Food`, `Kits`, `Leather`, `Luxury`, `Narcotics`, `Ore`, `Potato`, `Robotic_Component`, `Rum`, `Steel_Bar`, `Tools`, `Water`, `Wheat`,
 `Armor_Plating`, `Blueprints`, `Meat`); LIMB_REPLACEMENT `Robotic_Component`. The `Notifications` bank also has `Raid` and `Under_Attack` and three unresolved values the exe never passes. **Unknown:** the MyGUI events behind
-Hover and Slider; whether the editor's speed reset posts `Game_Speed_Normal`; what Wwise does for a NULL switch value.
+Hover; whether the editor's speed reset posts `Game_Speed_Normal`; what Wwise does for a NULL switch value.
 
 Meitou (`UiSounds` in `Meitou.Game.Audio`, `InterfaceSounds`, `UiAudio`): the host plays what `PlayerInterface.UiSound` receives. Hooks: `ExecuteUiAction` (HUD actions), `FaithfulAction` (the original screens' widgets),
 the commands `Say` sends (orders, item moves, trades, dialogue choices; `AddJob` and the Shift Medic / Rescue commands as `Permanent_Job`), and a poll in `Draw` for windows opening and closing, the title button under the pointer, the speed keys (F2 to F4, when the clock moves to a new speed without a button), a building of the player's finishing
@@ -413,7 +448,7 @@ and the banner (`New_Biome`, `BiomeBanner`).
 48 `Wall_Station_House`, 49 `Wall_Stone`, 50 `Wall_Wood`, 51 `Wood_Obj_Big`, 52 `Wood_Obj_Small`). `Building_Lock_Unlock`: Meitou's stand-in for the Security button is the
 building menu's Lock Doors / Unlock Doors verb (all the doors at once; `Build_Lock` is the state before the press). `Create_or_Load_Game` comes from `MusicDirector.OnCreateOrLoadGame`, `Hover` from the poll.
 `UI_Generator` comes from the building panel's power toggles ([above](#machine-sounds-meitou)); `Create_Character` on a release from the jailer's release (`LockSystem.FreeBy`,
-`SoundKind.ReleasedFromPrison`, same test as the exe). **No trigger in Meitou (not played):** `Slider` outside the editor (no data-panel slider yet; its drag events would sound through `SoundForScreen` as the editor's do). `Building_Place` is `Indoors` for a ghost on a building's floor (a parent building), else `Outdoors`.
+`SoundKind.ReleasedFromPrison`, same test as the exe). `Slider`: a press on an advanced options slider's track (`MyGuiEvent.Press`) or arrow, on the new game and import screens (`InterfaceSounds.SoundForAdvancedSlider`); the drag after it is silent, and so are the editor's bars. Meitou's own settings menu posts no interface sounds, so its autosave and font size sliders are silent. `Building_Place` is `Indoors` for a ghost on a building's floor (a parent building), else `Outdoors`.
 
 ## Meitou's player
 
@@ -573,10 +608,26 @@ and `Game_Speed_*` events) and 6 of the 14 in `VO_Bank` (`VO_Creature_*`, `VO_Ge
 `Emitters` (`2488FB4C`; values such as `Furnace`, `Stone_Processor`, `Generator`, `Research_Bench`); game parameters `Movement_Speed` (`5A988332`) and others.
 Open for the next wave: which event each game action posts and on which object, and the footstep switches. Interiors and emitters: [Interiors](#interiors), [Point emitters](#point-emitters).
 
+### Mod sound banks
+
+**Observed** in RE_Kenshi's source (`Sound.cpp` `LoadQueuedBanks`, `Settings.cpp`): the banks the enabled mods' `RE_Kenshi.json` list
+under `SoundBanks` ([data entries](formats/rekenshi.md#data-entries)) load after `Init.bnk` and before every game bank, mod by mod in load
+order; each is looked for under `data/audio/` and, when not there, at the path as written (`$(modroot "Name")` expanded). Its source
+says the order is so that mods' sounds override the game's. Mod banks are never unloaded.
+
+Meitou (`ReKenshiFile.ModSoundBanks`, `WwisePlayer`) does the same: mod banks are read on workers at start and handed to the audio thread in
+order, and every game bank waits for them before its own hand-over; the player keeps the first object and recording of an id, so a mod
+bank's event, node or recording with a game bank's id replaces the game's. Their recordings may be Wwise Vorbis or 16-bit PCM (codec
+`0x00010001`, [PCM](formats/wwise-bnk.md#pcm)); a recording of another codec, or one without a sample frame, is logged and left out with
+the rest of its bank kept, a bank that cannot be read is left out whole, an entry that is no path loses that bank alone, and the game's
+sound goes on. **Observed** with FSE-ShoddyMuskets (Workshop 3090308700): its bank is found through `$(modroot)`,
+its 9 PCM recordings decode, and the 9 events it adds are the names its ANIMATION_EVENT records post (`Musket1` to `Musket5`,
+`MusketDouble`, `MusketFinish1` to `3`), which [animation events](#characters-footsteps-combat-voices) play. A code mod plays any loaded
+event by name with `PostSound` ([modding](modding.md), "Sounds").
+
 ### Not done
 
-The foliage emitters ([Point emitters](#point-emitters)), the callers that post effects, the sounds still without a trigger (listed under [Characters](#characters-footsteps-combat-voices) and [Interface](#interface); the engine is ready:
-[API](#api-for-event-sources)), the game's Wwise voice limits (Meitou has its own [cap](#voice-cap)), obstruction and occlusion (the game uses none), serial effect slots and the cone as Wwise draws it.
+The callers that post effects, the game's Wwise voice limits (Meitou has its own [cap](#voice-cap)), obstruction and occlusion (the game uses none), serial effect slots and the cone as Wwise draws it.
 
 ## In the viewer and the game
 

@@ -18,19 +18,21 @@ namespace Meitou.Game.DevTools;
 
 /// <summary>
 /// The debug menu (F10; Ctrl+F10 on Metal, where F10 is the settings panel; docs/game/ui-input.md "Debug menu"): cheats sent to the world as
-/// <see cref="DebugCommand"/>s. The menu opens on its categories (<see cref="DebugCategories"/>: Character, Squad / Faction, World / Spawn, Combat,
-/// Cheats, then Mods for code mods' rows ([modding](docs/modding.md)), Tools and Overlays, <see cref="DebugTools"/>); Enter or Right opens one as a
-/// sub-view, whose rows are walked by Up and Down, typed into, applied by Enter, and left by Esc. A category whose switches are on shows how
-/// many in green ("Cheats   1 active"). Values sit in one column: typed fields, and on / off for switches. Teleport and spawn use the camera's target
-/// (the middle of the screen); heal, edit character and damage the selected characters, else the inspected one. Heal keeps lost limbs; Heal fully
-/// gives them back. Recruit takes the inspected character (a click on another faction's character shows it in the HUD and keeps the squad's
-/// selection), else the first selected: it adds it to the player's faction and active squad when it has a dialogue line that makes it join and the
-/// squad has room, then opens the character editor on it. The Cheats category holds the five debug switches (Set stats to 1000, Auto heal, Move
-/// instantly, One-punch man mode, No stumbling; they apply to player characters, the hits they land or take, or player-issued moves) and Guard
+/// <see cref="DebugCommand"/>s. It opens only with a game loaded to the world (<see cref="DebugMenuAvailable"/>). The menu opens on its
+/// categories (<see cref="DebugCategories"/>: Characters and Items (windows of their own), Squad / Faction, World / Spawn, Combat, Cheats, then
+/// Mods for code mods' rows ([modding](docs/modding.md)), Tools and Overlays, <see cref="DebugTools"/>); Enter or Right opens one as a sub-view,
+/// whose rows are walked by Up and Down, typed into, applied by Enter, and left by Esc. A category whose switches are on shows how many in green
+/// ("Cheats   1 active"). Values sit in one column: typed fields, and on / off for switches. Teleport and spawn use the camera's target (the
+/// middle of the screen); heal and damage the selected characters, else the inspected one. Heal keeps lost limbs; Heal fully gives them back.
+/// Characters closes the menu and opens a window of its own (<see cref="DebugCharactersWindow"/>), whose characters are picked in its list, not
+/// from the selection; Items opens the Items window (<see cref="DebugItemsWindow"/>). Recruit takes the inspected character (a click on another
+/// faction's character shows it in the HUD and keeps the squad's selection), else the first selected: it adds it to the player's faction and
+/// active squad when it has a dialogue line that makes it join and the squad has room, then opens the character editor on it. The Cheats category
+/// holds the one-time actions (Heal, Heal fully, Clear bounties, Give item) and the five debug switches (Gigachad mode, Auto heal, Move instantly,
+/// One-punch man mode, No stumbling; they apply to player characters, the hits they land or take, or player-issued moves) and Guard
 /// (<see cref="DebugGuard"/>: kills hostiles within 30 m of the lead and heals the player's characters; it switches itself off when a game loads).
-/// "Teleport on map" is a switch too:
-/// while on, a click on the open map sends the selected characters there. Clear bounties clears the selected characters' (else every player
-/// character's), all or one faction's.
+/// "Teleport on map" is a switch too: while on, a click on the open map sends the selected characters there. Clear bounties clears the selected
+/// characters' (else every player character's), all or one faction's.
 /// </summary>
 sealed class DebugMenu(GameHost host)
 {
@@ -70,11 +72,6 @@ sealed class DebugMenu(GameHost host)
         HealFully,
 
         /// <summary>
-        /// Opens the Edit character sub-view: quick actions, Appearance and every stat by category.
-        /// </summary>
-        EditCharacter,
-
-        /// <summary>
         /// Cuts the targets for the typed damage, on the picked part or at random.
         /// </summary>
         Damage,
@@ -100,7 +97,7 @@ sealed class DebugMenu(GameHost host)
         ClearBounties,
 
         /// <summary>
-        /// Switches "Set stats to 1000" for every player character.
+        /// Switches "Gigachad mode (stats 1000)" for every player character.
         /// </summary>
         StatsTo1000,
 
@@ -145,11 +142,6 @@ sealed class DebugMenu(GameHost host)
         ExplodeClick,
 
         /// <summary>
-        /// Opens the item picker; Enter on its last step drops the chosen item at the camera's target.
-        /// </summary>
-        DropItem,
-
-        /// <summary>
         /// Recruits the first target into the player's faction and active squad, then opens the character editor on it.
         /// </summary>
         Recruit,
@@ -166,23 +158,23 @@ sealed class DebugMenu(GameHost host)
     internal static readonly string[] DebugLabels =
     [
         "Teleport selected here", "Spawn NPC (hostile)", "Give item (name x5 q80)", "Money (+/- cats)", "Heal", "Heal fully (restore limbs)",
-        "Edit character", "Damage (cut)",
-        "Force hits to", "Damage multiplier", "Unlock all research", "Clear bounties", "Gigachad Mode (set stats to 1000)", "Auto heal",
+        "Damage (cut)", "Force hits to", "Damage multiplier", "Unlock all research", "Clear bounties", "Gigachad mode (stats 1000)", "Auto heal",
             "Move instantly", "One-punch man mode", "No stumbling", "Guard (kill + heal in radius)", "Explosion level", "Explode at target",
-            "Explode on click", "Drop item", "Recruit", "Faction relations",
+            "Explode on click", "Recruit", "Faction relations",
     ];
 
     /// <summary>
     /// A category of the menu: its title and its rows (a cheat's number, a mod row's, or <see cref="GameMods.DebugRowCount"/> + a tool's index).
+    /// <paramref name="Open"/>: it has no rows; opening it closes the menu and runs this (a window of its own).
     /// </summary>
-    readonly record struct DebugCategory(string Title, int[] Rows);
+    readonly record struct DebugCategory(string Title, int[] Rows, Action? Open = null);
 
     /// <summary>
     /// The menu's categories, in the order shown: the cheats by purpose, then the code mods' rows (skipped when no mod added one), then the tools.
     /// </summary>
     DebugCategory[] DebugCategories()
     {
-        var worldRows = new List<int> { (int)DebugRow.Teleport, (int)DebugRow.SpawnNpc, (int)DebugRow.DropItem };
+        var worldRows = new List<int> { (int)DebugRow.Teleport, (int)DebugRow.SpawnNpc };
         var tools = new List<int>();
         var overlays = new List<int>();
         if (DebugToolsOn)
@@ -201,15 +193,16 @@ sealed class DebugMenu(GameHost host)
 
         var categories = new List<DebugCategory>
         {
-            new("Character", [(int)DebugRow.EditCharacter, (int)DebugRow.Heal, (int)DebugRow.HealFully, (int)DebugRow.ClearBounties,
-                (int)DebugRow.GiveItem]),
+            new("Characters", [], Open: OpenCharactersWindow),
+            new("Items", [], Open: OpenItemsWindow),
             new("Squad / Faction", [(int)DebugRow.Recruit, (int)DebugRow.Money, (int)DebugRow.FactionRelations,
                 (int)DebugRow.UnlockResearch]),
             new("World / Spawn", [.. worldRows]),
             new("Combat", [(int)DebugRow.Damage, (int)DebugRow.ForceHits, (int)DebugRow.DamageMultiplier, (int)DebugRow.ExplodeLevel,
                 (int)DebugRow.Explode, (int)DebugRow.ExplodeClick]),
-            new("Cheats", [(int)DebugRow.StatsTo1000, (int)DebugRow.AutoHeal, (int)DebugRow.InstantMove, (int)DebugRow.OnePunch,
-                (int)DebugRow.NoStumble, (int)DebugRow.Guard]),
+            new("Cheats", [(int)DebugRow.StatsTo1000, (int)DebugRow.OnePunch, (int)DebugRow.AutoHeal, (int)DebugRow.Heal,
+                (int)DebugRow.HealFully, (int)DebugRow.Guard, (int)DebugRow.InstantMove, (int)DebugRow.NoStumble,
+                (int)DebugRow.GiveItem, (int)DebugRow.ClearBounties]),
         };
         if (host.Modding.DebugRowCount > DebugLabels.Length)
             categories.Add(new("Mods", [.. Enumerable.Range(DebugLabels.Length, host.Modding.DebugRowCount - DebugLabels.Length)]));
@@ -235,7 +228,7 @@ sealed class DebugMenu(GameHost host)
     /// <summary>
     /// The rows' typed text: the vanilla rows', then one per code mod row (EnsureDebugFields).
     /// </summary>
-    internal readonly List<string> DebugFields = ["", "", "", "1000", "", "", "", "20", "", "1", "", "", ""];
+    internal readonly List<string> DebugFields = ["", "", "", "1000", "", "", "20", "", "1", "", "", ""];
 
     /// <summary>
     /// The record each typed name means, by whether a character is wanted and the text; null when none matches.
@@ -243,34 +236,30 @@ sealed class DebugMenu(GameHost host)
     readonly Dictionary<(bool Character, string Text), (string Id, string Name)?> _debugMatches = [];
 
     /// <summary>
-    /// The Drop item row's sub-view: categories, name filter, quality, and the drops.
-    /// </summary>
-    readonly DebugItemPicker _itemPicker = new(host);
-
-    /// <summary>
-    /// The Edit character row's sub-view: quick actions, Appearance and every stat by category.
-    /// </summary>
-    readonly DebugCharacterEditor _characterEditor = new(host);
-
-    /// <summary>
     /// The Faction relations row's sub-view: a faction, then its relation with every other one.
     /// </summary>
     readonly DebugRelationsEditor _relationsEditor = new(host);
 
     /// <summary>
-    /// The menu is open; opening it shows the categories again.
+    /// The menu is open; opening it shows the categories again. It only opens and shows with a game loaded to the world
+    /// (<see cref="DebugMenuAvailable"/>); a load between scenes closes it (<see cref="GameHost.StartSceneLoad"/>), so it does not come back after one.
     /// </summary>
     internal bool DebugMenuOpen
     {
-        get => _debugMenuOpen;
+        get => _debugMenuOpen && DebugMenuAvailable;
         set
         {
-            _debugMenuOpen = value;
-            if (!value) return;
+            _debugMenuOpen = value && DebugMenuAvailable;
+            if (!_debugMenuOpen) return;
             _category = -1;
             DebugParts = null;
         }
     }
+
+    /// <summary>
+    /// The menu can be shown: a game is loaded to the world (not the title, not a loading screen).
+    /// </summary>
+    internal bool DebugMenuAvailable => !host.Player.TitleOpen && !host.Covered;
 
     /// <summary>
     /// The open flag behind <see cref="DebugMenuOpen"/>.
@@ -395,6 +384,7 @@ sealed class DebugMenu(GameHost host)
         new("Tools", "Pick & collision inspector...", "", () => "", () => { DebugMenuOpen = false; InspectorMenuOpen = true; }),
         new("Tools", "Interior editor...", "", () => "", host.InteriorEditorHost.OpenInteriorEditor),
         new("Tools", "Level editor...", "Shift+F12", () => "", host.LevelEditorHost.OpenLevelEditor),
+        new("Tools", "Action log (log_actions.txt)", "", () => host.ActionLogs.Scope.ToString().ToLowerInvariant(), host.ActionLogs.Cycle),
         new("Tools", "Teleport on map...", "", () => OnOff(host.Player.WorldMap.MapPickSticky), ToggleMapTeleport) { IsSwitch = true },
         new("Overlays", "Navmesh view", "Shift+F11", () => host.DebugOverlays.NavViewMode.ToString().ToLowerInvariant(),
             host.DebugOverlays.ToggleNavOverlay),
@@ -622,33 +612,35 @@ sealed class DebugMenu(GameHost host)
     }
 
     /// <summary>
-    /// The hint while the switch is on.
+    /// The hint while the switch is on (<paramref name="scale"/> and <paramref name="pass"/> as for <see cref="DrawDebugMenu"/>).
     /// </summary>
-    internal void DrawExplodeClickHint(DebugOverlay o, int width, int height)
+    internal void DrawExplodeClickHint(DebugOverlay o, int width, int height, float scale = 1, DebugOverlay.OverlayPass? pass = null)
     {
         int level = ExplodeClickLevel();
         var v = ExplodeLevels.Values(level, true);
         string text = $"explode-click ON: left click = explode, {ExplodeLevels.Label(level)} (r={v.Radius:0.#}, force {v.Force:0.#}, "
             + $"dmg {v.Damage:0.#}{(_explodeClickArgs.Length > 0 ? ", then " + _explodeClickArgs : "")}). Switch off: explode-click off"
             + (host.Session.Simulation.IsPaused ? "   PAUSED: unpause, the blast runs in the next tick" : "");
-        float w = text.Length * o.CharWidth + 20, x = (width - w) / 2;
-        o.Rect(x, 8, x + w, 8 + o.LineHeight + 12, DebugOverlay.PanelColour);
-        o.Text(text, x + 10, 12, new Vector4(1f, 0.9f, 0.4f, 1));
-        o.Flush(width, height);
+        float w = text.Length * o.CharWidth * scale + 20 * scale, x = (width - w) / 2;
+        o.Rect(x, 8 * scale, x + w, (8 + 12) * scale + o.LineHeight * scale, DebugOverlay.PanelColour);
+        o.TextScaled(text, x + 10 * scale, 12 * scale, new Vector4(1f, 0.9f, 0.4f, 1), scale);
+        o.Flush(width, height, null, pass);
     }
 
     /// <summary>
     /// The hint while the Map tab is open and "Teleport on map" is on: the state, how to switch it off and the last result.
     /// </summary>
-    internal void DrawMapPickHint(DebugOverlay o, int width, int height)
+    internal void DrawMapPickHint(DebugOverlay o, int width, int height, float scale = 1, DebugOverlay.OverlayPass? pass = null)
     {
         string text = "Teleport on map: ON, every click teleports (F10 > Teleport on map or 'tpmap off' ends it)";
         string note = _mapTeleportNote;
-        float w = Math.Max(text.Length, note.Length) * o.CharWidth + 20, x = (width - w) / 2, h = o.LineHeight * (note.Length > 0 ? 2 : 1) + 8;
-        o.Rect(x, 8, x + w, 8 + h + 8, DebugOverlay.PanelColour);
-        o.Text(text, x + 10, 12, new Vector4(1f, 0.9f, 0.4f, 1));
-        if (note.Length > 0) o.Text(note, x + 10, 12 + o.LineHeight, new Vector4(0.8f, 0.95f, 0.8f, 1));
-        o.Flush(width, height);
+        float lineHeight = o.LineHeight * scale;
+        float w = Math.Max(text.Length, note.Length) * o.CharWidth * scale + 20 * scale, x = (width - w) / 2;
+        float h = lineHeight * (note.Length > 0 ? 2 : 1) + 8 * scale;
+        o.Rect(x, 8 * scale, x + w, 8 * scale + h + 8 * scale, DebugOverlay.PanelColour);
+        o.TextScaled(text, x + 10 * scale, 12 * scale, new Vector4(1f, 0.9f, 0.4f, 1), scale);
+        if (note.Length > 0) o.TextScaled(note, x + 10 * scale, 12 * scale + lineHeight, new Vector4(0.8f, 0.95f, 0.8f, 1), scale);
+        o.Flush(width, height, null, pass);
     }
 
     /// <summary>
@@ -660,10 +652,10 @@ sealed class DebugMenu(GameHost host)
     /// Whether <paramref name="row"/> takes typed text: a mod row with a field, or a cheat row other than the switches and actions without one.
     /// </summary>
     bool DebugHasField(int row) => !DebugIsTool(row) && (row >= DebugLabels.Length ? host.Modding.ModDebugRows[row - DebugLabels.Length].HasField
-        : (DebugRow)row is not (DebugRow.Teleport or DebugRow.Heal or DebugRow.HealFully or DebugRow.EditCharacter or DebugRow.ForceHits
+        : (DebugRow)row is not (DebugRow.Teleport or DebugRow.Heal or DebugRow.HealFully or DebugRow.ForceHits
             or DebugRow.UnlockResearch or DebugRow.ClearBounties or DebugRow.StatsTo1000 or DebugRow.AutoHeal or DebugRow.InstantMove
             or DebugRow.OnePunch or DebugRow.NoStumble or DebugRow.Guard or DebugRow.ExplodeLevel or DebugRow.Explode or DebugRow.ExplodeClick
-            or DebugRow.DropItem or DebugRow.Recruit or DebugRow.FactionRelations));
+            or DebugRow.Recruit or DebugRow.FactionRelations));
 
     /// <summary>
     /// The rows that open the body part list.
@@ -694,18 +686,6 @@ sealed class DebugMenu(GameHost host)
     {
         int lines = -(int)MathF.Round(wheel) * ScrollLines;
         if (lines == 0) return;
-        if (_itemPicker.Open)
-        {
-            _itemPicker.Scroll(lines);
-            return;
-        }
-
-        if (_characterEditor.Open)
-        {
-            _characterEditor.Scroll(lines);
-            return;
-        }
-
         if (_relationsEditor.Open)
         {
             _relationsEditor.Scroll(lines);
@@ -729,16 +709,13 @@ sealed class DebugMenu(GameHost host)
     }
 
     /// <summary>
-    /// Whether the menu's selection takes typed text, so the menu must take every key: a row with a field (in a category or its part list), the item
-    /// picker (its search) or a character-editor category (its values). Otherwise it takes only <see cref="DebugMenuTakesKey"/> and the rest are the
-    /// game's.
+    /// Whether the menu's selection takes typed text, so the menu must take every key: a row with a field (in a category or its part list) or the
+    /// faction relations' values. Otherwise it takes only <see cref="DebugMenuTakesKey"/> and the rest are the game's.
     /// </summary>
     internal bool DebugMenuTakesText
     {
         get
         {
-            if (_itemPicker.Open) return true;
-            if (_characterEditor.Open) return _characterEditor.TakesText;
             if (_relationsEditor.Open) return _relationsEditor.TakesText;
             return !DebugAtCategories && DebugHasField(_debugRow);
         }
@@ -758,18 +735,6 @@ sealed class DebugMenu(GameHost host)
     internal void DebugMenuKey(EngineKey key)
     {
         host.Modding.EnsureDebugFields();
-        if (_itemPicker.Open)
-        {
-            _itemPicker.Key(key);
-            return;
-        }
-
-        if (_characterEditor.Open)
-        {
-            _characterEditor.Key(key);
-            return;
-        }
-
         if (_relationsEditor.Open)
         {
             _relationsEditor.Key(key);
@@ -813,6 +778,13 @@ sealed class DebugMenu(GameHost host)
         if (categories.Length == 0) return;
         _category = Math.Clamp(index, 0, categories.Length - 1);
         _categoryCursor = _category;
+        if (categories[_category].Open is { } open)
+        {
+            _category = -1;
+            open();
+            return;
+        }
+
         var rows = categories[_category].Rows;
         _debugRow = rows.Length > 0 ? rows[0] : 0;
         _debugPart = 0;
@@ -883,12 +855,6 @@ sealed class DebugMenu(GameHost host)
                 _debugStatus = $"explosion {ExplodeLevels.Label(_explodeLevel)}: r={shown.Radius:0.#}, force {shown.Force:0.#}, "
                     + $"dmg {shown.Damage:0.#} (click: r={ExplodeLevels.Values(_explodeLevel, true).Radius:0.#}, "
                     + $"force {ExplodeLevels.Values(_explodeLevel, true).Force:0.#}, dmg {ExplodeLevels.Values(_explodeLevel, true).Damage:0.#})";
-                break;
-            case EngineKey.Enter or EngineKey.Right when !DebugIsTool(_debugRow) && _debugRow == (int)DebugRow.DropItem:
-                _itemPicker.Begin();
-                break;
-            case EngineKey.Enter or EngineKey.Right when !DebugIsTool(_debugRow) && _debugRow == (int)DebugRow.EditCharacter:
-                _characterEditor.Begin();
                 break;
             case EngineKey.Enter or EngineKey.Right when !DebugIsTool(_debugRow) && _debugRow == (int)DebugRow.FactionRelations:
                 _debugStatus = _relationsEditor.Begin();
@@ -977,14 +943,12 @@ sealed class DebugMenu(GameHost host)
     internal void DebugMenuText(char c)
     {
         host.Modding.EnsureDebugFields();
-        if (_itemPicker.Open) _itemPicker.Type(c);
-        else if (_characterEditor.Open) _characterEditor.Type(c);
-        else if (_relationsEditor.Open) _relationsEditor.Type(c);
+        if (_relationsEditor.Open) _relationsEditor.Type(c);
         else if (!DebugAtCategories && DebugHasField(_debugRow) && !char.IsControl(c)) DebugFields[_debugRow] += c;
     }
 
     /// <summary>
-    /// Heal, edit character and damage: the selected characters, else the inspected one.
+    /// Heal and damage: the selected characters, else the inspected one.
     /// </summary>
     internal static CharacterId[] DebugTargets(GameHost host)
     {
@@ -1316,7 +1280,25 @@ sealed class DebugMenu(GameHost host)
     }
 
     /// <summary>
-    /// The console's gigachad mode, the menu's "Set stats to 1000" and "Auto heal" together: <paramref name="field"/> is on / off, or empty to toggle
+    /// The Edit characters row: the menu closes and the window opens (it picks its own character; the game's selection is not used).
+    /// </summary>
+    void OpenCharactersWindow()
+    {
+        DebugMenuOpen = false;
+        host.Player.CharactersWindow.Open();
+    }
+
+    /// <summary>
+    /// The Items entry: the menu closes and the window opens.
+    /// </summary>
+    void OpenItemsWindow()
+    {
+        DebugMenuOpen = false;
+        host.Player.ItemsWindow.Open();
+    }
+
+    /// <summary>
+    /// The console's gigachad mode, the menu's "Gigachad mode (stats 1000)" and "Auto heal" together: <paramref name="field"/> is on / off, or empty to toggle
     /// (on unless both are already on).
     /// </summary>
     internal string DebugGigachadmodeApply(string field)
@@ -1341,7 +1323,7 @@ sealed class DebugMenu(GameHost host)
     }
 
     /// <summary>
-    /// Sets every stat of the targets to 100 (the console's <c>maxstats</c>, and the Edit character sub-view's Max out everything).
+    /// Sets every stat of the targets to 100 (the console's <c>maxstats</c>).
     /// </summary>
     internal string DebugMaxAll()
     {
@@ -1470,23 +1452,11 @@ sealed class DebugMenu(GameHost host)
     /// Draws the menu at <paramref name="top"/> (on the left, or at the right with <paramref name="atRight"/>): at the categories their titles with how
     /// many switches inside are on, in a category its rows (scrolled to the highlighted one) with a back button, the selection, camera target and money,
     /// the hint with <paramref name="close"/> and the status. <paramref name="scale"/> is the framebuffer's pixels per point (2 on a Retina display):
-    /// the text and every size in the menu grow with it. While the item picker or the Edit character sub-view is open it is drawn instead.
+    /// the text and every size in the menu grow with it. While the faction relations sub-view is open it is drawn instead.
     /// </summary>
     internal void DrawDebugMenu(DebugOverlay o, int width, int height, float top, string close = "F10", bool atRight = false, float scale = 1,
         DebugOverlay.OverlayPass? pass = null)
     {
-        if (_itemPicker.Open)
-        {
-            _itemPicker.Draw(o, width, height, top, scale, close, atRight, pass);
-            return;
-        }
-
-        if (_characterEditor.Open)
-        {
-            _characterEditor.Draw(o, width, height, top, scale, close, atRight, pass);
-            return;
-        }
-
         if (_relationsEditor.Open)
         {
             _relationsEditor.Draw(o, width, height, top, scale, close, atRight, pass);
@@ -1565,8 +1535,6 @@ sealed class DebugMenu(GameHost host)
     /// </summary>
     internal bool DebugMenuContains(Vector2 at)
     {
-        if (_itemPicker.Open) return _itemPicker.Contains(at);
-        if (_characterEditor.Open) return _characterEditor.Contains(at);
         if (_relationsEditor.Open) return _relationsEditor.Contains(at);
         return _panelRect is { } rect && Inside(rect, at);
     }
@@ -1579,18 +1547,6 @@ sealed class DebugMenu(GameHost host)
     internal void DebugMenuClick(Vector2 at)
     {
         host.Modding.EnsureDebugFields();
-        if (_itemPicker.Open)
-        {
-            _itemPicker.Click(at);
-            return;
-        }
-
-        if (_characterEditor.Open)
-        {
-            _characterEditor.Click(at);
-            return;
-        }
-
         if (_relationsEditor.Open)
         {
             _relationsEditor.Click(at);
@@ -1647,7 +1603,7 @@ sealed class DebugMenu(GameHost host)
             {
                 bool current = c == _categoryCursor;
                 int active = DebugActiveCount(categories[c], world);
-                string value = active > 0 ? $"{active} active" : "";
+                string value = categories[c].Open is not null ? "Enter: open the window" : active > 0 ? $"{active} active" : "";
                 lines.Add(new((current ? "> " : "  ") + DebugCategoryColumns(categories[c].Title, value), current, active > 0, c, -1));
             }
             return;
@@ -1771,12 +1727,6 @@ sealed class DebugMenu(GameHost host)
                 case DebugRow.NoStumble:
                     value = OnOff(world.Player.NoStumble);
                     rowOn = world.Player.NoStumble;
-                    break;
-                case DebugRow.DropItem:
-                    value = "Enter: pick an item";
-                    break;
-                case DebugRow.EditCharacter:
-                    value = "Enter: edit the character";
                     break;
                 case DebugRow.Recruit:
                     value = "Enter: recruit and edit";
@@ -2000,9 +1950,10 @@ sealed class DebugMenu(GameHost host)
     }
 
     /// <summary>
-    /// Draws the inspector's menu at <paramref name="top"/>: each row with its state, the highlighted one marked, and the key hint.
+    /// Draws the inspector's menu at <paramref name="top"/>: each row with its state, the highlighted one marked, and the key hint
+    /// (<paramref name="scale"/> and <paramref name="pass"/> as for <see cref="DrawDebugMenu"/>).
     /// </summary>
-    internal void DrawInspectorMenu(DebugOverlay o, int width, int height, float top)
+    internal void DrawInspectorMenu(DebugOverlay o, int width, int height, float top, float scale = 1, DebugOverlay.OverlayPass? pass = null)
     {
         var lines = new List<string>();
         for (int i = 0; i < InspectorLabels.Length; i++)
@@ -2014,20 +1965,20 @@ sealed class DebugMenu(GameHost host)
         }
         const string hint = "Up/Down pick   Enter/Space switch   Esc close (switches stay on)";
         var dim = new Vector4(0.7f, 0.75f, 0.8f, 1);
-        float pad = 10, x0 = 16, y0 = top + 16;
+        float pad = 10 * scale, x0 = 16 * scale, y0 = top + 16 * scale, lineHeight = o.LineHeight * scale;
         int chars = Math.Max(lines.Max(l => l.Length), hint.Length);
-        float w = chars * o.CharWidth + 2 * pad, h = (lines.Count + 4) * o.LineHeight + 2 * pad;
+        float w = chars * o.CharWidth * scale + 2 * pad, h = (lines.Count + 4) * lineHeight + 2 * pad;
         o.Rect(x0, y0, x0 + w, y0 + h, DebugOverlay.PanelColour);
         float y = y0 + pad;
-        o.Text("Pick & collision inspector", x0 + pad, y, DebugOverlay.TextColour);
-        y += 1.5f * o.LineHeight;
-        for (int i = 0; i < lines.Count; i++, y += o.LineHeight)
+        o.TextScaled("Pick & collision inspector", x0 + pad, y, DebugOverlay.TextColour, scale);
+        y += 1.5f * lineHeight;
+        for (int i = 0; i < lines.Count; i++, y += lineHeight)
         {
             if (i == _inspectorRow)
-                o.Rect(x0 + 4, y, x0 + w - 4, y + o.LineHeight, new Vector4(0.25f, 0.4f, 0.65f, 0.6f));
-            o.Text(lines[i], x0 + pad, y, DebugOverlay.TextColour);
+                o.Rect(x0 + 4 * scale, y, x0 + w - 4 * scale, y + lineHeight, new Vector4(0.25f, 0.4f, 0.65f, 0.6f));
+            o.TextScaled(lines[i], x0 + pad, y, DebugOverlay.TextColour, scale);
         }
-        o.Text(hint, x0 + pad, y + 0.5f * o.LineHeight, dim);
-        o.Flush(width, height);
+        o.TextScaled(hint, x0 + pad, y + 0.5f * lineHeight, dim, scale);
+        o.Flush(width, height, null, pass);
     }
 }

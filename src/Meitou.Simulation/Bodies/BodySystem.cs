@@ -129,12 +129,25 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
     /// original reads slot 0x390 each time). The drawn size follows only in steps: once the age has moved more than 0.05 past
     /// <see cref="CharacterCold.ShownAge"/> it is noted, and below 0.95 the look is refreshed to it.
     /// </summary>
-    static void Age(CharacterCold cold, AnimalData animal, CharacterStats stats, MedicalState medical, float dt)
+    static void Age(CharacterCold cold, AnimalData animal, CharacterStats stats, float dt)
     {
         if (stats.Scale >= AnimalData.GrowUntil || animal.AgePerSecond <= 0) return;
-        stats.Scale += dt * animal.AgePerSecond;
-        medical.SetAnimalBody(animal.Scale(stats.Scale), animal.HpMult);
-        if (stats.Scale - cold.ShownAge > AnimalData.ResizeStep && stats.Scale < AnimalData.ResizeBelow) cold.ShownAge = stats.Scale;
+        SetAnimalAge(cold, stats.Scale + dt * animal.AgePerSecond);
+    }
+
+    /// <summary>
+    /// Updates an animal's live age, stat multiplier and medical size through the growth path. An explicit debug edit also refreshes the drawn
+    /// size immediately, in either direction; natural growth keeps its stepped refresh below 0.95. No wounds, blood or base skills are changed.
+    /// Returns false for an incomplete animal body or an invalid age.
+    /// </summary>
+    public static bool SetAnimalAge(CharacterCold cold, float age, bool refreshLook = false)
+    {
+        if (!float.IsFinite(age) || age < 0 || cold is not { Animal: { } animal, Stats: { } stats, Medical: { } medical }) return false;
+
+        stats.Scale = age;
+        medical.SetAnimalBody(animal.Scale(age), animal.HpMult);
+        if (refreshLook || age - cold.ShownAge > AnimalData.ResizeStep && age < AnimalData.ResizeBelow) cold.ShownAge = age;
+        return true;
     }
 
     /// <summary>
@@ -162,6 +175,12 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
     /// The vision range inside a building (<c>FUN_140851bc0</c>, Verified literal, no race multiplier).
     /// </summary>
     const float InsideSight = 500;
+
+    /// <summary>
+    /// Whether the character in <paramref name="slot"/> had an update budget's turn this tick (<see cref="MedicalTimeBudget.HadTurn"/>): its sight
+    /// pass takes its next sensed character then.
+    /// </summary>
+    public bool UpdateTurn(int slot) => _medicalBudget.HadTurn(slot);
 
     /// <summary>
     /// The update budgets' turns of this tick (<see cref="MedicalTimeBudget"/>); then who may not get up this tick: a knocked-out person (not an
@@ -268,18 +287,19 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
         if (medical.Dead) return;
         stats.XpRate = AggroSystem.PlayerSide(world, cold) ? Options.SquadXp : Options.OthersXp;
         if (!TryStartStep(world, i, cold, medical, out float dt)) return;
-        if (cold.Animal is { } animal) Age(cold, animal, stats, medical, dt);
+        if (cold.Animal is { } animal) Age(cold, animal, stats, dt);
 
         // The light level the stat multiplier's light term reads (the original's Character +0xd8, kept by the senses).
         medical.Light = world.Sight.Light(i);
 
         // The load: inventory weight without a living owner's death items, plus carry person weight, against the strength the injuries leave
-        // (character-stats.md "Encumbrance and carrying").
+        // (character-stats.md "Encumbrance and carrying"), with code mods' carry modifiers.
         float load = cold.Inventory?.ContentWeight(world.Player.Held, skipDeath: !medical.Dead) ?? 0;
         bool carrying = !cold.Carrying.IsNone;
+        var carry = stats.CarryModifiersOrNull;
         float encumbrance = load <= 0 && !carrying
             ? 1
-            : Encumbrance.Factor(Constants, load, carrying, stats.Strength, medical.StatMultiplier(StatsEnumerated.Strength));
+            : Encumbrance.Factor(Constants, load, carrying, stats.Strength, medical.StatMultiplier(StatsEnumerated.Strength), carry);
         var ctx = ContextOf(world, i, cold, medical, race, stats, in n, encumbrance);
         cold.MedicalBudgetSeconds = 0;
 
@@ -290,12 +310,17 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
         events ??= [];
         events.Clear();
         medical.Tick(dt, ctx, events);
-        n.MaxSpeed = Speed.Run(race, stats, medical, encumbrance, statsFactor: cold.Fighter?.AthleticsFactor ?? 1);
         cold.SwimSpeed = Speed.Swim(race, stats, medical, encumbrance);
+        float now = TopSpeedNow(world, i, cold, race, stats, medical, encumbrance);
+        cold.TopSpeedNow = now;
+        TopSpeedDelay.Stats(cold, now);
+        n.MaxSpeed = TopSpeedDelay.Mover(cold);
 
         TrainOnTheStep(world, i, cold, stats, race, medical, in n, carrying, encumbrance, dt);
+
+        // The panel reads the stats' S (CharStats +0x17c), which takes a change one periodic update before the mover does.
         if (cold.IsPlayer || table.IdOf(i) == world.Player.Inspected)
-            cold.Extended = ExtendedOf(cold, stats, race, medical, n.MaxSpeed, encumbrance, in ctx, carrying);
+            cold.Extended = ExtendedOf(cold, stats, race, medical, TopSpeedDelay.Stats(cold, now), encumbrance, in ctx, carrying);
         n.Health = Math.Clamp(medical.Blood / MathF.Max(MedicalState.BloodCapacity(race, stats.Strength), 1) * 100, 0, 100);
         foreach (var e in events)
         {
@@ -317,13 +342,15 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
     }
 
     /// <summary>
-    /// An incapacitated character stops: its task and path go, or only its path when it lies in a bed.
+    /// An incapacitated character stops: its task and path go, or only its path when it lies in a bed or treats itself playing dead.
     /// </summary>
     static void StopIncapacitated(CharacterTable table, int i, CharacterCold cold, MedicalState medical, ref CharacterHot n)
     {
-        // One lying in a bed keeps its task there (it would get up with any other, BedSystem); only its path goes.
-        if (medical.Incapacitated && cold.InSomething == Locks.HeldState.Bed
-            && n.Task == (byte)CharacterTask.Sleep)
+        // One lying in a bed keeps its task there (it would get up with any other, BedSystem); only its path goes. One playing dead is awake to the
+        // original's AI (posture 3, docs/game/ragdolls.md "Playing dead"): it keeps the first aid it gives itself, lying (FirstAidSystem).
+        bool keeps = cold.InSomething == Locks.HeldState.Bed && n.Task == (byte)CharacterTask.Sleep
+            || medical.PlayingDead && n.Task == (byte)CharacterTask.Treat;
+        if (medical.Incapacitated && keeps)
         {
             n.Flags = (ushort)(n.Flags & ~(ushort)MoveFlags.AnyPath);
         }
@@ -494,6 +521,20 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
     }
 
     /// <summary>
+    /// The top speed S as a recompute would make it now (<c>FUN_140886460</c>, docs/game/pathfinding.md "Speed and orders"): the run speed, in
+    /// stealth mode with the sneaking cap (<see cref="Orders.TopSpeed"/>), then the water state (<see cref="Speed.InWater"/>, of the last movement
+    /// step), a crawler's speed overriding both.
+    /// </summary>
+    static float TopSpeedNow(World world, int i, CharacterCold cold, RaceData race, CharacterStats stats, MedicalState medical, float encumbrance)
+    {
+        float run = Speed.Run(race, stats, medical, encumbrance, statsFactor: cold.Fighter?.AthleticsFactor ?? 1);
+        if (medical.Crawling || medical.Prone) return run;
+
+        float top = Orders.TopSpeed(run, cold, CharacterFacts.StealthMode(world, i, cold));
+        return Speed.InWater(cold.WaterState, top, race, cold.SwimSpeed);
+    }
+
+    /// <summary>
     /// The numbers behind the information panel's extended lines (<c>FUN_140895350</c>, docs/game/ui-screens.md section 4). Toughness XP
     /// (<c>FUN_1408c5f40</c>, <b>Verified</b> in game, #82): 1, or 2 with the left arm crippled, plus 2 for the right arm, 2 while the blood-loss
     /// trauma flag is set, and 2 for the "Critical wounds" term, which tests the worst part's fraction (at most 1) against 15 and so is always on: a
@@ -503,7 +544,7 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
     ExtendedStats ExtendedOf(CharacterCold cold, CharacterStats stats, RaceData race, MedicalState medical, float speed, float encumbrance,
         in MedicalContext ctx, bool carrying)
     {
-        float runValue = Speed.RunValue(race, stats.Athletics);
+        float runValue = Speed.RunValue(race, stats);
         float toughness = XpService.ToughnessFactor(medical);
         bool rest = ctx.Resting || medical.Unconscious || medical.Dead;
         float hunger = race.HungerRate * MedicalState.HungerSituationFactor(Constants, rest, ctx.Still, ctx.Idle, encumbrance, ctx.UseHungerRate);
@@ -635,7 +676,7 @@ public sealed class BodySystem(GameConstants constants, BodyOptions? options = n
             _xp.SwimmingInWater(stats, race, carrying, dt);
             return;
         }
-        _xp.AthleticsFromRunning(stats, race, encumbrance, speed, Speed.RunValue(race, stats.Athletics), dt);
+        _xp.AthleticsFromRunning(stats, race, encumbrance, speed, Speed.RunValue(race, stats), dt);
         if (encumbrance < 1) _xp.StrengthFromCarrying(stats, race, encumbrance, dt, carrying);
     }
 

@@ -41,21 +41,40 @@ Discovery (`FUN_14086f7a0`, launcher `FUN_140127890`) uses one name-keyed table:
 **Meitou difference:** `LoadOrder` cannot query subscriptions; it scans every downloaded item
 in `GameInstall.WorkshopDirectory`, in folder-name order. Each loaded mod retains its folder
 for art, translations and its world layer ([zones](zones.md#mods)). A record path `.\mods\<name>\x` resolves into that mod's folder (Workshop or
-local; `CollisionPaths.Resolve`), used for collision, interiors, body files, attachment points and race `editor limits` (#93).
+local; `CollisionPaths.Resolve`), used for collision, interiors, body files, attachment points and race `editor limits` (#93). A path found
+nowhere as written falls back to its bare file name in the resource index (`GameResources`). Collision files go by bare name first, as the
+original opens them ([collision](collision.md#file-lookup), `CollisionPaths.ResolveCollision`).
 
 **Verified** launcher (`FUN_140125df0`, save `FUN_140120bd0`): active entries first in cfg order,
 remaining mods dependency-sorted; unknown dependency names dropped, cycles omitted (saving
-therefore drops them). Only type-17 headers are read for display (`FUN_1406be050`); missing
-references/dependencies warn without blocking. `data/__mods.list` remembers names without
+therefore drops them). Headers of a type above 15 are read for display (`FUN_1406be050`: four strings cut at 2048 bytes and a
+NUL; dependencies and references split at `,`, empty parts dropped, untrimmed, each cut before its last dot unless that is the first
+character, `gamedata.base` skipped); missing references/dependencies warn without blocking. `data/__mods.list` remembers names without
 extensions; newly found names start enabled. Rewritten with visible names; without Steam old
 missing names remain. **Observed:** beyond 1000 entries it restarts. Save writes enabled
 `<name>.mod` in displayed order.
+
+### Name encoding
+
+**Verified** (kenshi_x64's boost::filesystem `windows_file_codecvt`: `MultiByteToWideChar` / `WideCharToMultiByte` with the ANSI code page,
+the OEM one if file APIs are set to OEM, no best fit, default character `?`; narrow `std::ifstream` + `getline` for `mods.cfg` and
+`__mods.list` (`FUN_14013d680`); discovery `FUN_14086f7a0` lists folders and files wide (`FUN_1409b8070`, `FUN_1409b7c50`), converts the
+names to narrow and builds a Workshop mod's path from its narrow file name; the loader converts its path to
+wide): file and mod names are bytes in the system's ANSI code page. A name with a character the code page lacks gets `?` there and then names
+no file: a local mod folder is not found, a Workshop mod is listed under the `?` name and fails to load. `mods.cfg` and `__mods.list` lines
+are taken as bytes (a byte-order mark stays part of the first line) and written in that code page. Header dependency strings are compared
+byte for byte with those names, so an FCS-written (UTF-8) dependency on a mod whose name is not ASCII only matches under a UTF-8 code page.
+
+Meitou (`GameNameEncoding`, `ModList`, `ModHeader`, `GameDatabase`): on Windows the code page of `GetACP` for the name lists, header
+dependencies and references, and the names the loader uses; a references string over 2048 bytes keeps 2048 (the launcher leaves its last
+byte unset there and reads on past the buffer). Elsewhere UTF-8 (Meitou choice: no such code page exists there).
 
 FCS differs: `InheritFiles` fixes gamedata.base, Newwworld.mod, Dialogue.mod, coltontown.mod,
 Nizu.mod, Mohamad.mod, rebirth.mod and also searches cfg entries under `data/`.
 
 **Observed:** `.info` XML `ModData` stores id/name/tags/visibility/lastUpdate; no defined `.info`
-string in the engine. Resource scan skips `_`-prefixed files.
+string in the engine. Its `id` is the mod's Steam workshop item: a downloaded item's `_<name>.info` holds its folder's number (Forgotten
+Buildings, 1679230269), and a local mod uploaded from its own folder keeps one with its item's id; a mod never uploaded has none. Resource scan skips `_`-prefixed files.
 
 ## Resource lookup and mod overrides
 
@@ -74,17 +93,27 @@ How the game opens its other files decides whether a mod can replace them (**Ver
 | `.material`, `.program`, `*.pu` scripts | Ogre script parse of every location, mods' too | material: first definition wins (mods cannot redefine); PU system: last wins (`createParticleSystemTemplate` deletes the old template) |
 | `names*.txt`, `tips.txt` | `resourceExists`/`openResource`, group General (`FUN_140641d80`, `FUN_14091a280`) | yes |
 | `areasmap.tga` | `Image::load`, group Overlaymaps (`FUN_140408fa0`, `FUN_140408970`) | yes; mods may ship it RLE-compressed (TGA type 10) |
-| `fogfeatures.dat` | `openResource`, group Landscape (`FUN_14010f060`) | only from a folder mapped to Landscape |
+| `biomemap.png`, `blendMap.png`, `new_overlay.X.Y.png`, `watercolourmap.png` | the same image loader, group Overlaymaps (biome and blend maps `FUN_140408fa0`; overlay tiles `FUN_140a145b0`; water colour map `FUN_1409d70f0`) | yes (**Observed**: a mod's `newland/land/overlaymaps/watercolourmap.png` recolours the water); Meitou reads all four through the same lookup (`TerrainMaps.Overlaymap`), the install's files when no mod ships one |
+| `fogfeatures.dat`, `features.dat` | `openResource`, group Landscape only (fog volumes `FUN_14010f060`; map features `FUN_14039a4d0`, after `resourceExists`) | only from a folder mapped to Landscape (**Observed**: a mod's `newland/land/textures` copies add their fog sphere and map features; copies in `newland/land`, a folder of Overlaymaps, change nothing); Meitou reads both through the same lookup (`GameResources.Resolve`), the install's files when no mod ships one |
 | `newland/land/fullmap.tif` | terrain plugin `fopen` of a fixed path (`FUN_140874930`) | no |
+| `newland/land/blendinfo.dat` | `fopen` of a fixed path in the zone map loader (`FUN_140a12220`) | no |
+| `newland/land/navtiles/seeds.def` | a fixed path (string at `0x1416cc610`) | no |
 | `*.bnk` | Wwise low-level IO, base path `data/audio/` (`FUN_140259620`) | no |
 
-**Observed:** mods that need the last three ship an `RE_Kenshi.json` for the third-party RE_Kenshi loader
-(`FileRebinds` path map, `SoundBanks` list; most such files list native `Plugins`); vanilla ignores it.
+**Observed:** mods that need the fixed-path files and the banks ship an `RE_Kenshi.json` for the third-party RE_Kenshi loader
+(`FileRebinds` path map, `SoundBanks` list; most such files list native `Plugins`); vanilla ignores it. Meitou applies `FileRebinds`
+([RE_Kenshi data entries](rekenshi.md#data-entries)).
 
 **Verified** `FUN_140816d90`: after base folders, walk active mods in cfg order; add subfolders
 holding files to matching base resource group, default General. Skip `leveldata`,
 `newland/leveldata`, `locale`, translation folders. Add mod root only for files other than
 `.mod`, `.translation`, `_`-prefixed metadata/images.
+
+## MyGUI XML
+
+**Observed** (`AppearanceManager::loadEditorXMLData`, `FUN_140077090`): the game reads XML such as a race's `editor limits` with
+`MyGUI::xml::Document::open` and reads attributes with `Element::findAttribute`. A tag may repeat an attribute; the first is used.
+AnimeRace Face+'s `asd*_EditorData.xml` (Workshop 3660471163) repeat `mid` on `Neck width`, which a strict XML parser rejects.
 
 ## Format inventory
 

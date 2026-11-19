@@ -134,8 +134,17 @@ msgstr "浏览"
 msgid "Install folder"
 msgstr "安装目录"
 
-msgid "Where versions are installed; changing it moves them."
-msgstr "各版本安装的位置；更改后会移动这些版本。"
+msgid "Where versions are installed; changing it asks whether they move."
+msgstr "各版本安装的位置；更改时会询问是否移动这些版本。"
+
+msgid "Move the installed versions from {1} to {2}? Kept, they stay where they are and the new folder lists only its own."
+msgstr "要把已安装的版本从 {1} 移动到 {2} 吗？保留则它们留在原处，新文件夹只列出其中已有的版本。"
+
+msgid "Move them"
+msgstr "移动"
+
+msgid "Keep them"
+msgstr "保留"
 
 msgid "Open"
 msgstr "打开"
@@ -199,6 +208,84 @@ msgstr "本地模组"
 
 msgid "RE_Kenshi plugin: its DLLs are ignored in Meitou"
 msgstr "RE_Kenshi 插件：Meitou 会忽略它的 DLL"
+
+msgid "Built into Meitou: {1}; this mod is not run"
+msgstr "已内置于 Meitou：{1}；此模组不会运行"
+
+msgid "Squad XP in the Advanced settings"
+msgstr "高级设置中的 Squad XP"
+
+msgid "Meitou port on the Steam workshop, endorsed by Meitou: {1} by {2}"
+msgstr "Steam 创意工坊上有 Meitou 认可的 Meitou 移植版：{1}，维护者 {2}"
+
+msgid "Meitou port, endorsed by Meitou: {1} by {2} (installed)"
+msgstr "Meitou 认可的 Meitou 移植版：{1}，维护者 {2}（已安装）"
+
+msgid "Updated on the workshop on {1}, after Meitou last checked it: some new features may be missing"
+msgstr "于 {1} 在创意工坊更新，晚于 Meitou 上次核对：可能缺少部分新功能"
+
+msgid "Request it"
+msgstr "申请支持"
+
+msgid "Open the public wishlist of RE_Kenshi mods for Meitou, where you can ask for this one"
+msgstr "打开 Meitou 的 RE_Kenshi 模组公开愿望单，可在那里申请支持此模组"
+
+msgid "Get the port"
+msgstr "获取移植版"
+
+msgid "Subscribe to this mod's Meitou port on the Steam workshop, or open its page"
+msgstr "在 Steam 创意工坊订阅此模组的 Meitou 移植版，或打开其页面"
+
+msgid "Meitou ports of your mods"
+msgstr "你的模组的 Meitou 移植版"
+
+msgid "The plugins of these RE_Kenshi mods do not run in Meitou."
+msgstr "这些 RE_Kenshi 模组的插件无法在 Meitou 中运行。"
+
+msgid "Each has a port for Meitou on the Steam workshop, kept up by its maintainer and endorsed by Meitou:"
+msgstr "它们在 Steam 创意工坊上都有由维护者维护、Meitou 认可的 Meitou 移植版："
+
+msgid "Want to look at them on Steam?"
+msgstr "要在 Steam 上看看它们吗？"
+
+msgid "Do you want to subscribe now?"
+msgstr "要现在订阅吗？"
+
+msgid "Subscribe"
+msgstr "订阅"
+
+msgid "Maintained by"
+msgstr "维护者"
+
+msgid "Asking Steam to subscribe..."
+msgstr "正在请求 Steam 订阅..."
+
+msgid "Steam did not subscribe to anything."
+msgstr "Steam 没有订阅任何内容。"
+
+msgid "Subscribed on Steam: {1}."
+msgstr "已在 Steam 上订阅：{1}。"
+
+msgid "Steam is still downloading; press Refresh when it is done."
+msgstr "Steam 仍在下载；完成后请点击刷新。"
+
+msgid "Steam could not subscribe"
+msgstr "Steam 无法订阅"
+
+msgid "Steam gave no answer."
+msgstr "Steam 没有回应。"
+
+msgid "You can subscribe on the Steam workshop page instead."
+msgstr "你可以改为在 Steam 创意工坊页面订阅。"
+
+msgid "Open its page"
+msgstr "打开页面"
+
+msgid "Open {1} pages"
+msgstr "打开 {1} 个页面"
+
+msgid "No thanks"
+msgstr "不用了"
 
 msgid "nightly"
 msgstr "每日构建"
@@ -1171,12 +1258,6 @@ msgstr "城镇保持作息"
 
 msgid "Townspeople you come back to after an hour or more are where their day puts them: in bed at night, at the counter, at their posts and seats. In the game they are where they stood when you left."
 msgstr "一小时后或更久才回来的城镇居民，会按作息出现在该在的位置：夜里在床上，在柜台后，在岗位和座位上。在游戏里他们还站在你离开时的位置。"
-
-msgid "Doors close behind"
-msgstr "门会随手关上"
-
-msgid "A door someone opened by walking through it closes again a few seconds after the last person went through. In the game doors stay open."
-msgstr "有人走过而打开的门，在最后一个人通过几秒后会重新关上。在游戏里门会一直开着。"
 
 msgid "Hover outline"
 msgstr "悬停描边"
@@ -2992,3 +3073,24 @@ msgstr "{1}花{3}开币买下了{2}"
 
 msgid "{1} sold {2} for c.{3}"
 msgstr "{1}以{3}开币卖出了{2}"
+
+msgid "RE_Kenshi mod"
+msgstr "RE_Kenshi 模组"
+
+msgid "Meitou port"
+msgstr "Meitou 移植版"
+
+msgid "Search mods"
+msgstr "搜索模组"
+
+msgid "Show only the mods whose name or author holds this text"
+msgstr "只显示名称或作者包含此文字的模组"
+
+msgid "No mods match the search."
+msgstr "没有符合搜索的模组。"
+
+msgid "Tick every mod the search shows"
+msgstr "勾选搜索显示的所有模组"
+
+msgid "Untick every mod the search shows"
+msgstr "取消勾选搜索显示的所有模组"

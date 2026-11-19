@@ -265,13 +265,22 @@ sealed class BuildingSync(GameHost host)
     /// <summary>
     /// The render and navigation overlay type of a site (<c>StateId</c> null, <c>WorldY</c> the absolute height, the zone of its position). Its key
     /// is its own id: a player building's id is unique in the world (the simulation's registry reserves every saved id), and the overlays remove it
-    /// by that id.
+    /// by that id. <c>PlayerOwned</c>: the site's owner is the player's faction (a nest's pieces are their camp's).
     /// </summary>
-    static BuildingPlacement Placement(BuildingSnapshot site) =>
-        site.LevelPlacement is { } level
-            ? level with { Key = site.Id, WorldY = site.Position.Y, DestroyedOverride = site.Destroyed }
-            : new(WorldLayout.ZoneOf(site.Position.X, site.Position.Z), site.Id, site.Record, site.Position, site.Rotation, null,
-                site.Position.Y) { Key = site.Id, Contained = site.Parent is not null, ContainerId = site.Parent };
+    BuildingPlacement Placement(BuildingSnapshot site)
+    {
+        bool mine = site.Owner == host.Session.World.Player.Faction;
+        if (site.LevelPlacement is { } level)
+            return level with { Key = site.Id, WorldY = site.Position.Y, DestroyedOverride = site.Destroyed, PlayerOwned = mine };
+
+        return new(WorldLayout.ZoneOf(site.Position.X, site.Position.Z), site.Id, site.Record, site.Position, site.Rotation, null, site.Position.Y)
+        {
+            Key = site.Id,
+            Contained = site.Parent is not null,
+            ContainerId = site.Parent,
+            PlayerOwned = mine,
+        };
+    }
 
     /// <summary>
     /// Navmesh membership (engine reading of the Observed rebuild on placing): <c>path mode</c> not 0 and the building complete or without a <c>build
@@ -396,6 +405,7 @@ sealed class BuildingSync(GameHost host)
             Footprint = footprints.Of,
             CollisionMesh = footprints.Mesh,
             CollisionMeshDoors = footprints.MeshDoors,
+            LevelDestroyed = LevelDestroyed,
             CollisionFile = footprints.File,
             Plot = footprints.Plot,
             PartBounds = footprints.PartBounds,
@@ -428,12 +438,28 @@ sealed class BuildingSync(GameHost host)
     }
 
     /// <summary>
+    /// Whether a level building is drawn as a ruin: a town's override, else the placement's own flag or its level state's (as the object renderer
+    /// reads them).
+    /// </summary>
+    bool LevelDestroyed(BuildingPlacement placement)
+    {
+        if (host.TownChanges.ShownRuins.TryGetValue(placement.Key, out var ruin)) return ruin.Destroyed;
+        if (placement.DestroyedOverride is { } destroyed) return destroyed;
+
+        var levels = host.Scene.Objects?.Levels;
+        var zone = placement.StateZone ?? placement.Zone;
+        var state = levels is not null && placement.StateId is { } stateId && levels.Zones.TryGetValue(zone, out var zoneDb)
+            ? zoneDb.Find(stateId) : null;
+        return state?.GetBool("destroyed") ?? false;
+    }
+
+    /// <summary>
     /// What the selection shows of a level building: its name and type, its town and owner, whether it is public and destroyed.
     /// </summary>
     Func<BuildingPlacement, Building.WorldBuildingInfo> MakeWorldInfo(Data.GameDatabase db)
     {
-        // Per level building of a town: the town, its owner's name and where it sits in the town's buildings (a relaid one takes the same place).
-        Dictionary<(ZoneCoordinate, string), (string Town, string? Owner, int Site, int Index)>? townOf = null;
+        // Per level building of a town: the town, its owner faction and where it sits in the town's buildings (a relaid one takes the same place).
+        Dictionary<(ZoneCoordinate, string), (string Town, int Owner, int Site, int Index)>? townOf = null;
         // The towns' building lists change when the level editor places or clears a building (PopulationData.BuildingsRevision).
         int townOfRevision = -1;
         var machines = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -449,14 +475,14 @@ sealed class BuildingSync(GameHost host)
             var state = levels is not null && placement.StateId is { } stateId && levels.Zones.TryGetValue(zone, out var zoneDb)
                 ? zoneDb.Find(stateId) : null;
             var info = townOf is not null && townOf.TryGetValue((zone, instance), out var found) ? found
-                : default((string Town, string? Owner, int Site, int Index)?);
+                : default((string Town, int Owner, int Site, int Index)?);
             var building = info is { } at && host.PopData is { } live && at.Site < live.Sites.Count
                 && at.Index < live.Sites[at.Site].Buildings.Count
                 ? live.Sites[at.Site].Buildings[at.Index] : null;
             var saved = host.Session.World.Fixtures.Saved?.GetValueOrDefault(placement.Key);
             var own = building?.Key == placement.Key ? building : null;
             var (name, type) = WorldBuildingName(db, placement, state, saved, own);
-            var (town, owner) = info is { } t ? (t.Town, t.Owner) : (null, null);
+            var (town, owner) = info is { } t ? (t.Town, OwnerName(t.Owner, new FixtureTown(t.Site, -1))) : (null, null);
             bool destroyed = host.TownChanges.ShownRuins.TryGetValue(placement.Key, out var ruin) ? ruin.Destroyed
                 : placement.DestroyedOverride ?? state?.GetBool("destroyed") ?? false;
             var pieces = destroyed || host.TownChanges.IsEmptied(placement.Key) ? null : own?.Pieces;
@@ -481,25 +507,46 @@ sealed class BuildingSync(GameHost host)
     }
 
     /// <summary>
-    /// Each town building of <paramref name="d"/> by zone and instance: its town, its owner's name and its site and index in the site's buildings.
+    /// Each town building of <paramref name="d"/> by zone and instance: its town, its owner faction (<see cref="PopulationData.LevelOwnerOf"/>: the
+    /// player's when the level data names it, else its residents', else the town's, as the original re-owns a town's buildings) and its site and
+    /// index in the site's buildings.
     /// </summary>
-    static Dictionary<(ZoneCoordinate, string), (string Town, string? Owner, int Site, int Index)> TownBuildings(PopulationData d)
+    static Dictionary<(ZoneCoordinate, string), (string Town, int Owner, int Site, int Index)> TownBuildings(PopulationData d)
     {
-        Dictionary<(ZoneCoordinate, string), (string Town, string? Owner, int Site, int Index)> townOf = [];
+        Dictionary<(ZoneCoordinate, string), (string Town, int Owner, int Site, int Index)> townOf = [];
         foreach (var site in d.Sites)
         {
-            // A building whose state names no owner belongs to its town's faction (the original re-owns a town's buildings to it).
-            string? townOwner = site.Index < d.SiteFactions.Count && d.SiteFactions[site.Index] is >= 0 and var townFaction
-                && townFaction < d.Factions.Count ? d.Factions[townFaction].Name : null;
+            int townFaction = site.Index < d.SiteFactions.Count ? d.SiteFactions[site.Index] : -1;
             for (int i = 0; i < site.Buildings.Count; i++)
             {
                 var b = site.Buildings[i];
-                string? buildingOwner = b.OwnerFactionId is { } id
-                    ? d.Factions.FirstOrDefault(f => f.Id == id)?.Name ?? townOwner : townOwner;
-                townOf[(b.Zone, b.InstanceId)] = (site.Town.Name, buildingOwner, site.Index, i);
+                townOf[(b.Zone, b.InstanceId)] = (site.Town.Name, d.LevelOwnerOf(b, townFaction), site.Index, i);
             }
         }
         return townOf;
+    }
+
+    /// <summary>
+    /// The owner a building's name bar shows (Building slot 113, <c>FUN_1402fdea0</c>, <b>Verified</b> decompile): the player's faction always (as
+    /// renamed); another faction only while the building's <paramref name="town"/> (a town site, or the nest whose camp stood it up) is explored
+    /// (town slot 0x340, the same for a nest) and not <c>is secret</c> (+0x111, read by the TownBase constructor <c>FUN_140931090</c>); else none,
+    /// as for a building of no town.
+    /// </summary>
+    internal string? OwnerName(int owner, FixtureTown town)
+    {
+        if (host.PopData is not { } d || owner < 0 || owner >= d.Factions.Count) return null;
+        if (owner == host.Session.World.Player.Faction) return host.FactionNameOf(owner);
+
+        var snapshot = host.Session.CurrentSnapshot;
+        bool shown = town switch
+        {
+            { Site: >= 0 and var site } => site < d.Sites.Count && site < snapshot.Towns.Count
+                && (snapshot.Towns[site] & Simulation.Player.TownKnowledge.Explored) != 0 && !d.Sites[site].Town.IsSecret,
+            { Wild: >= 0 and var wild } => snapshot.Camps.FirstOrDefault(c => c.Site == wild) is { } camp
+                && (camp.Known & Simulation.Player.TownKnowledge.Explored) != 0 && d.Db.Find(camp.TownId)?.GetBool("is secret") != true,
+            _ => false,
+        };
+        return shown ? d.Factions[owner].Name : null;
     }
 
     /// <summary>

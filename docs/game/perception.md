@@ -11,6 +11,12 @@ relations: [factions](factions-squads-towns.md). Simulation senses/leash remain 
   ([weather](../formats/weather.md#effects-on-characters), **Verified**; Meitou `AggroSystem.RangeOf`).
 - **Cone**: v = (cos a - 0.2) / 0.8, zero past 78.46 deg. Crawling/ground posture x0.5; sneaking x0.75 (v >= 0.5) or x0.5,
   then x lerp(stealth, 1, 0.6). Stealth scales skill x carry 0.75 x crawl 2 x load/equipment/race/injury, clamped 0..1.
+- **A looker of the player's faction** (faction `+0x250`) has no cone: `FUN_140857b10` calls the cone and light test `FUN_140852f70` only for
+  a looker without the player flag; a player one gets v = 1.0 (`DAT_14167c308`) when d (3D) <= R, else 0, so no light, contrast, posture,
+  on-top or sneak factor (control flow read in the decompile; **Verified** in the running original, 1.0.65, harness `peek` of the sense
+  entries' FOV score `+0x24` in a town: a lone player character's seen entries all held 1.0, at bearings all round it, while the NPCs' held cone
+  values from 0.04 to 0.99). A sneaker still fills its spot meter with that v, and the ray still ends the test. Meitou: `SightMap.AllRound` (with a cone, a kneeling player medic on Heal All saw none of the downed behind it and stood idle:
+  #843's save, headless probe `medic`).
 - **Seen** (`FUN_140852f70`, **Verified** literals): d <= lerp(ambient, F, 1) x contrast x R x v, R x2 when the looker is on
   top (below); contrast = clamp(target light - looker light + 1, 0, 2), ambient = clamp(mean of both, 0, 1); F = 0.2 when the
   looker is inside a building (character vfunc +0x78, the building it is in; **Observed**), else 0.4. v must exceed 0.01.
@@ -29,8 +35,11 @@ relations: [factions](factions-squads-towns.md). Simulation senses/leash remain 
   when requested by a sight test (`+0xdc`) and the character is the player's or daylight < 0.75, it is resampled: 1 above
   daylight 0.5, else 2 x daylight + per light within 500 of the zone search: 1.5 x power scale x (1 - d^2 / r^2) (x the spot
   cone (cos - cos(outer/2)) / (cos(inner/2) - cos(outer/2)), clamped) while d <= r; a light counts only when its indoor flag
-  equals the character's and, both inside, its floor (custom parameter w) equals the character's (slot 0x60). Building
-  lights and characters' carried lights both count.
+  equals the character's and, both inside, its floor (custom parameter 0's y) equals the character's (slot 0x60). Building
+  lights and characters' carried lights both count. A light's floor is set when its building's parts are lit (`FUN_140553dc0`,
+  **Verified**): a building with an interior object (`+0x1f0`, made by `FUN_140551b20` when the BUILDING lists an `interior`) gives
+  each light its part's `building floor`; one without (furniture, lamps) gives every light its own floor (`getFloor`, `+0xa4`).
+  Meitou: an interior layout's furniture without `interior` takes the floor of the spot it stands on (`WorldLight.FloorAnchor`).
 The request byte `+0xdc` is raised by the sight test `FUN_140852f70`:104-112 on looker and target (the target's value is read before the flag is set, so the first test after a quiet period sees bare daylight) and by the stat multiplier `FUN_1406457e0`:190 (**Verified**). Meitou (`SightMap.SampleLight`, `Light` / `PeekLight`): the same rule with a per-slot request flag that the workers only ever set (`Range` and the stat multiplier read through `Light`, the HUD and the query bound through `PeekLight`) and the serial update consumes, so the outcome does not depend on the order of the parallel tests.
 
 Meitou (`SightMap`): every sight test (aggro, dialogue sightings, crime witnesses, bounty spotting, slave catching, loot witnesses) uses these
@@ -83,6 +92,9 @@ and stealth x 5). Each looker keeps a meter per target (`SensoryData::SpottingPe
   panel's right in colour (0.942, 0.806, 0.341) (**Verified**, `Kenshi_CharacterNamePanel.layout`). The tag state is set alongside: 3 seen, 2 almost seen, 1 hidden.
   A name longer than the layout's text box shows whole, "[Drifter-cannibal escapee]" for one (**Observed**). Meitou widens it, the text box stretching and
   the icons keeping its edges by the layout's aligns (`Stretch`, `Left`, `Right`).
+  Anchor (**Observed**, `FUN_1406e9340`, called when the tag is made and from the posture setter `CharacterAnimal` slot 110 on a change to or from
+  upright): the character's position plus (0, hull × slot 0x390 size × `characterHeight` + 5, 0), hull = the race's `hull size Y`, or `hull size Z`
+  while the prone state (slot 0x368) is not 0; no bone, so it does not bob (people 22, bonedogs 20 × size). Meitou puts a sleeper's over its drawn head.
 - Stealth XP: see [character-stats](character-stats.md#levelling-xp).
 
 Meitou: `AggroSystem` keeps one meter per looker and sneaker for every awake NPC of another faction (one that picks no fights
@@ -123,7 +135,8 @@ State on the character's status object (Character `+0x1a0`): level `+0x100`, uni
   tooltip reads.
 - **Cooldown**: the same field crimes set ("recently wanted", 250 from a witnessed or booked crime, [economy](economy.md) 11.2); counted down by dt (`AI::updateStateBroadcast`
   `FUN_1405a4ae0`); saved as `disguiseblown` (`FUN_140626580`, **Verified**).
-- Not traced: `sellingUniformDetectionCheck` (selling a uniform, `CRIME_UNIFORM_THEFT`), event `EV_I_SEE_UNIFORM_IMPOSTER`, the dialogue gates of "regards as enemy".
+- **Imposter line**: the sight pass's event 34 `EV_I_SEE_UNIFORM_IMPOSTER` reads the level against the looker's faction ([sight](dialogue.md#ambient-conversations)).
+- Not traced: `sellingUniformDetectionCheck` (selling a uniform, `CRIME_UNIFORM_THEFT`), the dialogue gates of "regards as enemy".
 
 Meitou (`ArrestSystem.Disguise.cs`, every spot sweep): the level and faction from the worn head, armour and legs; lookers are awake NPCs not of the player's faction within 400 that see
 the character (`SightMap.Sees`), with their own meter per pair (not shared with the sneak meters, engine choice), alertness 0.5; the town tests read the town the point stands in
@@ -167,7 +180,7 @@ Hearing does not imply ordinary visual cone/line-of-sight eligibility.
   and the nearest's squared distance at `+0x0`; else tagged NEUTRAL and not down, dead or carried: `numNeutrals` `+0x98`. At a refresh an ALLY standing (posture 0), not out and not dead
   counts at `+0x4c` (conscious allies), any other ALLY at `+0x48`.
 - **Threats** (`addToThreatsAndFlockingList` `FUN_140854370`, at a refresh only): see [combat](combat.md#fight-lifecycle-and-orders). The list `+0x50` is the characters whose intended
-  target is the looker; `+0x88` sums their positive aggression, `+0x8c` the aggression of those whose target is of the looker's faction, `+0x90` all sensed others' intended aggression.
+  target is the looker; `+0x88` sums their positive aggression, `+0x8c` the aggression of those whose target is of the looker's faction other than the looker itself (`FUN_140854370`, **Verified**: a target equal to the looker adds to `+0x88` only), `+0x90` all sensed others' intended aggression.
 - **Decay** (`FUN_140859010`): seen and heard cleared; age = (now − time) in sense units (hours × 3600 / 33 × 0.5, 2 s at 1x); while under 8 (25 when the character is in no building,
   vfunc 0x78 null, that reading **Observed**) the place follows the character's real one; dropped past 30 units, 60 when it is in combat mode, the looker's squad holds a long tag of mask 0x232 on it or it is the
   looker's slave, 120 for a player-faction character inside the looker's home building (the looker's faction not "not real", `+0x1d0`). A character whose vfunc 0x240 holds is dropped at once.
@@ -241,9 +254,11 @@ staying low and not in combat mode, 15 carried (`+0x3d4`), 7 the status object's
   looting; **Verified**). Saved as the short key `tn` (`FUN_140626580`/`FUN_140626830`; the loader zeroes it first). Meitou `CharacterCold.Freed`: set by all three, not by
   a kidnap victim's release; cleared outside towns (`ArrestSystem`, by the [status town](carry-loot.md#the-status-town)) and by `SetPending(viaWrapper)` for the first four callers; saved as `tn`.
 - **`FUN_1408569a0`'s obedient-slave branch** (**Verified**, decompile): for a looker whose faction has +0x250, in slave state 1, holding job 187 (`FUN_140597380`), whose owner hand
-  resolves and whose owner calls the target friendly (slot 126 `FUN_1407923d0`, asked to read the target's disguise), it holds, so slot 125 says not an enemy: an obedient player slave takes
+  resolves and whose owner calls the target friendly (slot 126 `FUN_1407923d0`, asked to read the target's disguise: only its last test, the alliance, takes the faction a working uniform
+  gives, `FUN_1407c0520`; the same-faction and tag tests read the real one), it holds, so slot 125 says not an enemy: an obedient player slave takes
   none of its master's friends for an enemy (the tags still make one). Meitou (`AggroSystem.MasterSpares`): both slave-looker rules, the owner being the slave's master squad
-  (`CharacterCold.SlaveMaster`; its faction, its squad memory for slot 126's tags); slot 126's disguise is left out. The rest of `FUN_1408569a0` (for an NPC looker it never drops a
+  (`CharacterCold.SlaveMaster`, after a load from the save's or the job's owner handle; its faction, its squad memory for slot 126's tags, the disguise through
+  `ArrestSystem.SeenFaction`). The rest of `FUN_1408569a0` (for an NPC looker it never drops a
   target its faction is hostile to) is applied by the finders, not here ([ai-tasks](ai-tasks.md#combat-goals)).
 - So attack on sight is relations only: no fundamental-type BANDIT rule (**Observed**). In the base data the Shek Kingdom, Holy Nation and
   United Cities start at -100 only with Bloodraiders, Cannibals, Rebel Farmers, Grass Pirates, Gorillo Bandits and Yabuta Outlaws (Holy
@@ -301,7 +316,7 @@ is not the looker's ally becomes a target only when both tests pass:
 | Vision range inside a building | 500 (no race multiplier) | **Verified** (literal) | `FUN_140851bc0`, `FUN_140852f70` |
 | Night | range x lerp(daylight, 0.5, 1): half at night | **Verified** (literals), daylight factor in [game-loop.md](game-loop.md#frame-clocks) | `FUN_140851bc0` |
 | Weather (dust storm / other affecting weather) | range x lerp(s(1 - P), 1, 0.4 / 0.75), unclamped | **Verified** (decompile) | `FUN_140851bc0` |
-| View cone | factor v = (cos a - 0.2) / 0.8; nothing beyond a = 78.5 degrees; a measured from the drawn facing (AnimationClass slot 0xc0 on Character +0x448: a stored +0x330 vector when non-zero, else the drawn node's direction), which lags the commanded one | **Verified** (literals; the slot reads +0x330, else node +0xd0); that +0xd0 is the drawn forward **Observed**; +0x330's writer **Unknown** | `FUN_140852f70`, `FUN_1405b22d0`; Meitou `SightMap` (`CharacterAnimation.DrawYaw`) |
+| View cone | none for a looker of the player's faction (v = 1 within R, **Verified** in the original, `FUN_140857b10`); else factor v = (cos a - 0.2) / 0.8; nothing beyond a = 78.5 degrees; a measured from the drawn facing (AnimationClass slot 0xc0 on Character +0x448: a stored +0x330 vector when non-zero, else the drawn node's direction), which lags the commanded one | **Verified** (literals; the slot reads +0x330, else node +0xd0); that +0xd0 is the drawn forward **Observed**; +0x330's writer **Unknown** | `FUN_140852f70`, `FUN_1405b22d0`; Meitou `SightMap` (`CharacterAnimation.DrawYaw`) |
 | Seen when | v > 0.01 and d <= lerp(light, 0.2 or 0.4, 1) x contrast x R x v | **Observed** (control flow), constants **Verified** | `FUN_140852f70`, `FUN_140857b10` |
 | Sneaking / crawling target | v x0.5 crawling; x0.75 or x0.5 sneaking; x lerp(stealth, 1, 0.6) | **Verified** (literals) | `FUN_140852f70`; Meitou `SightMap.Sees` (crawling or staying low) |
 | Spot time of a sneaker | lerp(v, 0.5 + 5 s, 0.5) x lerp(f, 4, 1) s; meter > 1 = seen; forgets at dt / 260 | **Verified** (literals), flow **Observed** | `FUN_140856cb0`, `FUN_140853aa0` |

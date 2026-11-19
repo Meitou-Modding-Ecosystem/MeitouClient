@@ -337,7 +337,8 @@ public sealed partial class CarrySystem
         if (!noXp && cold.Stats is { } stats && cold.Race is { } race)
         {
             float f = target.IsImprisoned ? 0.07f : Asleep(table, t) ? 0.5f : 1;
-            (_xp ??= new XpService(Constants, _bodyOptions)).Continuous(stats, race, StatsEnumerated.Assassination, 1, f * (success ? 100 : 300));
+            (_xp ??= new XpService(Constants, _bodyOptions))
+                .Continuous(stats, race, StatsEnumerated.Assassination, 1, f * (success ? 100 : 300), ExperienceSource.Assassination);
         }
 
         if (success) KnockOutTarget(table, t, cold, target);
@@ -354,7 +355,7 @@ public sealed partial class CarrySystem
     }
 
     /// <summary>
-    /// A hit: the target is knocked out for the put-down time its toughness and the attacker's assassination give, and stands still.
+    /// A hit: the target is knocked out for the put-down time its toughness and the attacker's assassination give, and stands still; one in a bed lies on in it.
     /// </summary>
     void KnockOutTarget(CharacterTable table, int t, CharacterCold cold, CharacterCold target)
     {
@@ -369,6 +370,9 @@ public sealed partial class CarrySystem
             float assassination = (cold.Stats?[StatsEnumerated.Assassination] ?? 0)
                 * (cold.Medical?.StatMultiplier(StatsEnumerated.Assassination) ?? 1);
             medical.KnockOut(medical.PutDownKoSeconds(ctx, assassination * 0.01f));
+
+            // The hit only sets the KO time (FUN_14034cd80, Verified): a sleeper stays in its bed, as it would not if its Sleep task ended (#994).
+            if (target.InSomething == Locks.HeldState.Bed) return;
             TaskStart.Stand(table, t);
             table.Next[t].Velocity = Vector3.Zero;
         }
@@ -391,7 +395,13 @@ public sealed partial class CarrySystem
 
         // a player character: attackTarget's replan, the step decides (EngagedDefence.Engage)
         if (DecisionSystem.Decides(target)) _engaged.Engage(world, Aggro, t, i);
-        else world.Defer(new AttackOrder([targetId], attackerId) { Tick = world.Tick + 1, Defensive = true });
+        else
+        {
+            world.Defer(new AttackOrder([targetId], attackerId)
+            {
+                Tick = world.Tick + 1, Defensive = true, Cause = "a failed knock-out attempt on it",
+            });
+        }
     }
 
     #endregion

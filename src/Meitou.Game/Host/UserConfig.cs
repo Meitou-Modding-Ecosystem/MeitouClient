@@ -1,9 +1,11 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using Meitou.Content;
 using Meitou.Game.Effects;
 using Meitou.Game.Settings;
 using Meitou.Game.Ui;
+using Meitou.Modding;
 
 namespace Meitou.Game.Host;
 
@@ -100,7 +102,7 @@ sealed class UserConfig
     /// retyped or read with a new meaning, and convert older files in <see cref="Migrate"/>. A Tab panel slider whose numbering changes
     /// takes a new label instead (<c>WorldFrame.UpscalerSliders</c>), so its old value is not misread.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     /// <summary>
     /// The default of <see cref="CharacterFlightSeconds"/>, and the distance from the view a squad member must be past for a double click to
     /// fly there.
@@ -153,7 +155,8 @@ sealed class UserConfig
     /// <summary>
     /// Frame generation: a generated frame between each two rendered ones, by <see cref="FrameGenerationVendor"/>: FSR 3's frame-interpolation
     /// swapchain (Windows, Proton and Linux, needs <c>amd_fidelityfx_vk.dll</c> / <c>libamd_fidelityfx_vk.so</c>) or DLSS's through Streamline
-    /// (<c>FrameGeneration</c>). Off by default; read at start-up, so a change takes effect after a restart.
+    /// (<c>FrameGeneration</c>). Off by default; followed while the game runs, on, off and from one vendor to the other, without a restart
+    /// (<c>GameLoop.FollowFrameGeneration</c>).
     /// </summary>
     public bool FrameGeneration { get; set; }
 
@@ -185,8 +188,7 @@ sealed class UserConfig
     public float HdrPeakNits { get; set; } = 1000;
 
     /// <summary>
-    /// Whose frame generation <see cref="FrameGeneration"/> turns on: FSR 3 (the default) or DLSS (Windows, RTX 40 or later, through Streamline; read
-    /// at start-up).
+    /// Whose frame generation <see cref="FrameGeneration"/> turns on: FSR 3 (the default) or DLSS (Windows, RTX 40 or later, through Streamline).
     /// </summary>
     public FrameGenerationVendor FrameGenerationVendor { get; set; }
 
@@ -387,11 +389,6 @@ sealed class UserConfig
     /// </summary>
     public bool UnloadedProduction { get; set; } = true;
     /// <summary>
-    /// Doors a walker opened close behind it after 5 s (Advanced settings; Faithful off: they stay open, as in the game; docs/simulation.md "Cages,
-    /// beds and locks").
-    /// </summary>
-    public bool DoorsCloseBehind { get; set; } = true;
-    /// <summary>
     /// A blow that destroys the head cuts it off, under the limbs' rule (Advanced settings; Faithful off: the game never does;
     /// docs/game/character-stats.md "Decapitation").
     /// </summary>
@@ -424,6 +421,11 @@ sealed class UserConfig
     /// </summary>
     public bool PauseOnLoad { get; set; } = true;
     /// <summary>
+    /// The game pauses while the zones round the camera load, as the original does (Advanced settings "Pause while loading", a Faithful / Meitou
+    /// switch whose Faithful side is on; off by default, Meitou; <c>WorldSession.LoadingPause</c>, docs/game/game-loop.md "Loading pause").
+    /// </summary>
+    public bool LoadingPause { get; set; }
+    /// <summary>
     /// A character's bag window opens with their inventory until OPEN BAG closes it (Advanced settings, a Faithful / Meitou switch; on by default,
     /// Meitou: in the game each bag stays shut until OPEN BAG is pressed once per session).
     /// </summary>
@@ -434,6 +436,11 @@ sealed class UserConfig
     /// <c>PlayerSystem.AnimalsPickUp</c>).
     /// </summary>
     public bool AnimalsPickUp { get; set; }
+    /// <summary>
+    /// Cage guards do not turn a caged member of their own faction into a slave (Advanced settings, a Meitou option; off by default, as the game
+    /// enslaves them; <c>CaptiveSettings.SpareOwnFaction</c>).
+    /// </summary>
+    public bool CagesSpareOwn { get; set; }
     /// <summary>
     /// Fixes of the game's own bugs (Fixes settings; on: fixed, off: as the game does; docs/audio.md): doors and gates sound when they break, a biome
     /// entered before its bank loads gets the right day or night ambience, and the wind bed stops when the wind does.
@@ -460,10 +467,24 @@ sealed class UserConfig
     /// </summary>
     public bool FixPunchReach { get; set; } = true;
     /// <summary>
+    /// An animal fighting with a weapon drawn from its manufacturer (the Swamp Turtle) attacks with the elephant creature moves (Fixes settings;
+    /// off: its weapon's moves, which its body cannot play, as the game does).
+    /// </summary>
+    public bool FixAnimalMoves { get; set; } = true;
+    /// <summary>
     /// A bench with its table behind is sat facing away from it (Fixes settings; off: towards the world origin, as the game does;
     /// docs/game/ai-tasks.md "Town goals").
     /// </summary>
     public bool FixBenchFacing { get; set; } = true;
+    /// <summary>
+    /// A prisoner in a cage or on a pole plays only the fixture's pose (Fixes settings; off: it holds its wounds there, as the game does;
+    /// docs/animation.md "Injury holds").
+    /// </summary>
+    public bool FixPrisonPose { get; set; } = true;
+    /// <summary>
+    /// An animal in a cage or on a pole plays its idles (Fixes settings; off: a still frame, as the game does; docs/game/locks.md "Cages and beds").
+    /// </summary>
+    public bool FixCagedAnimals { get; set; } = true;
     /// <summary>
     /// Guards' smuggling search and starving looters' food take reach into bags carried in the inventory grid (Fixes settings; off: only the grid
     /// and the worn backpack, as the game does; docs/game/dialogue.md "Conditions").
@@ -474,6 +495,26 @@ sealed class UserConfig
     /// drawn, as the game does; docs/render-interior-cut.md).
     /// </summary>
     public bool FixPartsInBuildings { get; set; } = true;
+    /// <summary>
+    /// The rain (and the dust and ash the game cuts inside buildings) is also left out in front of a building in the interior view, over the open
+    /// room (Fixes settings; off: only inside it, as the game does; docs/render-interior-cut.md).
+    /// </summary>
+    public bool FixRainInBuildings { get; set; } = true;
+    /// <summary>
+    /// The terrain inside an Ash Dome Ruin stays drawn and orders land on it (Fixes settings; off: the ruin's interior mask cuts it, as the game
+    /// does; docs/render-interior-cut.md "Interior terrain").
+    /// </summary>
+    public bool FixRuinGround { get; set; } = true;
+    /// <summary>
+    /// A head a task turned toward something turns back to the front once nothing is looked at (Fixes settings; off by default: it stays turned
+    /// until the next look, as the game does; docs/animation.md "Head turning").
+    /// </summary>
+    public bool FixHeadTurnBack { get; set; }
+    /// <summary>
+    /// The game's own heightmap has its holes filled and its needles lowered (Fixes settings; off: read as the file holds it, as the game does;
+    /// read at start; <c>HeightmapRepair</c>, docs/formats/terrain.md "Holes and needles").
+    /// </summary>
+    public bool FixGround { get; set; } = true;
     /// <summary>
     /// The strategy camera's turn and tilt rate in degrees per second per unit of input (Controls settings): the original's <c>mouse speed pan</c> /
     /// <c>mouse speed tilt</c> (slider 2 … 50, default 6), one value for both here.
@@ -687,6 +728,13 @@ sealed class UserConfig
     /// </summary>
     public Dictionary<string, string> Bindings { get; set; } = [];
     /// <summary>
+    /// The code mods' key actions whose keys differ from their defaults (docs/modding.md "Key actions"): mod id to action name to comma-separated
+    /// keys, as <see cref="Bindings"/>; an empty value unbinds. Null, and not written, until a mod's action is rebound; a mod not running keeps its
+    /// entries.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, Dictionary<string, string>>? ModBindings { get; set; }
+    /// <summary>
     /// The Meitou skin per race, where chosen against the default (RACE string id to on or off; Graphics > Skin): <c>CharacterRenderer.SkinRaces</c>.
     /// </summary>
     public Dictionary<string, bool> SkinRaces { get; set; } = [];
@@ -856,6 +904,21 @@ sealed class UserConfig
             if (AtGame("Tone map (0 = game)", 0)) graphics.Remove("Tone map (0 = game)");
         }
         if (from < 3) MigrateMetalUpscaling(json);
+        if (from < 4) MigrateShadowCascades(json);
+    }
+
+    /// <summary>
+    /// Layout 4 turns the fifth shadow cascade's switch (<c>Meitou: Shadow cascade 5 (Meitou)</c>, 1 on) into the cascade count slider
+    /// (<c>Shadow cascades (Meitou)</c>): on is 5, off 4. A count the launcher already wrote stays.
+    /// </summary>
+    static void MigrateShadowCascades(JsonObject json)
+    {
+        const string old = "Meitou: Shadow cascade 5 (Meitou)", count = "Shadow cascades (Meitou)";
+        if (json["graphics"] is not JsonObject graphics || graphics[old] is not JsonValue value || !value.TryGetValue(out double on))
+            return;
+
+        graphics.Remove(old);
+        graphics[count] ??= on >= 0.5 ? 5 : 4;
     }
 
     /// <summary>
@@ -941,6 +1004,19 @@ sealed class UserConfig
     }
 
     /// <summary>
+    /// Keeps the setting's value in <see cref="ModSettings"/>, or drops it when it is the default (and the mod's entry when it holds none); written
+    /// with the rest of the config.
+    /// </summary>
+    public void KeepModSetting(ModSetting setting)
+    {
+        string mod = setting.Group.ModId;
+        if (!ModSettings.TryGetValue(mod, out var saved)) ModSettings[mod] = saved = [];
+        if (setting.IsDefault) saved.Remove(setting.Key);
+        else saved[setting.Key] = setting.Text;
+        if (saved.Count == 0) ModSettings.Remove(mod);
+    }
+
+    /// <summary>
     /// Keeps a hand-edited or older config inside the values the Metal path can use.
     /// </summary>
     void Normalize()
@@ -965,7 +1041,7 @@ sealed class UserConfig
     {
         try
         {
-            File.WriteAllText(Path, JsonSerializer.Serialize(this, Json));
+            AtomicFile.WriteAllText(Path, JsonSerializer.Serialize(this, Json));
         }
         catch (IOException e)
         {

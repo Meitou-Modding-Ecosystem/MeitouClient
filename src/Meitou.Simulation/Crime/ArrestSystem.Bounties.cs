@@ -124,7 +124,7 @@ public sealed partial class ArrestSystem : IOrderOwner
                     break;
                 case PutInCageOrder put:
                     foreach (var id in put.Carriers.Count > 0 ? put.Carriers : world.Player.Selection.ToArray())
-                        StartCaging(world, id, put.Cage, put.Queued);
+                        StartCaging(world, id, put);
                     break;
             }
         }
@@ -247,7 +247,8 @@ public sealed partial class ArrestSystem : IOrderOwner
     }
 
     /// <summary>
-    /// Paying (<c>FUN_1406ae170</c>, economy.md 11.5): the money, the jail's entry erased, the prisoner freed (no escape).
+    /// Paying (<c>FUN_1406ae170</c>, economy.md 11.5): the money, the jail's entry erased, the cage unlocked and the prisoner out through task 133
+    /// (<see cref="SendOut"/>).
     /// </summary>
     void Bail(World world, int p, CharacterCold pc, Fixture cage, int price, int payer)
     {
@@ -255,12 +256,9 @@ public sealed partial class ArrestSystem : IOrderOwner
         var prisoner = table.IdOf(p);
         world.Player.Money -= price;
         if (pc.Bounties is { } ledger && ledger.BookedFor(Crimes.Factions.Relations, cage.Owner) is { } entry)
-        {
-            ledger.Remove(entry);
-            if (ledger.Count == 0) pc.Bounties = null;
-        }
+            CrimeSystem.ClearBounty(world, p, pc, ledger, entry);
         world.Post(Loc.Tr("{1} paid a bail of c.{2} for {3}", table.Cold(payer)!.Name, price, pc.Name));
-        world.Fixtures.Release(world, prisoner);
+        world.Fixtures.SetLocked(cage, false);
         FixtureRegistry.ClearSlave(world, pc);   // bail frees a slave (FUN_1406ae170)
         pc.Freed = true;
         pc.Recognition = 0;
@@ -268,24 +266,26 @@ public sealed partial class ArrestSystem : IOrderOwner
         // event 0x33; Verified).
         var payerId = table.IdOf(payer);
         Talk?.Memory.Remember(world, pc.SquadId, payerId, Dialogue.MemoryTag.FreedMe);
-        bool spoke = Talk?.FireEvent(world, prisoner, payerId, Dialogue.DialogueSystem.BoughtMeFromSlavery) == true;
-        SendOut(world, p, pc, payer, spoke);
+        SendOut(world, prisoner);
+        Talk?.FireEvent(world, prisoner, payerId, Dialogue.DialogueSystem.BoughtMeFromSlavery);
         Note(world, ArrestEventKind.Bailed, table.IdOf(payer), prisoner, cage.Owner, price);
     }
 
     /// <summary>
-    /// The end of each freed prisoner's block in <c>FUN_1406ae170</c>: one that could not speak (event 51 returned 0) is given
-    /// 128 Retreat to hometown, then every one 133 Get out of cage (legit). Whether the later give replaces the earlier or
-    /// queues behind it is <b>Unknown</b> (<c>FUN_1405d20d0</c>): Meitou walks a prisoner that spoke out of the cage to its
-    /// payer (<see cref="Dialogue.CharacterTrading.WalkOutOfCage"/>,
-    /// 133) and one that did not to its squad's home (128 standing for the pair).
+    /// The end of each freed prisoner's block in <c>FUN_1406ae170</c> (<b>Verified</b> by disassembly): one that could not speak (event 51 returned
+    /// 0) is given 128 Retreat to hometown, then every one 133 Get out of cage (legit); both gives clear the order queue first (<c>FUN_1405d20d0</c>
+    /// with its clear argument 1: <c>FUN_1405074a0</c> and <c>FUN_140507530</c>), so 133 replaces 128 and the prisoner only steps out of its
+    /// unlocked cage (<see cref="FixtureRegistry.GetOutLegit"/>); its own AI goes on from there. Engine order: out before event 51, since Meitou's
+    /// events need a free speaker.
     /// </summary>
-    void SendOut(World world, int p, CharacterCold pc, int payer, bool spoke)
+    void SendOut(World world, CharacterId prisoner)
     {
-        if (!spoke && world.Squads.Find(pc.SquadId) is { } squad)
-            TaskStart.Walk(world, p, squad.HomeCentre, SpeedMode.Walk, TaskType.RetreatHometown, TaskSource.Npc);
-        else
-            Dialogue.CharacterTrading.WalkOutOfCage(world, p, payer);
+        var table = world.Characters;
+        if (!table.TryResolveNext(prisoner, out int p)) return;
+
+        table.Cold(p)!.OrderQueue.Clear();
+        world.Fixtures.GetOutLegit(world, prisoner, Crimes);
+        TaskStart.Stand(table, p);
     }
 
     #endregion
@@ -293,14 +293,15 @@ public sealed partial class ArrestSystem : IOrderOwner
     #region Putting a captive in a cage, and the claim
 
     /// <summary>
-    /// Queues or gives the put-in-cage order (row 108) to a player character carrying a body; <paramref name="chosen"/> names the cage, null:
-    /// the nearest.
+    /// Queues or gives the put-in-cage order (row 108) to a player character carrying a body; the order's cage names it, null: the nearest.
     /// </summary>
-    void StartCaging(World world, CharacterId carrier, string? chosen, bool queued)
+    void StartCaging(World world, CharacterId carrier, PutInCageOrder put)
     {
         var table = world.Characters;
         if (Carry is null || !table.TryResolveNext(carrier, out int s) || table.Cold(s) is not { IsPlayer: true, Carrying.IsNone: false }) return;
-        PlayerOrders.Give(world, s, new OrderEntry(TaskType.PutInCage, this) { Site = chosen }, queued);
+
+        var point = put.Cage is { } id && world.Fixtures.Find(id) is { } cage ? OrderEntry.AtBuilding(world, put, cage.Position) : default;
+        PlayerOrders.Give(world, s, new OrderEntry(TaskType.PutInCage, this) { Site = put.Cage, TaskPoint = point }, put.Queued);
     }
 
     /// <summary>
@@ -567,7 +568,7 @@ public sealed partial class ArrestSystem : IOrderOwner
         _arrests.Add(arrest);
         gc.Engaged = true;
         if (tc.Medical is { Incapacitated: true }
-            && Carry.BeginPickUp(world, g, target, source: TaskSource.Npc, row: TaskType.ArrestTargetsCarriedPerson))
+            && Carry.BeginPickUp(world, g, target, source: TaskSource.Npc, row: TaskType.LiftPersonSnatchingAllowed))
         {
             arrest.Phase = ArrestPhase.Lift;
         }
@@ -634,7 +635,15 @@ public sealed partial class ArrestSystem : IOrderOwner
         var table = world.Characters;
         float dt = world.TickSeconds;
         if (h.Rest > 0) return (h.Rest -= dt) > 0;
-        if (!table.TryResolveNext(h.Hunter, out int g) || table.Cold(g) is not { Medical.Incapacitated: false } gc) return false;
+        if (!table.TryResolveNext(h.Hunter, out int g) || table.Cold(g) is not { } gc) return false;
+
+        // A hunter knocked out drops the hunt: the AI takes him again once he is up, as after an arrest (End).
+        if (gc.Medical is not { Incapacitated: false })
+        {
+            gc.Engaged = false;
+            return false;
+        }
+
         bool over = !table.TryResolveNext(h.Target, out int t)
             || table.Cold(t) is not { Medical.Incapacitated: false, IsImprisoned: false, CarriedBy.IsNone: true };
         if (!over)

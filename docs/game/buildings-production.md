@@ -293,7 +293,7 @@ shows the first failing message in this order (**Verified** unless marked):
 
   **Research** (**Observed**, `FUN_14029be00` / `FUN_14029b8d0`; faction accessor `FUN_140594640` verified from executable bytes): bench level and operated progress require a player-owned bench, not a resolved town. Meitou likewise permits completed player benches in NPC houses and with missing town handles. No unresolved-town flag is needed.
 
-  **Power** (**Verified**, `FUN_14092d850`): the power manager advances frames from the registered town list; `NO_TOWN` is not a frame. **Observed** (`FUN_140299370`, `FUN_140296940`): the sound-emitter power query answers powered when the machine's resolved power town is null. **Observed** (`FUN_140296940`, `FUN_1409f9180`, `FUN_140927f10`, `FUN_1402973f0`, `FUN_14092da80`, `FUN_140296e00`): the machine's power town is its building's town handle when that is a town; otherwise the NEAREST non-nest town by horizontal distance, whatever its owner and with no distance cap (so a machine of a bought NPC-town house uses that town's frame). Only with no town at all is it never registered: its stored power stays 0 and a machine that draws power has satisfaction 0 (one that draws nothing counts as 1). Meitou: a machine whose building has no town number resolves to the nearest player town or placed non-nest town of the level data (`PopulationData.Sites`, nest types excluded here; a tie goes to a player town) and shares that town's grid (`ProductionSystem.PowerTown`); an NPC town gets a frame of its own among Meitou's grids, holding the machines that resolve to it (Meitou builds machines for player buildings only) plus the generation of the generators placed in that town's level data (`ProductionSystem.NpcGeneration`, [NPC generator state](#npc-generator-state): saved switch and construction health, unlimited NPC fuel output, wind scaled by its rotor), so a machine there with no running generator gets no power. **Observed** (`FUN_14092d850`, `vfunc 0x270` is the nest test): the original runs a frame for every non-nest town, NPC towns included, with the output of every generator registered to it (`FUN_1402973f0` registers by the building's town, whatever its owner); **Verified** (base data, scratch probe): 170 generator placements, all `power on`, all with a town handle, 123 wind generators and 47 fuel generators with an empty tank (`consumption amount-0` 0), no batteries, no rain collectors; 72 of 261 towns have a generator, 53 a wind generator. **Observed** (decompile): every object an interior or exterior layout places is a building of its own and joins its power town as any other: completion (slot 72 `FUN_140562340`) calls slot 99 (`FUN_1402973f0`, the only writer of the power-on byte +0x3b5), `Building::createPhysical` (`FUN_1405609e0`) completes a building whose target +0x188 is at most 0.01, save import completes a non-player one ([save import](#construction-tick)), and the power town climbs to the root object, so a house's furniture draws on the house's town. **Verified** (Kenshi harness, `redev` save, day 9 19:04): Waystation's bar (an L-House) Ceiling Lamp, a layout object, reads Efficiency 68%, a share of a short frame (unregistered it would read 0%). Meitou: `TownBuilding.LayoutBuildings` lists them and `NpcDraws` counts each consumer among them (an interior's light all day, slot 164); base data: 3536 such consumers drawing 8068 in 141 towns, against 3042 for the level buildings themselves (scratch probe). **Observed** (round-4 parity, `FUN_1402a1750`, `FUN_14092cd60`): a level building registers through its saved state, so an NPC town's turrets, searchlights, spotlights, wells, mines and refineries (base data: draws 3 to 40 against a Wind Generator II's 100) are consumers of the same water-filling frame. Meitou: `ProductionSystem.NpcDraws` adds one pseudo consumer per standing level building of that town whose functionality has a negative `power output` (a light only outside daytime; houses and stalls have no functionality and are left out), so the player's machine gets what the NPC loads leave (wind 100, three turrets at 5 and a mine at 40: a machine drawing 50 gets 45); generator state follows the rules below. No town in the world gives satisfaction 0 for a power-drawing machine.
+  **Power** (**Verified**, `FUN_14092d850`): the power manager advances frames from the registered town list; `NO_TOWN` is not a frame. **Observed** (`FUN_140299370`, `FUN_140296940`): the sound-emitter power query answers powered when the machine's resolved power town is null. **Observed** (`FUN_140296940`, `FUN_1409f9180`, `FUN_140927f10`, `FUN_1402973f0`, `FUN_14092da80`, `FUN_140296e00`): the machine's power town is its building's town handle when that is a town; otherwise the NEAREST non-nest town by horizontal distance, whatever its owner and with no distance cap (so a machine of a bought NPC-town house uses that town's frame). Only with no town at all is it never registered: its stored power stays 0 and a machine that draws power has satisfaction 0 (one that draws nothing counts as 1). Meitou: a machine whose building has no town number resolves to the nearest player town or placed non-nest town of the level data (`PopulationData.Sites`, nest types excluded here; a tie goes to a player town) and shares that town's grid (`ProductionSystem.PowerTown`); an NPC town gets a frame of its own among Meitou's grids, holding the machines that resolve to it (Meitou builds machines for player buildings only) plus the generation of the generators placed in that town's level data (`ProductionSystem.NpcGeneration`, [NPC generator state](#npc-generator-state): saved switch and construction health, unlimited NPC fuel output, wind scaled by its rotor), so a machine there with no running generator gets no power. **Observed** (`FUN_14092d850`, `vfunc 0x270` is the nest test): the original runs a frame for every non-nest town, NPC towns included, with the output of every generator registered to it (`FUN_1402973f0` registers by the building's town, whatever its owner); **Verified** (base data, scratch probe): 170 generator placements, all `power on`, all with a town handle, 123 wind generators and 47 fuel generators with an empty tank (`consumption amount-0` 0), no batteries, no rain collectors; 72 of 261 towns have a generator, 53 a wind generator. **Observed** (decompile): every object an interior or exterior layout places is a building of its own and joins its power town as any other: completion (slot 72 `FUN_140562340`) calls slot 99 (`FUN_1402973f0`, the only writer of the power-on byte +0x3b5), `Building::createPhysical` (`FUN_1405609e0`) completes a building whose target +0x188 is at most 0.01, save import completes a non-player one ([save import](#construction-tick)), and the power town climbs to the root object, so a house's furniture draws on the house's town. **Verified** (Kenshi harness, `redev` save, day 9 19:04): Waystation's bar (an L-House) Ceiling Lamp, a layout object, reads Efficiency 68%, a share of a short frame (unregistered it would read 0%). Meitou: `TownBuilding.LayoutBuildings` lists them and `NpcDraws` counts each consumer among them (an interior's light all day, slot 164); a house's bed and seat spots (`<house>@bed<k>`, `@seat<i>`) read their record from the fixtures. A level building no town takes keeps no handle ([town membership](../formats/zones.md#town-membership)), so it draws on the nearest non-nest town's frame, a player town's included (`TownBuildings.Townless`, `ProductionSystem.TownlessGrid`; base data: 13 such placements draw power, 7 with a functionality: Spotlights and mounted turrets); each such pseudo consumer takes its place in the frame's order and, with `gets battery` (+0x3b4, which the UseableStuff constructor `FUN_1402a0900` sets to 1 and only a saved zone's or the player's building loads from its state, a missing key false), its share of the batteries when left short (**Observed** decompile; Meitou `ProductionSystem.Share`, a layout object keeping the constructor's 1); a panel reads the grant the last tick gave it, a house's bed or seat spot that of a layout object of its draw on the frame; base data: 3536 such consumers drawing 8068 in 141 towns, against 3042 for the level buildings themselves (scratch probe). **Observed** (round-4 parity, `FUN_1402a1750`, `FUN_14092cd60`): a level building registers through its saved state, so an NPC town's turrets, searchlights, spotlights, wells, mines and refineries (base data: draws 3 to 40 against a Wind Generator II's 100) are consumers of the same water-filling frame. Meitou: `ProductionSystem.NpcDraws` adds one pseudo consumer per standing level building of that town whose functionality has a negative `power output` (a light only outside daytime; houses and stalls have no functionality and are left out), so the player's machine gets what the NPC loads leave (wind 100, three turrets at 5 and a mine at 40: a machine drawing 50 gets 45); generator state follows the rules below. No town in the world gives satisfaction 0 for a power-drawing machine.
 - **Centre, radius and placement-time merge** (**Verified**, `Town::reassessTownPosition` `FUN_1405488f0`, read from the disassembly of the Steam and the GOG 1.0.68 `kenshi_*x64.exe`: the instructions are identical
   and the constants agree; the Ghidra text is wrong at the division, so build nothing from it; via `TownList::reassessTownPositions` `FUN_14054d080`; called on placement commit `FUN_1404d72a0`, dismantle `FUN_1402a2860` /
   `FUN_14054fea0` and town merge `FUN_140931840`). Only for a town of the player faction. The buildings of a town are those whose root object's town handle resolves to it, else the NEAREST non-nest town by
@@ -570,7 +570,9 @@ rock) makes output only while someone operates it.
 - yield (slot 120 via offset `0x46c`): 1 without `world resource mining`; else the resource at the position
   ([resources](#resources)), at least 0.1 for a natural site; for any other building 0 becomes 0.5 when it is not the player's (**Verified**, `FUN_14029c670`: the natural branch takes `FUN_140a12ff0` and the 0.1 floor, the other `FUN_140a13540` and the 0.5 rule).
 - health x powerSat (slot 109, `FUN_140296e00`, **Verified**): health the [construction state](#construction-state)'s progress / target capped at 1; powerSat
-  the granted share of the demand, 1 with no demand. Meitou: `Machine.Health`, 1 for rocks and a target of 0.
+  the granted share of the demand, 1 with no demand. The demand (slot 163, `FUN_140299630`) does not ask the power switch; switching off (slot 99,
+  `FUN_1402973f0`, **Verified**) zeroes the grant and leaves the town's frame, so a switched-off consumer works at 0, an unattended Well II
+  included (#962). Meitou: `Machine.Health`, 1 for rocks and a target of 0; `ProductionSystem.Satisfaction`.
 - upgrade = the research `production mult` of the building ([research](#research)), default 1. The upgrade lookup (`production mult`,
   `power increase`, `power capacity increase`) answers only for the player's buildings (owner with the player pointer +0x250, `FUN_140546dd0`);
   any other gets the default 1, 0, 0 (**Verified**, `FUN_14082ec70`).
@@ -590,15 +592,16 @@ not a natural site, has a functionality and passes the owner test of [resources]
 **Held tool** (**Observed**, `Task_OperateMachine` set-up `FUN_14035b430`): when the task starts, a functionality with a
 `special tool` reference gets that item made and attached to the operator's `hands` point (`Bip01 Prop2`); the
 `special tool` records are ITEMs with a `mesh` in Newwworld.mod: Pickaxe (mines, rocks) and Hoe (farms). The attach is
-skipped when a virtual test on the character (`+0x30`) fails (Meitou skips animals). Meitou
-shows it for the whole operate task, the walk there included, and drops it when the task ends (the original's removal
-was not traced).
+skipped when a virtual test on the character (`+0x30`) fails (Meitou skips animals); the task's end (slot 3 `FUN_140347350`) takes it off.
+The walk to the machine is no part of it (**Verified**, TaskData: row 87 needs `isAtLocation`, which task 1 Moving provides), so the tool appears on
+arrival (#969). Meitou holds it from arrival, not on the walk or a haul trip, and drops it when the task ends; AI workers and obedient slaves (189 / 190, whose
+act-outs are `Task_OperateMachine` too, [slave work](ai-tasks.md#slave-work-shout-and-capture)) hold it while they stand at the work clip (#920).
 Operator animation: the functionality's `animation` reference (**Verified**, probe of vanilla BUILDING_FUNCTIONALITY); its `animation events` (the pick hitting ore, stone, a plate)
 sound on that clip ([audio](../audio.md#characters-footsteps-combat-voices) "Machine work"). No
 farming clip exists: cactus, cotton, potato, rice and veg farms use `stonemine` (the mining swing, with the Hoe); `farming
 wheat` and `farming hemp` have none (Meitou falls back to `stonemine`). Whether
 the original plays it while the crop grows is moot (**Observed**): row 87 needs state 73 `machineHasFreeOperatorSlot`, whose evaluator `FUN_140598de0` is **Verified** false while the machine's
-status `+0x468` is 3 (a growing farm; a bench with an empty queue too), so the planner finds no way to operate a growing farm. Meitou lets an operator tend it with water and plays the clip (engine choice).
+status `+0x468` is 3 (a growing farm; a bench with an empty queue too), so the planner finds no way to operate a growing farm. **Observed** (plain game, a long save's base with a growing Cotton Farm XL): a character whose jobs list that farm ahead of a mine sits around for two minutes and never works the farm. Meitou: a growing farm is work only while an input is empty (status 0, state 62), so a farmer fills it and goes on to his next job (#913).
 
 | function | examples (production mult) |
 |---|---|
@@ -619,7 +622,7 @@ Status `+0x468` of a `ProductionBuilding` (production, furnace, generator, wind,
 - **Set** (`operate` `FUN_140298700`, **Verified**): when the clamp `vfunc_185` `FUN_14029a510` leaves amount above 0, status 2 and the inputs are drawn; else, with an output, status = 1 if the output section cannot take one more item, else 0.
 - **Cleared** (**Verified**): `ProductionBuilding::vfunc_28` `FUN_14029ad90` each frame, only for a machine with operators (`+0x3a9`): 1 becomes 2 once the output has room (capacity below 1: the section takes one; else held below capacity), 0 becomes 2 once no input is empty (slot 149
   `FUN_140298b70`: a rated input with a recipe item, level at most 0.001 and, **Observed**, none of the item in the section: the section test's second argument is lost in the decompile). An automatic machine only runs `operate`, which recomputes it. `Task_EmptyMachine` (`FUN_14033cd10`) also sets 1 to 2 right after emptying, only when the building's function class (vslot `0x358`) is 4.
-- **What stops** (**Verified**): progress and consumption (amount 0, no item made). Not the operator: `Task_OperateMachine`'s update (`FUN_14035bc90`) asks `tryOperate` (slot `0x4f8`, `FUN_1400f8030`), which refuses only on slot `0x4e8` (`FUN_1402ab3c0`, a constant 0 for every production class but the farm, whose `FUN_1400f6e00` refuses a growing crop), so the animation and XP go on while blocked; the power demand (`FUN_140299630`) does not read the status either.
+- **What stops** (**Verified**): progress and consumption (amount 0, no item made). Not the operator: `Task_OperateMachine`'s update (`FUN_14035bc90`) asks `tryOperate` (slot `0x4f8`, `FUN_1400f8030`), which refuses on slot `0x4e8` (`FUN_1402ab3c0`, a constant 0 for every production class but the farm, whose `FUN_1400f6e00` refuses a growing crop) and, for a character not yet among the operators (`+0x3d0`), once they number `max operators` (`+0x3ac`), else adds it; not on the status, so the animation and XP go on while blocked; the power demand (`FUN_140299630`) does not read the status either.
 - **Readers**: the panel word ("Output full" 1; "Out of resource" 0 with slot 149 true; "Production queue empty" 3; then No power, No workers, Working); the rain collector's text; planner states 62 / 63 / 64 below; `FUN_14059ab90` (a building finder over status 0 or 1).
 - **Planner states** (evaluators **Verified**, hand type 0 = building): 62 `FUN_1405974e0` = slot 149. 63 `FUN_1405a2ba0` = slot 175 (`+0x578`): production family `FUN_140296fb0` (output object `+0x448` and status 1), `StorageBuilding` false; the farm
   `FUN_1400deed0` also needs float `+0x51c` below `+0x54c`, the bench `FUN_1402b5320` a list test. 64 `FUN_1405a2e60` = 62 or 63 for a building hand (any other hand: 63 only). 65 `FUN_1405a2f00` = the 64 test over a hand list at `FUN_1407956a0(AI+0x2f8)+0x58`.
@@ -669,7 +672,15 @@ field prefixes by MiningResource: `iron`, `stone`, `copper`, `carbon`, `water`, 
   f = clamp((d² - r²) / (1500² - r²)), r = the rock's mean horizontal half-size, at least 25 (Meitou always 25: the term
   moves the result under 0.5% for rocks up to 100). No `resources` record or no rock: 0.
 - Rocks are BUILDINGs with `is foliage` placed by the foliage system as a FOLIAGE_MESH's `building type` ("Iron
-  Resource", "Copper Resource", "Stone Resource"; functionality 1 with the resource, not 27). Level data also places
+  Resource", "Copper Resource", "Stone Resource"; functionality 1 with the resource, not 27). **Verified** (`FUN_1406d2410`, `FUN_1400b64b0`,
+  `FUN_14057cc70`): each placed copy of a mesh whose `building type` list has an entry gets the BUILDING of entry 0, found where it stands or
+  made, only when the mesh's `collision` file is set (else the log line "Foliage object '...' with associated building '...' has no physics
+  file" and no building; **Observed** with `meitou-tools objects`: Genesis's skeleton "Salvage Gather Resource" meshes have none); the factory gets the flag that makes it natural (+0xc0) whether
+  or not it has `is foliage`, and neither reads `world resource mining`. So a rock whose mine a mod sets to 0 (Godsend's Resources: `Ore mine`,
+  `copper mine`, read with `meitou-tools record`, #852) is still a rock, and its yield is 1 (`FUN_14029c670` returns before the natural branch).
+  What a right click does is the building's class ([ui-input](ui-input.md)): `mine` and Operate for a mine. Meitou (`FoliageResourceNodes`) lists
+  those rocks; every rock BUILDING of the base game and Genesis is a mine (**Observed**, `meitou-tools record`), and one of another class would
+  not be picked (engine choice). **Observed**: probe `mine` under Godsend's Resources, yield 1, output growing. Level data also places
   `is foliage` buildings (1241 "Iron Resource" entries in the merged building lists, **Observed**). A rock is a natural site
   (Building `+0xc0`): its yield is `FUN_140a12ff0` where it stands, at least 0.1 (`FarmBuilding::vfunc_92` returns it):
   WATER/GROUND as above, STONE the stone noise x `stone mult`, else the resources record's `<p> mult` (0 when missing).
@@ -713,6 +724,15 @@ Function 10, `CraftingBuilding` (**Observed** unless noted).
   ingredients` or no ingredients, the bench's `consumes` at v1/100. Material cost (item vfunc 102): a weapon's
   `material cost`, else 1. Armour: each section at `total coverage`/100; Fabrics (`584-gamedata.base`, hard-coded,
   **Verified** bytes) at that x `fabrics amount`.
+- **Input sections** (**Verified**, constructor `FUN_1402b9aa0`): each made record draws its `ingredients`, or the bench's `consumes` when it has
+  none or the bench overrides them; min(largest count, 2) sections (at least 1), stacking minimum 5. Only when every record draws that many and all
+  the same items do the sections start with the first record's items at their footprints; otherwise they start empty, each as large as the largest
+  footprint of all drawn items (**Observed**, harness: the cooking stove's two are 5 x 5, Water's). Meitou: `CraftBench.PresetInputs`, `InputWidth`.
+- **Output full** (`FUN_1402bcac0`; **Observed**, harness, cooking stove making Dried Gristle Flaps, stackable 1): the finished item goes into `out`
+  (stacking minimum 1, mult 1) only while it holds less than 1; one item there sets status 1, "Output full", and the cook leaves until it is taken.
+  Meitou (`ProductionSystem.OutputFull`): full once the output holds an item and no stack of the craft's item with room, or the craft's store.
+- **Unused sections** (**Verified**, `FUN_1402bb470`): a section past the bound craft's inputs gets no item and is disabled (`InventorySection::setEnabled`,
+  which refuses items) while it is empty; the window shows it as `-` ([Selected building](ui-screens.md#selected-building)). Meitou: `InputSlot.Idle`.
 - **Partial levels** (**Verified**, `FUN_1402bb470`, `FUN_1402b8440`): the bench keeps a map item -> level (+0x520). A recipe switch first stores every
   section's level under its item, then each section taking an ingredient gets `map[item]` (0 when absent), so a half-used ingredient comes back when
   the recipe does. A save stores the sections' levels in the map, then writes each entry above 0 (k counts written entries only); a load fills the map
@@ -970,10 +990,13 @@ and `power capacity` (battery store, "in seconds" per fcs.def), plus research ([
   batteries drain by what was drawn (`FUN_1402978d0`) and the town enters battery mode; with a surplus it leaves it and
   the batteries charge from it, each at most its rate: in stored order each battery takes min(surplus left / batteries still to come, its rate), the count falling by one for every battery, switched off or full ones included (**Verified**, `FUN_14092cd60`; the switch byte `vfunc 0x228` and "rate 0 when full" are engine readings, **Observed**). Factor = granted / demand (1 with no demand), x health
   (`vfunc_109`); production, crafting, research and farm growth are scaled by it.
-- **One town per call** (**Verified**, `FUN_14092d850`): the world's per-frame update collects every eligible town (`vfunc 0x270` == 0) and calls `vfunc 0x2b8` (the frame above) on the one at a static cursor (`DAT_14213543c`, incremented first, wrapped to 0 at the count) per call; the other towns keep their last grants. The call rate is not decoded. Meitou `ProductionSystem.ShareOneTown`: one grid town per production pass in ascending number (an engine choice for the cadence); batteries of every town still integrate their last grant each pass.
+- **One town per call** (**Verified**, `FUN_14092d850`): the world's per-frame update collects every eligible town (`vfunc 0x270` == 0) and calls `vfunc 0x2b8` (the frame above) on the one at a static cursor (`DAT_14213543c`, incremented first, wrapped to 0 at the count) per call; the other towns keep their last grants. The call rate is not decoded. Meitou `ProductionSystem.ShareOneTown`: one grid town per production pass in ascending number (an engine choice for the cadence); batteries of every town still integrate their last grant each pass. Its grids are the player towns, the NPC towns a player machine resolves to and the NPC towns whose houses' layouts hold a battery bank ([NPC town machines](#npc-town-machines)), each NPC frame with its town's generators and draws.
 - **Fuel** (`vfunc_183` on generators): inputs drawn as a producer's, x the load (`GeneratorBuilding::vfunc_167`):
   output / rated x (battery charging + consumer demand) / all generators' output, at most 1 ("Fuel Consumption {1}%").
-- **Battery store** (`vfunc_27`): += flow / rate x dt, clamped to 0..capacity.
+- **Battery store** (`vfunc_27`): += flow / rate x dt, clamped to 0..capacity. A new battery holds 0 (the GeneratorBuilding setup `FUN_14029e460`
+  clears `+0x3c4`; **Verified**), so a generated interior's battery banks start empty. **Observed** (the owner's saves): NPC layout battery banks are
+  saved at 0 or 60, e.g. METARU's Stack Power Station at 60 and Holy Military Base's three at 0; Meitou's frames match both (Stack: generators 300
+  with its houses' Small Generators, draws 154, the bank stays full; Holy Military Base: no standing generator, the banks stay empty).
 - **Efficiency and "has power"** (the sound emitter's inputs, [audio](../audio.md#point-emitters)): slot 108 = operators / raw `max operators` x `vfunc_109` x `vfunc_119`, with
   `vfunc_119` = yield (`vfunc_92`) x the BUILDING's raw `output rate` (`+0x1a8`) x the research production mult; `FUN_140299370` is true for a generator (fuel and switch ignored), a building drawing nothing,
   else `power on` and the town's generator output (`Town::vfunc_87` `+0x474`) above 0 or battery mode with batteries' output (`+0x480`) above 0. Town `+0x47c` is the consumers' total demand. The town panel also reads +0x484 / +0x488 (taken to be the batteries' drain / charging this frame) and +0x48c / +0x490 (their charge / capacity) (**Observed**, `FUN_140727380`; [Town panel](ui-screens.md#town-panel)); Meitou sums them per town (`TownPower`).
@@ -1003,8 +1026,8 @@ and `power capacity` (battery store, "in seconds" per fcs.def), plus research ([
   `DAT_142134110`) instead, replayed by `FUN_1407b65b0` from the GameWorld update `FUN_140786e30` (**Observed**, decompile), so it adds no source; the first build step on it ruins the building ([construction tick](#construction-tick)). Dismantle (slot 73, its
   only damage path for machines) is offered only when slot 79 (`FUN_14029c380`) holds: the owner is a player faction. So raids and fights never break a
   machine, and a town's own turret (owned by the town's faction) breaks only through a loaded `broken` (none set in the owner's six saves, **Observed**: no
-  `broken` true in their zone files). `Task_UseTurret` asks only slot 107, a free place (slot 159) and slot 97, not completion or destroyed. Meitou: an NPC gunner does not man a town turret whose saved state has `broken` (`CombatSystem.Manning`); town buildings
-  have no machines otherwise, which this rule makes unnecessary.
+  `broken` true in their zone files). `Task_UseTurret` asks only slot 107, a free place (slot 159) and slot 97, not completion or destroyed. Meitou: an NPC gunner does not man a town turret whose saved state has `broken` (`CombatSystem.Manning`); the other town machines
+  ([NPC town machines](#npc-town-machines)) are made complete and never broken, which no dismantle by their owner reaches.
 - **Status strings** (`GeneratorBuilding::vfunc_114`): "Out of fuel", battery "Charging" / "Draining" / "Stored" / "Empty".
 - Data (**Verified**, probe): Small Generator 40, Generator II 100, Wind Generator 50, Small Wind 25, Wind II 100,
   Battery Bank 40 / capacity 60; Weapon Smith -8, refineries -10 to -40, Research Bench III-VI -10 to -30. Power
@@ -1110,6 +1133,36 @@ it with them. Meitou: `MachineData.Accepts` (AI) and `TakesByHand` (player).
 
 ### NPC town machines
 
+- **Power** (**Verified**, state 93 `FUN_140596ab0` and the building constructors' class stores): every machine class is 2 or more (only a plain
+  building, 0, and a door, 1, pass at once), so a town's machine that draws power needs its town's frame to have generator output (or batteries in
+  battery mode), as a player's: one in a town whose generators are off, unbuilt or gone is not operated (87 and 221 both need 93). Meitou:
+  `ProductionSystem.MachinePowered` (`TownHasPower`: the level's generators there and in its houses' layouts, `NpcOutput`, with the player's machines
+  resolved to that town, or its layout battery banks in battery mode).
+- **Layout objects are buildings** (**Verified**, decompile): a house's interior is made from its layout through the factory's furniture callback
+  (`BuildingInterior::FactoryCallbackForFurniture`, `FUN_14057cc70`), so every object is a building of its functionality's class with its own
+  sections, progress, charge and saved state (its own building-list entry, [save](../formats/save.md#zone-files)); switching one on registers it with
+  the power town of the building it stands in (`FUN_1402973f0` → `FUN_140296940`, which climbs from the object through its interior, `+0x238` →
+  `+0x90`, to the house). **Observed** (headless survey of the base data as Meitou houses it, every town): 94 Battery Banks stand in the layouts of
+  36 kinds of house per town (Power Station Small Shacks, Holy Military Base's Storm House, Metal Warehouse workshops, Swamp Domes, ...), 268 Small
+  Generators and Generator IIs (5 to a Power Station shack), 45 Hydroponic Hemp and Vegetables (Secret Drug Farm, Spring, World's End) and 403
+  refineries (campfires, stills, ovens, benches); no plain mine.
+- **Layout objects in Meitou** (`ProductionSystem.PieceWork`): when a town registers, each layout object that is a farm, a producer or a battery
+  bank gets a town machine `townwork:<object id>` (the object's id is the house's key, "/", its place in the layout) of the house's owner, inside the
+  house; any other workstation gets one when a resident pretends at it. A layout's generators add to `NpcOutput` (switch and progress from their own
+  saved entry, else complete and on), its battery banks join the frame of the house's town (`TownBatteryGrid`), so the town's frame runs in the
+  rotation (below, [power](#power)) and they charge from its surplus and drain on its shortfall. A ruin holds no layout objects
+  ([ruins](#ruined-by-residents)): a house set destroyed after its town registered loses its objects' machines, their items destroyed with them
+  and none dropped, as the original's ([ruins](#ruined-by-residents)), its generators and draws leave the frame, and when it stands again its
+  objects get new machines (`DropGonePieces`; so does a house laid out anew or stood up again, or a home a town override furnishes anew under the
+  same layout names (`DropRebuilt`, [town overrides](factions-squads-towns.md#town-overrides)), the first two of which move
+  `PopulationData.BuildingsRevision`: **Observed** headless, METARU, The Free City override on a registered Free Settlement: the stood-up Bar
+  `44.39:2-rebirth-INGAME` gets its object's machine, the relaid Power Station `:10` its 3, the Hydroponic `:16` its 5). A save writes no entry inside a ruin, so a reloaded ruin's objects
+  start new when it stands (`Saving/RuinSave`, [save](../formats/save.md#zone-files)); **Observed** (headless, METARU): the Stack's Power
+  Station shack set destroyed, saved, reloaded and set standing in the registry's ruins gets a Battery Bank starting empty, where the save's old
+  entry held 60 (and, without `RuinSave`, still loads 60). An interior
+  hydroponic farm's plants are drawn as a town farm's ([farm plants](#farm-plants)), with the house's furniture. **Observed** (headless, METARU and
+  the base data): setting the Stack's Power Station shack destroyed drops its Battery Bank's machine, standing it up again makes a new one; a Secret
+  Drug Farm house's 7 object machines likewise.
 - **Output add** (`FUN_1402984b0`, **Verified**): when a producer's accumulator reaches 1 and its output inventory cannot take the item, the accumulator resets to 0, so a full output loses
   the progress (and `isMachineOutputFull`, status 1, stops the operators: row 87 needs !63). Nothing else in the production building removes items.
 - **Who empties it** (**Verified**, a scan of every AI package in the merged data): rows 87, 92, 93, 113, 114, 124, 152, 221, 242 and 247 are in no package; NPCs reach them only through
@@ -1127,7 +1180,12 @@ it with them. Meitou: `MachineData.Accepts` (AI) and `TakesByHand` (player).
   (backpack included); a production building at status 1 goes to 2 after a take; ends when nothing is left.
 - **State evaluators** (**Observed**, read from the decompile, meanings of the virtual calls inferred): 66 `FUN_140597530` the character carries the machine's output item; 67 `FUN_1405a45f0` it carries an item the machine (an input) or storage accepts;
   82 `FUN_14059bd80` inventory or worn backpack has room for the target's item (a machine: its output item); 105 `FUN_1405a2c40` machine output empty; 169 `FUN_1405975d0` input invalid
-  (production type 6 flag).
+  (production type 6 flag). 89 `haveSomeResourcesFromThisMachineButWantThemGoneIfPossible` (`FUN_1405a2c90`, registered in `FUN_140610250`): for a target with a StorageBuilding cast
+  whose type (`+0x440`) is 4 (ITEM), the character's vfunc `0x300` asked with the machine (it carries resources from it) and then its output item (vfunc `0x550`) passing the per-item storage
+  finder `FUN_14059acd0` (the nearest building of the query mask `0x4002436` with a StorageBuilding cast, complete, of the character's faction or, for a character `FUN_140856bc0` holds for, a
+  player-flagged one, whose slot `0x4a0` takes the item, within the range mode's bound; **Verified**); so it holds while the character carries the machine's output and a storage takes it, and
+  row 87's `!89` is met by 113 (A `!89`, effect `!62` at the ditch finder's storage), then 93 into that storage: an operator puts the output away before operating again. Meitou: the obedient
+  player slaves' 189 (`ObedientJobs.ErrandFor`, the storage from the ditch finder's search); the NPC planner holds 89 false.
 - **Made with the zone** (**Verified**, decompile: the building factory `FUN_14057cc70` switches on the functionality's `function`, 1 and 4 constructing through the ProductionBuilding
   constructor `FUN_1402a3750`, a farm through `FUN_1400e8420`): every building of a loaded zone is made as the class of its functionality, so every NPC mine, well, refinery and farm has its
   sections and progress from the start, loaded from its saved GAMESTATE_BUILDING and INVENTORY_STATE ([production](#production) save keys; **Observed** in two saves: NPC quarry mines with
@@ -1138,8 +1196,8 @@ it with them. Meitou: `MachineData.Accepts` (AI) and `TakesByHand` (player).
   a research bench counts for the player's research alone, a crafting bench has no queue, a town's generators are the power frame's ([NPC generator state](#npc-generator-state)) and its storages are container fixtures.
   Its state is the original's: the production keys of the building's GAMESTATE_BUILDING and its items in the INVENTORY_STATE the building lists ([town machines](../formats/save.md)), read when the machine is made, so an
   original save's NPC mines keep their progress and output. A worker whose plan starts with
-  87 operates it every tick (skill factor, operating XP: the player's operator lines), with 92 empties it into its inventory. Only producers run: a research bench counts for the player's
-  research alone and a crafting bench with no queue refuses an operator, so both stay pretence. Ditching: rows 113 / 114 / 93 (`TownDutySystem.DitchStore` and the Ditch errand, [ai-tasks](ai-tasks.md#ditching)). Row 94 (`WANT_TO_FILL_MACHINE`, effect 66) and its finder `FUN_14059d9b0` (**Verified**: for each input item of the target machine in list order, `FUN_14059d000` looks for a cached earlier pick, then loose ground items, then the nearest building whose production component's output lists the item (identity for ITEM records, same record type otherwise) with some in it, the buildings split by the owner test of vfunc `0x3b0`, within the sight range of the AI's range mode) give the chain 92 at the source, 94, 93 at the machine, 87: Meitou plans it (`PlanContext.Find` row 94, states 66 / 67 on machine targets), the worker walks to the source (`AiSystem.StepBuilding`), `TownWorkers` empties it (92), fills the inputs (93, `FillInputs`) and operates. Not modelled: the cached pick, ground items, the `0x3b0` split and the building mask `0x4002436` (the town's workplaces stand in). Unpowered: town machines draw no player grid (power held true).
+  87 operates it every tick (skill factor, operating XP: the player's operator lines), with 92 empties it into its inventory. A worker of 190 (221) operates it alike, whatever it holds. At a bench the work step makes
+  nothing: a research bench's counts only for a player-owned one (`FUN_14029b8d0`) and a crafting bench's only for a queued craft (`FUN_1402b5a40`); the operator still trains its `stat used`. Ditching: rows 113 / 114 / 93 (`TownDutySystem.DitchStore` and the Ditch errand, [ai-tasks](ai-tasks.md#ditching)). Row 94 (`WANT_TO_FILL_MACHINE`, effect 66) and its finder `FUN_14059d9b0` (**Verified**: for each input item of the target machine in list order, `FUN_14059d000` looks for a cached earlier pick, then loose ground items, then the nearest building whose production component's output lists the item (identity for ITEM records, same record type otherwise) with some in it, the buildings split by the owner test of vfunc `0x3b0`, within the sight range of the AI's range mode) give the chain 92 at the source, 94, 93 at the machine, 87: Meitou plans it (`PlanContext.Find` row 94, states 66 / 67 on machine targets), the worker walks to the source (`AiSystem.StepBuilding`), `TownWorkers` empties it (92), fills the inputs (93, `FillInputs`) and operates. Not modelled: the cached pick, ground items, the `0x3b0` split and the building mask `0x4002436` (the town's workplaces stand in). Power share: a town machine that draws power works at a share of 1 (its draw is the frame's pseudo consumer, `NpcDraws`); only a layout's battery bank is a member of the frame. A resident staying home at a workstation of its house (221) operates that layout object's machine as a worker of 190 does (`HomePretenders`, [town goals](ai-tasks.md#town-goals)).
   A town machine is no player machine for the hauling jobs (`ProductionSystem.Takes`).
   Town farms (#625) and unattended producers (#763: `Well II` / `Well III`, raw `max operators` 0, which `UnattendedStep` runs with no operator) start as a farm with no saved keys
   does ([farming](#farming)), so they grow and work whether a worker came; a worker of 87 at a farm harvests and tends it as a player's operator does (`HarvestStep`), its crop goes to the output, which row 92
@@ -1159,8 +1217,10 @@ it with them. Meitou: `MachineData.Accepts` (AI) and `TakesByHand` (player).
   on a storage 124 "Hauling to" (several targets allowed); an automatic machine (152) adds 152 plus 124 on it. The first job in a
   character's list that can run wins; operating is skipped while the machine's output is full or its inputs are empty (row 87's !63 and !62 unmet at the job's root,
   [perma-jobs](ai-tasks.md#perma-jobs)), so a character moves down its list and returns when the machine can work again.
-- **Unknown:** how the original picks the storage (nearest, same town, a range), when an operator leaves a
-  machine to haul, where a 124 job takes its items from, and whether 152 / 124 on an automatic machine ever empty its output
+- **Storage pick** (**Verified**, `FUN_14059acd0`, also called by the 242 ditch finder `FUN_1405a59a0`): the candidates are the current town's
+  buildings (the nearest-allies query, mask `0x4002436`) with a StorageBuilding cast, complete, of the character's faction, whose slot `0x4a0`
+  takes the item; the nearest to the character by squared 3D distance wins, within the AI's range-mode bound (ROAM_FAR 4.246733e7).
+- **Unknown:** when an operator leaves a machine to haul, where a 124 job takes its items from, and whether 152 / 124 on an automatic machine ever empty its output
   (152's goal is only "no empty inputs", !62).
 
 ## House sales
@@ -1187,14 +1247,39 @@ intact and name no template. Its houses are ruins in the original (issue #145).
 ([layouts](factions-squads-towns.md#town-residents)). **Observed** (saves METARU, autosaves 1 and 2, redev, Beep Fan Club 1): no saved building lies inside any ruin
 (0 of 56, 56, 23, 23, 62), while 283 of 284 standing buildings with an interior name hold furniture; every saved ruin names no interior layout (its template
 names none). Meitou: no reader lays out a ruin's layouts (drawing, lamps, effects, emitters, navmesh, and `TownBuildings`: no beds, nodes,
-fixtures or item slots).
+fixtures or item slots). A ruin a later housing stands (a town override's, or `FixtureRegistry.SavedStanding`) is laid out standing from the
+names it has then (`TownBuildings.Stand`), as the original's squad setup loads those names' layout before it sets the home standing
+([layouts](factions-squads-towns.md#town-residents)).
+
+**A ruin's objects take their items with them.** **Verified** (decompile): `FUN_140548580` hands each furniture object to the destroy routine
+`FUN_140799af0`, whose building branch unregisters it (zone, power, doors, sound, physical parts) and queues it for deletion after 5 seconds,
+moving none of its items; the deletion runs its destructor, whose chain (production, storage, farm, generator, research and crafting classes)
+ends in the UseableStuff one (`FUN_140562fd0`), which deletes the inventory (`+0x430`, `getInventory` slot 44 `FUN_1400f6cf0`), whose destructor
+`FUN_14074b660` destroys every item ("clearAllItems"). So the items are neither dropped nor kept. **Observed** (the saves above): no
+building-list entry has a ruin as its `isInsideBuilding` (0 of 15089 inside a building in METARU); a ruin's state keeps `serialised interior` 1, and
+some keep `internalbuildings-<k>` handles naming no saved building (10 of METARU's 56 ruins, 6 of autosave 2's 22), whose slots stay in the zone's
+slot list (58 of 58 in METARU's 20.32). **Verified** (decompile): with `serialised interior` 1 the load makes no interior, and the saved
+`destroyed` is set without `setDestroyed` (`FUN_140552b70`), so a loaded ruin holds no objects and the save keeps no state for any: objects it
+gets when it stands again start new. Meitou (`FixtureRegistry.Ruin`): a registered house set destroyed loses its doors and own lock, every
+fixture of its interior with what it holds (containers, cages, beds, training dummies), its seats, and its item slots with the items lying in
+them; whoever lies or is held in one is let out first, as when a bought house is emptied. A ruin registers none (`FixturesOf`,
+`ItemSlots.AddBuilding`; a dummy standing alone in the town is a building of its own); its machines: [layout objects](#npc-town-machines).
+**Observed** (headless, METARU, each town registered before its override): Stoat's half-destroyed override (Lord Inaba dead) leaves its new
+ruins with no fixture and no item slot and lets a character held in a cage of `39.16:24-Newwworld-INGAME` out; after a save and a reload the
+Yabuta one (Tengu dead, Yabuta alive) does the same to 5 more houses (`39.16:586` had 27 containers, 6 beds and 25 slots) and stands 3 of the
+earlier ruins up with their new layouts' fixtures and slots (`39.16:24`: Barracks, 19 containers, 2 cages, 9 beds, 17 slots); Free
+Settlement's The Free City override (Tengu and Longen dead) stands its zone's ruins, 5 of them furnished (`44.39:14`: Mechanical Shop, 21
+containers, 4 beds, 19 slots). A reload of either save (its zone files written) has the same.
 
 Meitou (`ResidentRuins`): before anything reads the level data's `destroyed`, every town is housed by the population's rule ([town residents](factions-squads-towns.md#town-residents))
 and each home of a ruined template that has a destroyed mesh is set destroyed in its level state; 71 base-game buildings (Old Village 10 of 10, Abandoned Town 9 of 9,
 the library ruins). Any other home the level file has destroyed is set standing (`WorldLevelData.ResidentRestored`, `TownBuilding.RestoredByResidents`); 34 base-game
 buildings, e.g. the Snailhouse bar of the Waystation in The Hook (`17.53:4-rebirth-INGAME`, issue #630), the Lost Library, the Lost Armoury, Mourn's shop, and one or
 two `Trashed building` homes each in Bast and Endin, whose other buildings are ruins by their default resident. A saved `destroyed` false does not undo a level ruin
-unless the player's repair saved it (`meitou town construction`; engine choice: saves made before this pass wrote those buildings intact). A saved `destroyed` true
+unless the player's repair saved it (`meitou town construction`; engine choice: saves made before this pass wrote those buildings intact), or the state is saved standing with the player's
+`owner faction ID` and no Meitou keys: the original's repair (**Observed**, Beep Fan Club 1: The Hub's Old Storm House `20.32:34-Newwworld-INGAME` and the Waystation's Watchtower
+`38.29:7-rebirth-INGAME`, level ruins saved `destroyed` false under the player faction with 18 and 11 player buildings inside; the original loads the saved `destroyed`,
+`FUN_140552b70`; `FixtureRegistry.RepairedByPlayer`, **Verified** headless: both load standing, the Hub's as the player's complete construction site). A saved `destroyed` true
 does not ruin a home the residents stand up while the save has the same `residents template` in it and no `meitou town construction` (engine choice: saves made before
 the homes were stood up wrote the level file's ruin; `FixtureRegistry.SavedLevelRuin`). A home housing ruins now stands when the save has it intact under another `residents template` that is not `building ruined` (engine choice, `FixtureRegistry.SavedStanding`: the save was housed differently, e.g. before a mod added residents; **Verified** headless on issue #673's save, where `Bounty hunting for minor factions.mod` adds a Hub resident and the squatters' ruined template lands on the bar's Storm House `20.32:4933-Newwworld-INGAME`). A town's baked distant mesh is a fixed file of the install, drawn as it is (as
 in the original). Meitou: `ResidentRuins.CanBeDestroyed` tests `is wall gate` for the class.
@@ -1202,6 +1287,10 @@ in the original). Meitou: `ResidentRuins.CanBeDestroyed` tests `is wall gate` fo
 A [town override](factions-squads-towns.md#town-overrides) reads its zone back from the level file and houses the replacement's residents, so Meitou
 (`FixtureRegistry.ApplyTownRuins`) sets each of the town's buildings in its own zone that is not the player's: a home of a ruined template that can be destroyed is a
 ruin, any other home stands, and a building with nobody is as its level file has it (a resident ruin of the old town stands again). Its other zones keep their state,
-but a home of a ruined template there becomes a ruin too (not modelled: standing a ruin up there). A loaded save takes its ruins of standing buildings back, then applies its replacements again; the building states it writes carry them. The host replaces those
+but housing covers them too: a home of a ruined template there becomes a ruin, any other home stands, a level ruin among them as well. **Observed** (Beep Fan Club 1,
+an original save after Stack's takeover): in Stack's other zones 19.28, 20.28 and 20.29 every home holds its takeover template (`squad template`) and that template's
+layout names, `20.29:1019-Newwworld-INGAME`, a ruin in the level file, stands as a Battery Station with 7 objects, and the homes of `_ruined empty building` there
+(`20.29:1015`, `:1017`, `20.28:8878`) are saved destroyed. A loaded save takes its ruins of standing buildings back, then applies its replacements again, a home in
+another zone the save has standing standing too; the building states it writes carry them. The host replaces those
 buildings' level placements (drawing, navmesh, lamps) and drops a ruin's particle effects (a standing one's come back); doors, locks and indoor sight follow. **Observed** (data):
 95 overrides change ruins, e.g. Stoat (override) half destroyed 8, Catun (override) fishman takeover 14; Free Settlement to The Free City stands 7 up again.

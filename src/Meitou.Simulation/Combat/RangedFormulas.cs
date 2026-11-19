@@ -41,9 +41,9 @@ public sealed class CrossbowInstance(CrossbowData data, float quality, CrossbowS
     public int NumShots => Math.Max(Data.NumShots, 1);
 
     /// <summary>
-    /// No <c>ammo</c> reference: the crossbow never runs dry.
+    /// No <c>ammo</c> reference and no Meitou ammunition list: the crossbow never runs dry (<see cref="CrossbowData.InfiniteAmmo"/>).
     /// </summary>
-    public bool InfiniteAmmo => Data.AmmoId.Length == 0;
+    public bool InfiniteAmmo => Data.InfiniteAmmo;
 
     /// <summary>
     /// The gun of a CROSSBOW at quality fraction <paramref name="q"/> with the CONSTANTS <c>bow damage 1/99</c> and the global damage multiplier
@@ -299,17 +299,37 @@ public static class Ammunition
     }
 
     /// <summary>
+    /// The place in <paramref name="crossbow"/>'s ammunition list (<see cref="CrossbowData.AmmoAt"/>) of the first kind <paramref name="inventory"/>
+    /// holds, in the crossbow's order of preference; -1 when it holds none. A crossbow of one kind asks <see cref="Find"/> once, as before the list.
+    /// </summary>
+    public static int FirstCarried(Inventory? inventory, CrossbowData crossbow)
+    {
+        int count = crossbow.AmmoCount;
+        for (int k = 0; k < count; k++)
+            if (Find(inventory, crossbow.AmmoAt(k)) is not null) return k;
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Uses one charge (one bolt) of the first matching item, as <see cref="UseOne(Inventory?, string, out bool)"/>. False when there is none.
+    /// </summary>
+    public static bool UseOne(Inventory? inventory, string ammoId) => UseOne(inventory, ammoId, out _);
+
+    /// <summary>
     /// Uses one charge (one bolt) of the first matching item (<c>FUN_140437ce0</c>: charges minus 1, the item removed at 0). A stack of several units
     /// refills from <see cref="ItemInstance.MaxCharges"/> and loses one unit instead (<b>engine</b>: how charges and stacks combine is
-    /// <b>Unknown</b>). False when there is none.
+    /// <b>Unknown</b>). False when there is none; <paramref name="unitGone"/> is whether a whole unit left the inventory.
     /// </summary>
-    public static bool UseOne(Inventory? inventory, string ammoId)
+    public static bool UseOne(Inventory? inventory, string ammoId, out bool unitGone)
     {
+        unitGone = false;
         if (Find(inventory, ammoId) is not { } item) return false;
 
         item.Charges -= 1;
         if (item.Charges > 0) return true;
 
+        unitGone = true;
         if (item.Quantity > 1)
         {
             item.Quantity--;

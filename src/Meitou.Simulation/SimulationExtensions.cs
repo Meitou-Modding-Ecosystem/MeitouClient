@@ -126,13 +126,35 @@ public readonly record struct ItemUse(World World, CharacterId User, Items.ItemI
 public delegate bool ItemUseHandler(ItemUse use);
 
 /// <summary>
-/// What code mods add to the simulation (docs/modding.md): extra systems at anchors, dialogue codes and item uses. Filled once at startup, before
-/// the first world is built, and read by <see cref="StandardSystems.Build"/> for every world; never changed while a world runs.
+/// A combat move a mod has a character play: the technique and its progress (0 to 1). Animation only: it lands no blow.
+/// </summary>
+public readonly record struct CombatMove(Data.Gameplay.Combat.CombatTechnique Technique, float Progress);
+
+/// <summary>
+/// A mod's combat move for a character the game plays nothing for (docs/modding.md "Combat moves"); null for none. Asked in the animation's
+/// parallel step, whose state is hashed and whose root motion moves the character, so it must be deterministic, thread-safe and read-only.
+/// </summary>
+public delegate CombatMove? CombatMoveSource(World world, CharacterId id, long tick);
+
+/// <summary>
+/// A combat move source and the mod that registered it (named in its fault's log line).
+/// </summary>
+public sealed record ModCombatMove(string Owner, CombatMoveSource Source);
+
+/// <summary>
+/// An NPC goal type a mod claimed (docs/modding.md "NPC goals"): the mod's id and the name its log lines give the goal.
+/// </summary>
+public sealed record ModGoalType(string Owner, string Name);
+
+/// <summary>
+/// What code mods add to the simulation (docs/modding.md): extra systems at anchors, dialogue codes, combat moves and item uses. Filled once at
+/// startup, before the first world is built, and read by <see cref="StandardSystems.Build"/> for every world; never changed while a world runs.
 /// </summary>
 public sealed class SimulationExtensions
 {
     /// <summary>
-    /// The lowest dialogue condition, dialogue effect and record type number a mod may register; the vanilla numbers stay below it.
+    /// The lowest dialogue condition, dialogue effect, record type, job type and NPC goal type number a mod may register; the vanilla numbers stay
+    /// below it.
     /// </summary>
     public const int FirstModCode = 1000;
 
@@ -149,15 +171,32 @@ public sealed class SimulationExtensions
     /// </summary>
     public Dictionary<int, DialogueEffectHandler> DialogueEffects { get; } = [];
     /// <summary>
+    /// The mods' combat move sources, in load order; the first that answers wins.
+    /// </summary>
+    public List<ModCombatMove> CombatMoves { get; } = [];
+    /// <summary>
     /// The mods' item uses by item record string id.
     /// </summary>
     public Dictionary<string, ItemUseHandler> ItemUses { get; } = new(StringComparer.Ordinal);
+    /// <summary>
+    /// The mods' own job types (no game job) and the jobs panel's name of each (docs/modding.md "Mod jobs").
+    /// </summary>
+    public Dictionary<Data.Gameplay.Ai.TaskType, string> JobTypes { get; } = [];
+    /// <summary>
+    /// The mods' own NPC goal types, each with the mod that claimed it and its name (docs/modding.md "NPC goals"; <see cref="Ai.NpcGoals"/>).
+    /// </summary>
+    public Dictionary<Data.Gameplay.Ai.TaskType, ModGoalType> GoalTypes { get; } = [];
+    /// <summary>
+    /// The mod that claimed each task type number, as a job or an NPC goal type: a task row from 1000 up is that mod's (<see cref="Ai.TaskHandlers"/>
+    /// refuses another mod's handler for it).
+    /// </summary>
+    public Dictionary<Data.Gameplay.Ai.TaskType, string> TaskOwners { get; } = [];
 
     /// <summary>
     /// Whether the mods add nothing.
     /// </summary>
-    public bool IsEmpty => Systems.Count == 0 && DialogueConditions.Count == 0 && DialogueEffects.Count == 0
-        && ItemUses.Count == 0;
+    public bool IsEmpty => Systems.Count == 0 && DialogueConditions.Count == 0 && DialogueEffects.Count == 0 && CombatMoves.Count == 0
+        && ItemUses.Count == 0 && JobTypes.Count == 0 && GoalTypes.Count == 0;
 
     /// <summary>
     /// Each extra system's factory, for log lines that name the mod and the system; weak, so a dropped world's systems go with it.

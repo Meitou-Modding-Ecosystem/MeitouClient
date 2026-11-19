@@ -12,7 +12,7 @@ namespace Meitou.Simulation.Ai;
 /// <summary>
 /// The package classes with rules of their own beyond the patrol, bar and retreat (docs/game/ai.md "Package classes", decoded from their vtables;
 /// docs/simulation.md "AI", Package classes): the wandering trader (16), the passing-by assault on a player town (29) and the occupation of it that
-/// follows (30). All run in the serial step.
+/// follows (30), the refugee (22), and the campaign's war classes (19, 20, 32) and defence (31). All run in the serial step.
 /// </summary>
 public sealed partial class AiSystem
 {
@@ -30,7 +30,8 @@ public sealed partial class AiSystem
     const int EnterTown = 49, TakenOverPlayerTown = 73;
 
     /// <summary>
-    /// The faction assault clocks once there is one (worlds without a passing-by assault hash as before).
+    /// The faction assault clocks once there is one (worlds without a passing-by assault hash as before), and the code mods' faulted NPC goals once
+    /// one faulted.
     /// </summary>
     public void Hash(ref StateHasher hasher)
     {
@@ -39,6 +40,8 @@ public sealed partial class AiSystem
             hasher.Add(faction);
             hasher.Add(end);
         }
+
+        _modGoals?.Hash(ref hasher);
     }
 
     #endregion
@@ -52,6 +55,12 @@ public sealed partial class AiSystem
     internal const float PlayerTownReach = 1.25f, StayReach = 1.5f, EnterReach = 1;
 
     /// <summary>
+    /// A nest's radius as a town (<c>Nest</c> vfunc <c>0x2a0</c>, <c>FUN_140926e90</c>, <b>Verified</b>: <c>DAT_141733c14</c>, whatever the TOWN
+    /// record's own radius fields say; a nest marker's is 0).
+    /// </summary>
+    internal const float NestTownRadius = 625;
+
+    /// <summary>
     /// Where the squad is: its leader's place, else its first living member's; null when nobody lives.
     /// </summary>
     static Vector3? LeaderPosition(World world, Squad squad)
@@ -60,6 +69,23 @@ public sealed partial class AiSystem
         if (table.IsAlive(squad.Leader)) return table.Previous[squad.Leader.Slot].Position;
         foreach (var m in squad.Members)
             if (table.IsAlive(m)) return table.Previous[m.Slot].Position;
+        return null;
+    }
+
+    /// <summary>
+    /// Where the squad stands for the town it is in: <see cref="LeaderPosition"/>, else, for a squad made this tick (its members are in the next
+    /// state only), its leader's or first member's place there, so its board has the town and arrival hour before its first package choice.
+    /// </summary>
+    static Vector3? TownPosition(World world, Squad squad)
+    {
+        if (LeaderPosition(world, squad) is { } at) return at;
+
+        var table = world.Characters;
+        if (table.TryResolveNext(squad.Leader, out int lead)) return table.Next[lead].Position;
+
+        foreach (var m in squad.Members)
+            if (table.TryResolveNext(m, out int s)) return table.Next[s].Position;
+
         return null;
     }
 
@@ -97,7 +123,10 @@ public sealed partial class AiSystem
     /// The character's status town (the original's status <c>+0x88</c>, written by <c>FUN_1405a51e0</c> before each status update,
     /// docs/game/ai-tasks.md "Status town"), from its position and its <paramref name="current"/> one: the nearest placed town of the player's
     /// faction within 1.25 x its radius; else the current town within 1.5 x its radius, or, with none, the nearest placed town within its radius;
-    /// else the nearest player town within the same reach. The original's walled-town and building steps are not modelled.
+    /// else the nearest player town within the same reach (player towns stand in the original's first town list with the placed ones); else
+    /// the nearest nest of the list's second list (<c>FUN_140927ad0</c>, <see cref="PopulationSystem.PlacedNests"/>) within the same reach of
+    /// its radius (<see cref="NestTownRadius"/>). A nest held as the current town is kept like any other. The original's walled-town and
+    /// building steps are not modelled.
     /// </summary>
     internal static CampaignTown StatusTownAt(PopulationData data, World world, Vector3 p, CampaignTown current)
     {
@@ -108,7 +137,9 @@ public sealed partial class AiSystem
         float reach = current.IsNone ? EnterReach : StayReach;
         var held = current.IsNone ? NearestSite(data, at, -1) : TownPlace(data, world, current);
         if (held is { } town && Reaches(at, town, reach)) return town.Town;
-        return NearestPlayerTown(world, at) is { } built && Reaches(at, built, reach) ? built.Town : CampaignTown.None;
+        if (NearestPlayerTown(world, at) is { } built && Reaches(at, built, reach)) return built.Town;
+
+        return NearestNest(world, at) is { } nest && Reaches(at, nest, reach) ? nest.Town : CampaignTown.None;
     }
 
     /// <summary>
@@ -132,13 +163,35 @@ public sealed partial class AiSystem
     {
         PlacedTown? best = null;
         float bestD = float.MaxValue;
-        foreach (var site in data.Sites)
+        var sites = data.Sites;
+        for (int i = 0; i < sites.Count; i++)   // indexed: the shoppers' think asks this in the parallel step
         {
+            var site = sites[i];
             if (site.Town.Type is TownType.NestMarker or TownType.Null) continue;
             if (faction >= 0 && (site.Index >= data.SiteFactions.Count || data.SiteFactions[site.Index] != faction)) continue;
 
             float d = Vector2.DistanceSquared(at, Flat(site.Position));
             if (d < bestD) (best, bestD) = (new PlacedTown(CampaignTown.OfSite(site.Index), Flat(site.Position), site.Town.Radius), d);
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// The nest standing nearest <paramref name="at"/> (<see cref="PopulationSystem.PlacedNests"/>); null when none stands, or without a
+    /// population.
+    /// </summary>
+    static PlacedTown? NearestNest(World world, Vector2 at)
+    {
+        if (world.SystemOf<PopulationSystem>() is not { } population) return null;
+
+        PlacedTown? best = null;
+        float bestD = float.MaxValue;
+        var nests = population.PlacedNests;
+        for (int i = 0; i < nests.Length; i++)
+        {
+            float d = Vector2.DistanceSquared(at, nests[i].Centre);
+            if (d < bestD) (best, bestD) = (new PlacedTown(CampaignTown.OfNest(nests[i].Site), nests[i].Centre, NestTownRadius), d);
         }
 
         return best;
@@ -151,8 +204,10 @@ public sealed partial class AiSystem
     {
         PlacedTown? best = null;
         float bestD = float.MaxValue;
-        foreach (var town in world.Buildings.Towns)
+        var towns = world.Buildings.Towns;
+        for (int i = 0; i < towns.Count; i++)
         {
+            var town = towns[i];
             float d = Vector2.DistanceSquared(at, Flat(town.Position));
             if (d < bestD) (best, bestD) = (new PlacedTown(CampaignTown.OfPlayer(town.Number), Flat(town.Position), town.Radius), d);
         }
@@ -161,11 +216,22 @@ public sealed partial class AiSystem
     }
 
     /// <summary>
-    /// Where campaign town <paramref name="t"/> stands: a town site's position and radius, or a player town's; null when it is not (or no
-    /// longer) there.
+    /// The centre (X/Z) of campaign town <paramref name="t"/>, and its radius; null when it is not (or no longer) there.
+    /// </summary>
+    internal static (Vector2 Centre, float Radius)? TownCircle(PopulationData data, World world, CampaignTown t) =>
+        TownPlace(data, world, t) is { } place ? (place.Centre, place.Radius) : null;
+
+    /// <summary>
+    /// Where campaign town <paramref name="t"/> stands: a town site's position and radius, a nest's decided centre and
+    /// <see cref="NestTownRadius"/>, or a player town's; null when it is not (or no longer) there.
     /// </summary>
     static PlacedTown? TownPlace(PopulationData data, World world, CampaignTown t)
     {
+        if (t.Nest > 0)
+        {
+            return world.SystemOf<PopulationSystem>()?.WildCentreOf(t.Nest - 1) is { } centre ? new PlacedTown(t, centre, NestTownRadius) : null;
+        }
+
         if (t.Site >= 0)
         {
             if (t.Site >= data.Sites.Count) return null;
@@ -201,13 +267,35 @@ public sealed partial class AiSystem
             : world.Buildings.FindTown(board.Destination.PlayerTown)?.Radius ?? 0;
 
     /// <summary>
-    /// The town the squad is in, before the package choice (the original's Blackboard +0x138 and its arrival hour +0x140); coming into one, the
-    /// leader fires ENTER_TOWN (49).
+    /// The squad's package target, a town or a character (<c>FUN_140796120</c> over the platoon's <c>FUN_140269b60</c>, <b>Verified</b>): its
+    /// platoon's campaign target while it runs one (<see cref="CampaignInstance.Target"/>); else the running package's (vtable +0x8): a broken
+    /// refugee's squad to join once it has one (its leader), else its mission town (<c>FUN_140288dc0</c>); any other package's mission target
+    /// (<c>FUN_1402859e0</c>: package +0x30), which a contract aimed at a town holds as its mission town (<see cref="Blackboard.AimMissionAtTown"/>).
+    /// Both none: no target.
+    /// </summary>
+    internal (CampaignTown Town, CharacterId Character) PackageTarget(World world, Squad squad, Blackboard board)
+    {
+        if (squad.PlatoonId >= 0 && world.Platoons.Find(squad.PlatoonId) is { Campaign: { } campaign }) return (campaign.Target, CharacterId.None);
+
+        if (board.CurrentClass == PackageClass.Refugee)
+        {
+            return board.RefugeeBroken && world.Squads.Find(board.RefugeeTarget) is { } join
+                ? (CampaignTown.None, join.Leader)
+                : (board.Destination, CharacterId.None);
+        }
+
+        return board.MissionTarget.IsNone ? (board.ContractTown, CharacterId.None) : (CampaignTown.None, board.MissionTarget);
+    }
+
+    /// <summary>
+    /// The town the squad is in, before the package choice (the original's Blackboard +0x138 and its arrival hour +0x140, <c>FUN_1402688d0</c>,
+    /// <b>Verified</b>): its effective leader's status town when that leader is up and has one (so a nest counts, and a town is kept out to
+    /// 1.5 x its radius), else the town whose radius holds the squad; coming into one, the leader fires ENTER_TOWN (49).
     /// </summary>
     void UpdateInTown(World world, Squad squad, Blackboard board)
     {
-        if (LeaderPosition(world, squad) is not { } at) return;
-        var town = CurrentTown(world, at);
+        if (TownPosition(world, squad) is not { } at) return;
+        var town = LeaderStatusTown(world, squad) is { IsNone: false } status ? status : CurrentTown(world, at);
         if (board.InTown.IsNone && !town.IsNone)
         {
             board.InTownSince = world.GameHours;
@@ -219,9 +307,33 @@ public sealed partial class AiSystem
         if (town.Site >= 0 && !_townPlaces.Has(town.Site)) _townPlaces.Refresh(world, this);
     }
 
+    /// <summary>
+    /// The status town of the squad's effective leader (<c>FUN_14079aea0</c>, <see cref="PopulationSystem.EffectiveLeader"/>) as its next status
+    /// update writes it (<see cref="StatusTownAt"/>: the kept one is a spotting pass old, and none for a squad just made, whose patrol test
+    /// would then read a town the board has no arrival hour for); none when it is down (vfunc <c>0x30</c>) or gone.
+    /// </summary>
+    CampaignTown LeaderStatusTown(World world, Squad squad)
+    {
+        var table = world.Characters;
+        var lead = world.SystemOf<PopulationSystem>()?.EffectiveLeader(world, squad) ?? squad.Leader;
+        if (!table.TryResolveNext(lead, out int s) || table.Cold(s) is not { } leader || CharacterFacts.Down(leader)) return CampaignTown.None;
+
+        return StatusTownAt(data, world, table.Next[s].Position, leader.StatusTown);
+    }
+
     #endregion
 
     #region Package steps
+
+    /// <summary>
+    /// The AI signals of <c>Contract_HiredAlly</c> (hired bodyguards) and <c>Contract_DefendPlayerBase</c> (the timed base defence).
+    /// </summary>
+    internal const int HiredAllySignal = 12, DefendBaseSignal = 15;
+
+    /// <summary>
+    /// The AI signal of <c>Campaign_DefendPlayerBase</c>, the campaign's base defence (its start and mission are the timed defence's).
+    /// </summary>
+    internal const int CampaignDefendSignal = 31;
 
     /// <summary>
     /// The running package's update (the original's vtable +0x48, after the choice): the trader's arrival; under an assault or occupation the squad
@@ -261,16 +373,82 @@ public sealed partial class AiSystem
 
     /// <summary>
     /// The update of Contract_HiredAlly (12), Contract_UntilOutOfDanger (14) and Contract_DefendPlayerBase (15) (<c>FUN_1402910e0</c>,
-    /// <c>FUN_140290f90</c>, <c>FUN_140291410</c>, <b>Verified</b>): the package's mission target, a character, is tagged TEMP ALLY (3) in the
-    /// squad's memory each update; the defend package does so only once it has its player town (else it runs its start). The sensing hook
-    /// (<see cref="AggroSystem"/> <c>EmployerTags</c>) tags the employer's faction as it is seen, separately.
+    /// <c>FUN_140290f90</c>, <c>FUN_140291410</c>, <b>Verified</b>): the package's mission target, when it is a character, is tagged TEMP ALLY (3)
+    /// in the squad's memory each update; the defend package's is its town, so it tags nobody, and without a town it runs its start again
+    /// (<see cref="ContractStart"/>). The sensing hook (<see cref="AggroSystem"/> <c>EmployerTags</c>) tags the employer's faction as it is
+    /// seen, separately.
     /// </summary>
     void TagMissionTarget(World world, Squad squad, Blackboard board)
     {
-        if (Memory is null || board.MissionTarget.IsNone || board.Contract?.Signal is not (12 or 14 or 15)) return;
-        if (board.Contract.Signal == 15 && world.Buildings.Towns.Count == 0) return;
+        if (board.Contract?.Signal is not (HiredAllySignal or 14 or DefendBaseSignal) || board.Contract is not { } contract) return;
+        if (contract.Signal == DefendBaseSignal && board.ContractTown.IsNone)
+        {
+            ContractStart(world, squad, board, contract);
+            return;
+        }
+
+        if (Memory is null || board.MissionTarget.IsNone) return;
         Memory.Flag(world, squad.Id, board.MissionTarget, Dialogue.MemoryTag.TempAlly);
     }
+
+    /// <summary>
+    /// The start of <c>Contract_HiredAlly</c> (<c>FUN_140289490</c>) and <c>Contract_DefendPlayerBase</c> (<c>FUN_14028a170</c>), <b>Verified</b>:
+    /// the contract's mission town is the town of the player's faction nearest the squad's leader (X/Z, <c>FUN_140927f10</c>), none while the player
+    /// has none (<see cref="Blackboard.ContractTown"/>). The bodyguard's clears the blackboard's target town and keeps its employer as the mission
+    /// target; the base defender's makes the town both its target town (its goals travel there, 130, and patrol it, 36) and its mission
+    /// (<see cref="Blackboard.AimMissionAtTown"/>).
+    /// </summary>
+    void ContractStart(World world, Squad squad, Blackboard board, AiPackage package)
+    {
+        var at = LeaderPosition(world, squad) ?? squad.Position;
+        board.ContractTown = NearestPlayerTown(world, Flat(at))?.Town ?? CampaignTown.None;
+        if (package.Signal != DefendBaseSignal) return;
+
+        board.Destination = board.ContractTown;
+        board.AimMissionAtTown();
+    }
+
+    #endregion
+
+    #region Patrol
+
+    /// <summary>
+    /// The game hours a squad stays in a town before its patrol package may start there (<c>DAT_1416ad81c</c>).
+    /// </summary>
+    const float PatrolTownHours = 8;
+
+    /// <summary>
+    /// The game hours after which a running patrol package is finished (<c>DAT_1416adc00</c>).
+    /// </summary>
+    const double PatrolHours = 12;
+
+    /// <summary>
+    /// <c>GoOutOnPatrol</c> slot 12 (<c>FUN_140288890</c>, <b>Verified</b>; signals 6 and 23, and 4 after its cage test,
+    /// <see cref="CannibalPatrolHeld"/>): never the running package once it is finished; a squad with members that is intact
+    /// (<c>FUN_1407ac7b0</c>), none of them carrying someone (<c>+0x348</c>), with an effective leader (<c>FUN_14079aea0</c>,
+    /// <see cref="PopulationSystem.EffectiveLeader"/>); then while that leader is in no town (its status town, <c>+0x88</c>), or once the squad has
+    /// been more than 8 game hours in the town it is in (the blackboard's arrival hour, <c>+0x140</c>). It asks for no home town, so a homeless
+    /// squad's patrol starts where it stands.
+    /// </summary>
+    bool PatrolCanStart(World world, Squad squad, Blackboard board, AiPackage package)
+    {
+        if (board.Current == package && PatrolFinished(world, board)) return false;
+        if (squad.Members.Count == 0 || !board.Intact || AnyCarrying(world, squad)) return false;
+        if (CannibalPatrolHeld(world, squad, board, package)) return false;
+
+        var table = world.Characters;
+        var lead = world.SystemOf<PopulationSystem>()?.EffectiveLeader(world, squad) ?? squad.Leader;
+        if (!table.TryResolveNext(lead, out int s) || table.Cold(s) is not { } leader) return false;
+
+        var town = StatusTownAt(data, world, table.Next[s].Position, leader.StatusTown);
+        return town.IsNone || world.GameHours - board.InTownSince > PatrolTownHours;
+    }
+
+    /// <summary>
+    /// <c>GoOutOnPatrol</c> slot 13 (<c>FUN_1402870a0</c>, <b>Verified</b>; all three patrol classes): the squad is not intact, or more than 12
+    /// game hours have passed since the package started (its activation <c>FUN_140287060</c> stamps the hour, <see cref="Blackboard.PatrolStart"/>).
+    /// </summary>
+    static bool PatrolFinished(World world, Blackboard board) => !board.Intact || world.GameHours - board.PatrolStart > PatrolHours;
 
     #endregion
 
@@ -313,10 +491,12 @@ public sealed partial class AiSystem
     }
 
     /// <summary>
-    /// The trader's update (vtable +0x48): without a town it starts over; in its town the state goes 0 → 1 → 2 (2 is finished, so the next slot, its
-    /// bar package, takes over), and when it is ready to leave there it drops the town (<c>FUN_140288bd0</c>) to draw a new one next time. A
-    /// <see cref="VisitTown"/> stay starts its clock at the first step in the town (<see cref="Blackboard.VisitArrivalPending"/>). The
-    /// original also leaves 0.2 h after a flag of its leader is set (Character +0x648 → +0x70, meaning <b>Unknown</b>): not built.
+    /// The trader's update (vtable +0x48, <c>FUN_140288c30</c>, <b>Verified</b>): without a town it starts over; in any town other than the one it
+    /// last left (<see cref="Blackboard.TraderLeft"/>), not only the one it set out for, the state goes 0 → 1 → 2 (2 is finished, so the next slot,
+    /// its bar package, takes over), and when it is ready to leave there it drops the town (<c>FUN_140288bd0</c>: that town becomes the last left)
+    /// to draw a new one next time. A <see cref="VisitTown"/> stops only at its town, and its stay starts its clock at the first step there
+    /// (<see cref="Blackboard.VisitArrivalPending"/>). The original also leaves 0.2 h after a flag of its leader is set (Character +0x648 → +0x70,
+    /// meaning <b>Unknown</b>): not built.
     /// </summary>
     void StepTrader(World world, Squad squad, Blackboard board)
     {
@@ -326,15 +506,28 @@ public sealed partial class AiSystem
             return;
         }
 
-        if (board.InTown.IsNone || board.InTown != board.Destination) return;
-        if (board.VisitArrivalPending)
-        {
-            board.InTownSince = world.GameHours;
-            board.VisitArrivalPending = false;
-        }
+        if (!TraderArrived(world, board)) return;
 
         board.TraderState = board.TraderState == 0 ? 1 : 2;
-        if (ReadyToLeave(world, board)) board.Destination = CampaignTown.None;
+        if (!ReadyToLeave(world, board)) return;
+
+        board.TraderLeft = board.InTown;
+        board.Destination = CampaignTown.None;
+    }
+
+    /// <summary>
+    /// Whether this step counts as being in a town to stop at: any town but the one last left; a <see cref="VisitTown"/> only its own town, where
+    /// the first step starts the stay's clock.
+    /// </summary>
+    static bool TraderArrived(World world, Blackboard board)
+    {
+        if (board.InTown.IsNone) return false;
+        if (!board.VisitArrivalPending) return board.InTown != board.TraderLeft;
+        if (board.InTown != board.Destination) return false;
+
+        board.InTownSince = world.GameHours;
+        board.VisitArrivalPending = false;
+        return true;
     }
 
     #endregion
@@ -820,6 +1013,77 @@ public sealed partial class AiSystem
         foreach (var (from, into) in _merges)
             if (world.Squads.Find(from.Id) == from && world.Squads.Find(into.Id) == into) SquadManagement.Merge(world, from, into);
         _merges.Clear();
+    }
+
+    #endregion
+
+    #region War packages
+
+    /// <summary>
+    /// The war classes' finished test (<c>Package_WarBase</c>, <c>Package_WarAssault</c> and its cannibal kind share <c>FUN_14028fdb0</c>,
+    /// <b>Verified</b>): the squad's platoon is in no campaign. Their start (the campaign's target as mission town, the leader platoon as a
+    /// follower's mission target, the unloaded job 5 or 6; <c>FUN_14028fc80</c>) is left to the campaign, whose march moves the squad and whose
+    /// stand-in takes those jobs (engine stand-in until goal 215 is acted out).
+    /// </summary>
+    internal bool OutOfCampaign(World world, Squad squad) =>
+        squad.PlatoonId < 0 || world.Platoons.Find(squad.PlatoonId)?.Campaign is null;
+
+    /// <summary>
+    /// <c>Campaign_DefendPlayerBase</c>'s finished test (<c>FUN_14028a760</c>, <b>Verified</b>): its employer turned on it (not modelled, as for
+    /// <c>Contract_DefendPlayerBase</c>), or its contract hours (+0x218) have passed and no hostile campaign runs (<c>FUN_1407f2e80</c>, the same
+    /// call as the defence's phase-1 victory; <see cref="PopulationSystem.HostileAgainstPlayer"/>).
+    /// </summary>
+    internal bool CampaignDefendFinished(World world, Blackboard board) =>
+        world.GameHours > board.ContractEnd && world.SystemOf<PopulationSystem>()?.HostileAgainstPlayer(world) != true;
+
+    /// <summary>
+    /// The start <c>Campaign_DefendPlayerBase</c> shares with <c>Contract_DefendPlayerBase</c> (<c>FUN_14028a170</c>, <b>Verified</b>): the player
+    /// town nearest the leader is its mission town and its mission (<see cref="Blackboard.AimMissionAtTown"/>), so its sensing hook exempts the
+    /// town's owner (<c>AggroSystem.EmployerOf</c>). Engine stand-in: the blackboard's target town (+0xf0) is left unset while the campaign march
+    /// moves the squad, as it would make the package travel on its own (<see cref="BoardMoves"/>).
+    /// </summary>
+    internal void CampaignDefendStart(World world, Squad squad, Blackboard board)
+    {
+        var at = LeaderPosition(world, squad) ?? squad.Position;
+        board.ContractTown = NearestPlayerTown(world, Flat(at))?.Town ?? CampaignTown.None;
+        board.AimMissionAtTown();
+    }
+
+    /// <summary>
+    /// The war classes' update on the package cadence, whoever moves the squad: a war assault (20, 32) marks every member "ordered"
+    /// (<see cref="CharacterCold.Ordered"/>; <c>FUN_14028a4e0</c>, <b>Verified</b>: each update, no other condition), so a blow at one books no
+    /// Assault, and the first step after it stops running (ended, replaced or swapped) clears the marks of the squad's members
+    /// (<see cref="Blackboard.MarksOrdered"/>; engine stand-in for the original's clear at each task end, <c>FUN_1405c91c0</c>, which lets the mark
+    /// lapse soon after the package stops renewing it); the campaign's defence without a mission town runs its start again (its update
+    /// <c>FUN_140291410</c>, <b>Verified</b>).
+    /// </summary>
+    void StepWar(World world, Squad squad, Blackboard board)
+    {
+        switch (board.CurrentClass)
+        {
+            case PackageClass.WarAssault:
+            case PackageClass.WarAssaultCannibal:
+                SetOrdered(world, squad, true);
+                board.MarksOrdered = true;
+                return;
+            case PackageClass.CampaignDefend when board.ContractTown.IsNone:
+                CampaignDefendStart(world, squad, board);
+                break;
+        }
+
+        if (!board.MarksOrdered) return;
+        SetOrdered(world, squad, false);
+        board.MarksOrdered = false;
+    }
+
+    /// <summary>
+    /// Sets or clears the "ordered" status of every member of <paramref name="squad"/>.
+    /// </summary>
+    static void SetOrdered(World world, Squad squad, bool on)
+    {
+        var table = world.Characters;
+        foreach (var m in squad.Members)
+            if (table.TryResolveNext(m, out int s)) table.Cold(s)!.Ordered = on;
     }
 
     #endregion

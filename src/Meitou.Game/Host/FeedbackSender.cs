@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
@@ -9,11 +10,13 @@ using Meitou.Game.Ui;
 namespace Meitou.Game.Host;
 
 /// <summary>
-/// One feedback report as the host hands it over: the form, the game's details, the screenshot and the navmesh screenshot being encoded, the camera's
-/// location, the save being written (a temporary folder) and log.txt's path, each null when not sent.
+/// One feedback report as the host hands it over: the form, the game's details (with each load order entry's workshop item, null when none), the
+/// screenshot and the navmesh screenshot being encoded, the camera's location and the save being written (a temporary folder), each null when not
+/// sent, and the paths of the logs sent (none, log.txt, the action and dialogue logs).
 /// </summary>
 sealed record FeedbackPackage(FeedbackForm Form, string Version, string Commit, string Platform, IReadOnlyList<string> Mods,
-    Task<byte[]>? Screenshot, Task<byte[]>? Navmesh, string? Location, string? SaveFolder, Task? SaveWritten, string? LogPath);
+    IReadOnlyList<ulong?> Workshop, Task<byte[]>? Screenshot, Task<byte[]>? Navmesh, string? Location, string? SaveFolder, Task? SaveWritten,
+    IReadOnlyList<string> Logs);
 
 /// <summary>
 /// A sent report's GitHub issue, or why it was not sent.
@@ -95,7 +98,7 @@ static class FeedbackSender
             long size = new FileInfo(zip).Length;
             if (size > SaveMax) return new(0, null, $"The save is {Mb(size)} zipped, over the 95 MB limit. Untick it to send without it.");
         }
-        byte[]? log = p.LogPath is null ? null : await Task.Run(() => GzipLog(p.LogPath));
+        byte[]? log = p.Logs.Count == 0 ? null : await Task.Run(() => GzipLogs(p.Logs));
 
         status("Sending...");
         string token = await CreateReport(p, png, navPng, zip, log);
@@ -119,6 +122,7 @@ static class FeedbackSender
             ["platform"] = p.Platform,
             ["discord"] = p.Form.Discord,
             ["mods"] = new JsonArray([.. p.Mods.Select(m => (JsonNode)m)]),
+            ["workshop"] = new JsonArray([.. p.Workshop.Select(id => (JsonNode?)id?.ToString(CultureInfo.InvariantCulture))]),
             ["screenshot"] = png is not null,
             ["navmesh"] = navPng is not null,
             ["location"] = p.Location,
@@ -157,7 +161,7 @@ static class FeedbackSender
         }
         if (log is not null)
         {
-            status("Uploading log.txt...");
+            status("Uploading the logs...");
             await Put(token, "log", new ByteArrayContent(log), "application/gzip");
         }
     }
@@ -225,14 +229,52 @@ static class FeedbackSender
     }
 
     /// <summary>
-    /// log.txt gzipped (GameLog keeps it under 10 MiB), read while the game goes on writing it.
+    /// The player's home folder as paths in the logs show it, and how a report writes it: its last part, the user name, as
+    /// <c>&lt;username&gt;</c> (<c>C:\Users\&lt;username&gt;</c>); null when there is none.
     /// </summary>
-    static byte[] GzipLog(string path)
+    static readonly (string Home, string Hidden)? HomeFolder = HomeOf(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    /// <summary>
+    /// The logs as one gzipped text, the service's single log attachment (GameLog keeps each under 10 MiB), read while the game goes on writing
+    /// them, with the user name hidden (<see cref="HideUserName"/>). With more than one, each starts with a line naming its file.
+    /// </summary>
+    static byte[] GzipLogs(IReadOnlyList<string> paths)
     {
-        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var packed = new MemoryStream();
-        using (var gz = new GZipStream(packed, CompressionLevel.SmallestSize, leaveOpen: true)) file.CopyTo(gz);
+        using (var gz = new GZipStream(packed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            foreach (string path in paths)
+            {
+                if (paths.Count > 1) gz.Write(Encoding.UTF8.GetBytes($"======== {Path.GetFileName(path)} ========\n"));
+                using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(file, Encoding.UTF8);
+                gz.Write(Encoding.UTF8.GetBytes(HideUserName(reader.ReadToEnd())));
+            }
+        }
         return packed.ToArray();
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> with the home folder (<see cref="HomeFolder"/>) written with <c>&lt;username&gt;</c>, in either slash direction and
+    /// any case; the files on disk keep the name.
+    /// </summary>
+    static string HideUserName(string text)
+    {
+        if (HomeFolder is not var (home, hidden)) return text;
+
+        text = text.Replace(home, hidden, StringComparison.OrdinalIgnoreCase);
+        return text.Replace(home.Replace('\\', '/'), hidden.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// <paramref name="home"/> and the same path with its last part as <c>&lt;username&gt;</c>; null for an empty path or a root.
+    /// </summary>
+    static (string Home, string Hidden)? HomeOf(string home)
+    {
+        string trimmed = home.TrimEnd('\\', '/');
+        if (trimmed.Length == 0 || Path.GetDirectoryName(trimmed) is not { Length: > 0 } parent) return null;
+
+        return (trimmed, Path.Combine(parent, "<username>"));
     }
 
     /// <summary>

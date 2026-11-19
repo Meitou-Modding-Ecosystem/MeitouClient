@@ -13,8 +13,9 @@ namespace Meitou.Game.Ui;
 /// menu verbs", the Building row): with characters selected the pointer over one is the class's (<c>mine</c> for function 1 or 27, else
 /// <c>use</c>); a quick right click operates it (87, <see cref="OperateOrder"/> on its <c>townwork:</c> site, with Shift the Operating machine job);
 /// held, the menu offers Use and, once its machine exists, Loot (26): the selection walks to it and its window opens beside the character's
-/// inventory, where taking from it is a theft from the town's faction. An automatic one (max operators 0, an automatic well) has no Use: Loot takes
-/// its place, for the quick click too (the original's Auto-Haul 152 there is not made for a town machine).
+/// inventory, where what is taken from it is marked stolen from the town's faction (a Theft only with an owner character, a resident of the
+/// building it stands in: none for a well, a farm or a rain collector outdoors). An automatic one (max operators 0, an automatic well) has no Use:
+/// Loot takes its place, for the quick click too (the original's Auto-Haul 152 there is not made for a town machine).
 /// </summary>
 sealed class TownMachineUse(PlayerInterface player)
 {
@@ -60,7 +61,7 @@ sealed class TownMachineUse(PlayerInterface player)
         string site = SiteOf(hit.Building);
         ContextMenuWindow.ContextMenu? Menu(Vector2 at) => player.ContextMenuWindow.Menu(hit.Info.Name, at, Verbs(site, hit));
 
-        Action quick = Automatic(site) ? () => Loot(site, hit) : () => Use(site);
+        Action quick = Automatic(site) ? () => Loot(site, hit) : () => Use(site, clicked: true);
         if (!player.ContextMenuWindow.ContextPressOn(p, Menu, quick)) quick();
         return true;
     }
@@ -101,11 +102,11 @@ sealed class TownMachineUse(PlayerInterface player)
     bool Automatic(string site) => player.Production.Machine(site) is { IsAutomatic: true };
 
     /// <summary>
-    /// The selection operates the machine (with Shift as the Operating machine job).
+    /// The selection operates the machine (with Shift as the Operating machine job); <paramref name="clicked"/>: a quick right click gave it.
     /// </summary>
-    void Use(string site) => player.Say(player.SlowModifier
+    void Use(string site, bool clicked = false) => player.Say(player.SlowModifier
         ? new AddJob(player.SelectedIds(), TaskType.OperateMachinery, site) { Tick = player.Session.World.Tick }
-        : new OperateOrder(player.SelectedIds(), site) { Tick = player.Session.World.Tick });
+        : new OperateOrder(player.SelectedIds(), site) { Tick = player.Session.World.Tick, Clicked = clicked });
 
     /// <summary>
     /// The selection walks to the machine, whose window then opens beside the character's inventory, the town building selected as its machine.

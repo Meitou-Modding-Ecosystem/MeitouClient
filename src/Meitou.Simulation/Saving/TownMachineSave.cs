@@ -12,9 +12,14 @@ namespace Meitou.Simulation.Saving;
 /// The machines of NPC town buildings in a save (docs/formats/save.md "Town machines"). As the original does, a town machine's state is in its
 /// building's GAMESTATE_BUILDING of the zone file (<see cref="MachineSave.WriteProduction"/>: <c>resource mult</c>, <c>production amount</c>,
 /// <c>consumption amount-&lt;k&gt;</c>, a farm's keys) and its items in the INVENTORY_STATE the building lists (sections <c>in1</c>, <c>in2</c>, ... and
-/// <c>out</c>); a machine is read back from them when its town registers and the machine is made (<see cref="Restore"/>). A machine whose
-/// building has no state record in the save (its zone has no file) keeps Meitou-only keys on CAMERA, which older Meitou saves wrote for every
-/// town machine: <c>meitou tm&lt;i&gt;</c> (the building's run-time key), <c>meitou tm&lt;i&gt; out</c> (progress, float),
+/// <c>out</c>); a machine is read back from them when its town registers and the machine is made (<see cref="Restore"/>). The machine of a
+/// building's layout object (a refinery, hydroponic farm or battery bank inside a house) uses its own entry the same way, matched by record and
+/// position (<see cref="SavedPieces"/>), a battery bank's <c>batterycharge</c> with it. An object with no entry saves nothing: the original makes
+/// that interior again from its layout (its zone has no file, the house's interior was not serialised, or it is a ruin, <see cref="RuinSave"/>),
+/// so its objects start new, a battery
+/// bank empty. A machine whose building has no state record in the save keeps Meitou-only keys on CAMERA, which older Meitou
+/// saves wrote for every town machine: <c>meitou tm&lt;i&gt;</c> (the building's run-time key), <c>meitou tm&lt;i&gt; out</c>
+/// (progress, float),
 /// <c>meitou tm&lt;i&gt; outn</c> (output items, int), <c>meitou tm&lt;i&gt; st</c> (status, int),
 /// <c>meitou tm&lt;i&gt; in&lt;k&gt;</c> (items of input k, int) and <c>meitou tm&lt;i&gt; lv&lt;k&gt;</c> (its level, float); a farm's the farm keys
 /// as <c>meitou tm&lt;i&gt; pg</c> (<c>plant growth</c>), <c>pd</c> (<c>plant death</c>), <c>ps</c> (<c>plant start</c>), <c>pt</c>
@@ -26,7 +31,7 @@ public static class TownMachineSave
 
     /// <summary>
     /// Writes the town machines into their buildings' states and inventories, the ones whose building has no state into CAMERA keys (the old
-    /// CAMERA keys removed first).
+    /// CAMERA keys removed first); a layout object's machine with no entry of its own is not saved (<see cref="TownMachineSave"/>).
     /// </summary>
     public static void Write(SaveGame game, World world)
     {
@@ -34,6 +39,8 @@ public static class TownMachineSave
         Clear(camera, Prefix);
 
         var instances = Instances(game);
+        var pieces = new SavedPieces(game);
+        Dictionary<string, TownLayoutBuilding>? layouts = null;
         int n = 0;
         foreach (var m in world.Machines.All)
         {
@@ -42,8 +49,15 @@ public static class TownMachineSave
             string key = m.Site[ProductionSystem.TownWorkPrefix.Length..];
             if (instances.TryGetValue(key, out var placed) && placed.State is { } state)
             {
-                MachineSave.WriteProduction(state, m, world.GameHours);
-                MachineSave.WriteInventory(placed.Zone.File, placed.Zone.Coordinate, placed.Instance, null, MachineSave.Items(m));
+                WriteInto(placed.Zone, placed.Instance, state, m, world.GameHours);
+                continue;
+            }
+
+            if (IsPieceKey(key))
+            {
+                layouts ??= Pieces(world);
+                if (layouts.GetValueOrDefault(key) is { } piece && pieces.Of(piece) is { State: { } pieceState } entry)
+                    WriteInto(entry.Zone, entry.Instance, pieceState, m, world.GameHours);
                 continue;
             }
 
@@ -52,6 +66,64 @@ public static class TownMachineSave
             WriteFarm(camera, Key(n), m, world.GameHours);
             n++;
         }
+    }
+
+    /// <summary>
+    /// Whether a town machine's key names a layout object (<see cref="TownLayoutBuilding.Id"/>: the house's key, "/" and its place), not a building.
+    /// </summary>
+    static bool IsPieceKey(string key) => key.Contains('/');
+
+    /// <summary>
+    /// Writes a town machine into its building-list entry: the production keys into its GAMESTATE_BUILDING, a battery bank's charge too
+    /// (<c>batterycharge</c>, as the original's <c>FUN_1402a14b0</c> writes it), and its items into the INVENTORY_STATE the entry lists.
+    /// </summary>
+    static void WriteInto(SaveZone zone, FcsInstance instance, FcsRecord state, Machine m, double gameHours)
+    {
+        MachineSave.WriteProduction(state, m, gameHours);
+        if (m.Data.IsBattery) state.Floats["batterycharge"] = m.Charge;
+
+        if (MachineSave.ChangedItems(m) is { } items) MachineSave.WriteInventory(zone.File, zone.Coordinate, instance, null, items);
+    }
+
+    /// <summary>
+    /// The towns' layout objects by <see cref="TownLayoutBuilding.Id"/> (the house's key, "/" and its place in the layout), the keys of their
+    /// machines.
+    /// </summary>
+    static Dictionary<string, TownLayoutBuilding> Pieces(World world)
+    {
+        var map = new Dictionary<string, TownLayoutBuilding>(StringComparer.Ordinal);
+        foreach (var site in world.SystemOf<PopulationSystem>()?.Data.Sites ?? [])
+            foreach (var b in site.Buildings)
+                foreach (var piece in b.LayoutBuildings) map[piece.Id] = piece;
+
+        return map;
+    }
+
+    /// <summary>
+    /// What the machine of a town layout object just made takes from the loaded save (<see cref="ProductionSystem.RestorePieceMachine"/>): its own
+    /// entry's state (<see cref="SavedPieces"/>), as a building's (<see cref="Restore"/>), and a battery bank's switch and charge
+    /// (<c>power on</c>, <c>batterycharge</c>; <c>FUN_1402a1750</c>); nothing from an entry of a zone that loads fresh.
+    /// </summary>
+    public static Action<TownLayoutBuilding, Machine> PieceRestorer(SaveGame save, ItemFactory factory)
+    {
+        SavedPieces? pieces = null;
+        return (piece, m) =>
+        {
+            pieces ??= new SavedPieces(save);
+            if (pieces.Of(piece) is not { Fresh: false } entry) return;
+
+            Restore(m, (entry.Zone, entry.Instance, entry.State), factory);
+            if (entry.State is { } state && m.Data.IsBattery) ReadBattery(state, m);
+        };
+    }
+
+    /// <summary>
+    /// A battery bank's <c>power on</c> (missing: off) and <c>batterycharge</c> (missing: 0) from its state, as <c>FUN_1402a1750</c> loads them.
+    /// </summary>
+    static void ReadBattery(FcsRecord state, Machine m)
+    {
+        m.PowerOn = state.Bools.GetValueOrDefault("power on");
+        m.Charge = Math.Max(0, state.Floats.GetValueOrDefault("batterycharge"));
     }
 
     /// <summary>
@@ -75,8 +147,10 @@ public static class TownMachineSave
     static void Restore(Machine m, (SaveZone Zone, FcsInstance Instance, FcsRecord? State) placed, ItemFactory factory)
     {
         if (placed.State is { } state) MachineSave.ReadProduction(state, m);
-        if (MachineSave.ListedInventory(placed.Zone.File, placed.Instance) is { } inventory)
-            MachineSave.PutItems(m, SaveInventory.Read(placed.Zone.File, inventory), factory);
+        if (MachineSave.ListedInventory(placed.Zone.File, placed.Instance) is not { } inventory) return;
+
+        MachineSave.PutItems(m, SaveInventory.Read(placed.Zone.File, inventory), factory);
+        MachineSave.Loaded(m);
     }
 
     /// <summary>
@@ -112,36 +186,15 @@ public static class TownMachineSave
     const string Prefix = "meitou tm";
 
     /// <summary>
-    /// The town building of a run-time key and the faction owning its town now, over the population's sites (built at the first use).
+    /// Makes the machines the save's CAMERA keys hold (<see cref="ProductionSystem.TownWork(World, string)"/>); a key naming no town building in the
+    /// data is dropped, and so is a layout object's, whose interior the original makes again (<see cref="TownMachineSave"/>).
     /// </summary>
-    public static Func<string, (TownBuilding Building, int Owner)?> Resolver(PopulationData data)
-    {
-        Dictionary<string, (TownBuilding, int)>? map = null;
-        return key =>
-        {
-            if (map is null)
-            {
-                map = new Dictionary<string, (TownBuilding, int)>(StringComparer.Ordinal);
-                foreach (var site in data.Sites)
-                {
-                    int owner = site.Index < data.SiteFactions.Count ? data.SiteFactions[site.Index] : -1;
-                    foreach (var b in site.Buildings) map[b.Key] = (b, owner);
-                }
-            }
-
-            return map.TryGetValue(key, out var found) ? found : null;
-        };
-    }
-
-    /// <summary>
-    /// Makes the machines the save's CAMERA keys hold (a key naming no town building of the data is dropped).
-    /// </summary>
-    public static void Read(FcsRecord camera, World world, ProductionSystem production, Func<string, (TownBuilding Building, int Owner)?> resolve)
+    public static void Read(FcsRecord camera, World world, ProductionSystem production)
     {
         if (!camera.Strings.ContainsKey(Key(0))) return;
         for (int i = 0; camera.Strings.TryGetValue(Key(i), out var key); i++)
         {
-            if (resolve(key) is not { } found || production.TownWork(world, found.Building, found.Owner) is not { } m) continue;
+            if (IsPieceKey(key) || production.TownWork(world, key) is not { } m) continue;
             ReadState(camera, Key(i), m);
             ReadFarm(camera, Key(i), m);
         }

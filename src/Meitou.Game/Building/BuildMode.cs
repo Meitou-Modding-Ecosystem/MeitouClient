@@ -90,6 +90,10 @@ sealed class BuildMode(PlayerInterface player)
     /// </summary>
     readonly HashSet<Key> _buildHeld = [];
     /// <summary>
+    /// The build map's actions, in the order a key bound to several is looked up.
+    /// </summary>
+    static readonly InputAction[] BuildActions = [.. Enum.GetValues<InputAction>().Where(InputBindings.IsBuildMap)];
+    /// <summary>
     /// The timestamp of the last ghost update (<see cref="System.Diagnostics.Stopwatch"/>); 0 to start the frame time afresh.
     /// </summary>
     long _buildClock;
@@ -280,36 +284,41 @@ sealed class BuildMode(PlayerInterface player)
     #region Keys
 
     /// <summary>
-    /// A key press while build mode is on: the build map (docs/game/ui-input.md section 4, checked first in build mode) takes <c>,</c> <c>.</c>
-    /// rotate, <c>-</c> <c>=</c> move down / up, <c>[</c> <c>]</c> tilt, Backspace undo and Space apply. Returns true when the key was taken, so the
-    /// host does not also pause or turn the camera. NUM+ / NUM- are the original's second keys of both the move and the tilt pairs, and the later
-    /// registration (tilt) wins in its key map, so they tilt (<c>FUN_1403636c0</c>, <c>FUN_140362260</c>).
+    /// A key press while build mode is on: the build map (docs/game/ui-input.md section 4, checked first in build mode) takes the keys bound to its
+    /// actions (<see cref="InputBindings.IsBuildMap"/>; default <c>,</c> <c>.</c> rotate, <c>-</c> <c>=</c> move down / up, <c>[</c> <c>]</c> and
+    /// NUM- / NUM+ tilt, Backspace undo and Space apply). Returns true when the key was taken, so the host does not also pause or turn the camera.
     /// </summary>
     public bool BuildKey(Key key, bool shift)
     {
         player.UiInput++;
-        if (!Active) return false;
-        switch (key)
-        {
-            case EngineKey.Comma or EngineKey.Period or EngineKey.Minus or EngineKey.Equal
-                or EngineKey.LeftBracket or EngineKey.RightBracket or EngineKey.KeypadAdd or EngineKey.KeypadSubtract:
-                _buildHeld.Add(key);
-                return true;
-            case EngineKey.Backspace:
-                BuildUndo();
-                return true;
-            case EngineKey.Space:
-                QueueGhost();
-                return true;
-            default:
-                return false;
-        }
+        if (!Active || BuildAction(key) is not { } action) return false;
+
+        if (action == InputAction.BuildUndo) BuildUndo();
+        else if (action == InputAction.BuildApply) QueueGhost();
+        else _buildHeld.Add(key);
+        return true;
     }
 
     /// <summary>
-    /// Whether <paramref name="key"/> is a build map key that the cinema's numpad must not take (NUM+ / NUM- while building).
+    /// Whether <paramref name="key"/> is a build map key that the cinema's numpad must not take (NUM+ / NUM- by default, while building).
     /// </summary>
-    public bool OwnsBuildNumpad(Key key) => Active && key is EngineKey.KeypadAdd or EngineKey.KeypadSubtract;
+    public bool OwnsBuildNumpad(Key key) => Active && BuildAction(key) is not null;
+
+    /// <summary>
+    /// The build map action <paramref name="key"/> is bound to, or null.
+    /// </summary>
+    InputAction? BuildAction(Key key)
+    {
+        var binding = Binding.Of(key);
+        foreach (var action in BuildActions)
+            if (player.Session.Bindings.Get(action).Contains(binding)) return action;
+        return null;
+    }
+
+    /// <summary>
+    /// Whether a key bound to <paramref name="action"/> is held.
+    /// </summary>
+    bool BuildHeld(InputAction action) => player.Session.Bindings.Get(action).Any(b => !b.IsMouse && _buildHeld.Contains(b.Key));
 
     /// <summary>
     /// A key went up: the build map's controls stop.
@@ -343,17 +352,17 @@ sealed class BuildMode(PlayerInterface player)
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         float dt = _buildClock == 0 ? 0 : (float)Math.Min(System.Diagnostics.Stopwatch.GetElapsedTime(_buildClock, now).TotalSeconds, 0.1);
         _buildClock = now;
-        float Held(Key plus, Key minus) => (_buildHeld.Contains(plus) ? 1f : 0f) - (_buildHeld.Contains(minus) ? 1f : 0f);
-        _ghostYaw += Held(EngineKey.Period, EngineKey.Comma) * RotateDegreesPerSecond * MathF.PI / 180 * dt;
+        float Held(InputAction plus, InputAction minus) => (BuildHeld(plus) ? 1f : 0f) - (BuildHeld(minus) ? 1f : 0f);
+        _ghostYaw += Held(InputAction.BuildRotateRight, InputAction.BuildRotateLeft) * RotateDegreesPerSecond * MathF.PI / 180 * dt;
 
         // The height keys (FUN_1404d5420): up goes by at most the up margin, and when it cannot (or is not held) down goes by at most the down
         // margin.
         float lift = (player.SlowModifier ? SlowMove : MoveUnitsPerSecond) * dt;
-        if (_buildHeld.Contains(EngineKey.Equal) && _ghostMargins.Up > 0) _ghostLift += MathF.Min(lift, _ghostMargins.Up);
-        else if (_buildHeld.Contains(EngineKey.Minus) && _ghostMargins.Down > 0) _ghostLift -= MathF.Min(lift, _ghostMargins.Down);
+        if (BuildHeld(InputAction.BuildMoveUp) && _ghostMargins.Up > 0) _ghostLift += MathF.Min(lift, _ghostMargins.Up);
+        else if (BuildHeld(InputAction.BuildMoveDown) && _ghostMargins.Down > 0) _ghostLift -= MathF.Min(lift, _ghostMargins.Down);
         if (MathF.Abs(_ghostLift) > MaxLift) _ghostLift = 0;
 
-        float tiltKeys = Math.Clamp(Held(EngineKey.RightBracket, EngineKey.LeftBracket) + Held(EngineKey.KeypadAdd, EngineKey.KeypadSubtract), -1, 1);
+        float tiltKeys = Held(InputAction.BuildTiltIncrease, InputAction.BuildTiltDecrease);
         _ghostTilt = Math.Clamp(_ghostTilt + tiltKeys * TiltPerSecond * dt, 0, 1);
 
         Ghost = null;
@@ -1365,19 +1374,30 @@ sealed class BuildMode(PlayerInterface player)
         if (QuickConstruction(pending.Site)) OrderConstruction(pending.Site, player.SelectedIds());
         else if (player.Production.Machine(pending.Site.Id) is { Operable: true }
             or { Function: MachineData.TrainingFunction or TownBuildings.ChairFunction or TownBuildings.ThroneFunction })
-            player.Say(new Simulation.Production.OperateOrder(player.SelectedIds(), pending.Site.Id) { Tick = player.Session.World.Tick });
+        {
+            var operate = new Simulation.Production.OperateOrder(player.SelectedIds(), pending.Site.Id)
+            {
+                Tick = player.Session.World.Tick, Clicked = true,
+            };
+            player.Say(operate);
+        }
         else if (player.Production.Machine(pending.Site.Id) is { Function: ObjectRanges.TurretFunction })
         {
             // the original's order 146 USE_TURRET
-            player.Say(new Simulation.Production.UseTurretOrder(player.SelectedIds(), pending.Site.Id) { Tick = player.Session.World.Tick });
+            var turret = new Simulation.Production.UseTurretOrder(player.SelectedIds(), pending.Site.Id)
+            {
+                Tick = player.Session.World.Tick, Clicked = true,
+            };
+            player.Say(turret);
         }
         else if (player.Production.Machine(pending.Site.Id) is { IsStorage: true } or { Function: MachineData.ItemFurnaceFunction })
             OpenStorage(pending.Site);
         else if (!SiteIsObject(pending.Site) && player.Ray(pending.At) is { } ray && player.Picking.MoveHit(ray.Origin, ray.Direction) is { } hit)
         {
             // A finished plain building's quick right click is a move to the point under the cursor (the original: order 29 MOVE_CUS_ORDERED).
-            // The original's target is the building hit's x, z at the terrain height, which the path's goal snap puts on the floor inside or the
-            // ground outside; a pick that went on through the roof or wall to the terrain beyond takes that point instead, so the character goes in
+            // The original's target is the cursor's hit on the building, at the hit's height (Observed, harness: four clicks on the Hub's bar
+            // gave four points on its walls), which the path's goal snap puts on the floor inside or the ground outside; a pick that went on
+            // through the roof or wall to the terrain beyond takes that point instead, so the character goes in
             // rather than to the ground behind. A building floor the pick found (a site with an interior, the hidden roof above it nearer) stays:
             // the terrain under the roof hit lay below the floor. "Beyond" is measured across the ground: the foot of a wall's face the pick
             // stopped at lies short of the wall, though lower.
@@ -1557,7 +1577,7 @@ sealed class BuildMode(PlayerInterface player)
         if (!_ghostBoxes.TryGetValue(record, out var box))
         {
             Vector3 min = new(float.MaxValue), max = new(float.MinValue);
-            foreach (var (vertices, _) in host.Placement.CollisionMesh(record))
+            foreach (var (vertices, _) in host.Placement.CollisionMesh(record, false))
                 foreach (var v in vertices) (min, max) = (Vector3.Min(min, v), Vector3.Max(max, v));
             _ghostBoxes[record] = box = min.X <= max.X ? (min, max) : null;
         }

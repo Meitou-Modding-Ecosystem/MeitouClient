@@ -260,14 +260,37 @@ sealed class FeedbackCapture(GameHost host)
             }
             saveWritten = host.Saves.SaveWrite;
         }
-        string[] mods = [.. Data.LoadOrder.FromInstall(host.Install).Entries.Select(e => e.Name)];
-        string? log = form.Log && File.Exists(Path.Combine(AppContext.BaseDirectory, "log.txt"))
-            ? Path.Combine(AppContext.BaseDirectory, "log.txt") : null;
-        var package = new FeedbackPackage(form, BuildVersion.Tag, BuildVersion.Commit, FeedbackSender.Platform(), mods,
-            form.Screenshot ? _feedbackPicture : null, form.Navmesh ? _feedbackNavPicture : null, _feedbackLocation, saveFolder, saveWritten, log);
+        var entries = Data.LoadOrder.FromInstall(host.Install).Entries;
+        string[] mods = [.. entries.Select(e => e.Name)];
+        var package = new FeedbackPackage(form, BuildVersion.Tag, BuildVersion.Commit, FeedbackSender.Platform(), mods, WorkshopIds(entries),
+            form.Screenshot ? _feedbackPicture : null, form.Navmesh ? _feedbackNavPicture : null, _feedbackLocation, saveFolder, saveWritten,
+            LogsOf(form));
         _feedbackStatus = _feedbackStatusShown = form.Save ? "Saving the game..." : "Sending...";
         host.Player.FeedbackPanel.FeedbackProgress(_feedbackStatus);
         host.Player.FeedbackPanel.FeedbackSending = true;
         _feedbackSend = Task.Run(() => FeedbackSender.Send(package, s => Volatile.Write(ref _feedbackStatus, s)));
+    }
+
+    /// <summary>
+    /// The workshop item of each load order entry (<see cref="Content.WorkshopItem.IdOf"/>), null for the core files and mods never uploaded.
+    /// </summary>
+    ulong?[] WorkshopIds(IReadOnlyList<Data.LoadOrderEntry> entries)
+    {
+        var mods = Content.ModList.Discover(host.Install).ToDictionary(m => m.Path, StringComparer.Ordinal);
+        return [.. entries.Select(e => mods.TryGetValue(e.Path, out var mod) ? Content.WorkshopItem.IdOf(mod) : null)];
+    }
+
+    /// <summary>
+    /// The log files the form asked for that exist beside the executable: log.txt, then the action and dialogue logs.
+    /// </summary>
+    static List<string> LogsOf(FeedbackForm form)
+    {
+        List<string> names = [];
+        if (form.Log) names.Add("log.txt");
+        if (form.GameLogs) names.AddRange(["log_actions.txt", "log_dialogue.txt"]);
+
+        return [.. names
+            .Select(n => Path.Combine(AppContext.BaseDirectory, n))
+            .Where(File.Exists)];
     }
 }

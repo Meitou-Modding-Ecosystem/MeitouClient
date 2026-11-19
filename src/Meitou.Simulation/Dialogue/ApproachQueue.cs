@@ -43,6 +43,11 @@ sealed class ApproachQueue(DialogueSystem dialogue)
     internal bool Has(CharacterId npc) => _approaches.Any(a => a.Npc == npc);
 
     /// <summary>
+    /// Each approaching NPC and its target (read only).
+    /// </summary>
+    internal IEnumerable<(CharacterId Npc, CharacterId Target)> Pairs => _approaches.Select(a => (a.Npc, a.Target));
+
+    /// <summary>
     /// <paramref name="npc"/> starts walking up to <paramref name="target"/>; it gives up after <see cref="ApproachGiveUpHours"/>.
     /// </summary>
     internal void Add(World world, CharacterId npc, CharacterId target) =>
@@ -66,6 +71,7 @@ sealed class ApproachQueue(DialogueSystem dialogue)
             {
                 TaskStart.Stand(table, n);
                 _approaches.RemoveAt(k--);
+                LogWalkUp(world, a, "arrived, fires event 1");
                 dialogue.Start(world, a.Npc, a.Target, DialogueEvents.PlayerTalkToMe, quiet: true);
                 if (!dialogue.TalksWith(a.Npc)) DialogueSystem.Release(world, a.Npc);
                 continue;
@@ -73,9 +79,12 @@ sealed class ApproachQueue(DialogueSystem dialogue)
 
             if (!done && world.GameHours >= a.GiveUpHours && GettingAway(table, n, t))
             {
+                LogWalkUp(world, a, "gives up (event 60)");
                 GiveUp(world, table, a, n);
                 done = true;
             }
+            else if (done)
+                LogWalkUp(world, a, "dropped (one is gone or down)");
 
             if (done)
             {
@@ -87,6 +96,12 @@ sealed class ApproachQueue(DialogueSystem dialogue)
             WalkOn(world, table, n, t);
         }
     }
+
+    /// <summary>
+    /// A walk-up line in the dialogue log: the walker, the one it walks to, then <paramref name="what"/>.
+    /// </summary>
+    static void LogWalkUp(World world, Approach a, string what) =>
+        world.DialogueLines.Line(world, "walkup", $"{EventLog.Who(world, a.Npc)} to {EventLog.Who(world, a.Target)}: {what}");
 
     /// <summary>
     /// Walking: towards where the target stands, again when it has moved on.
@@ -101,7 +116,7 @@ sealed class ApproachQueue(DialogueSystem dialogue)
         if (table.Cold(n)!.InCombat) return;
         if (nh.Task != (byte)CharacterTask.GoTo || Vector2.Distance(nh.Goal, to) > DialogueSystem.TalkReach)
         {
-            TaskStart.Walk(world, n, to, SpeedMode.Free, Data.Gameplay.Ai.TaskType.TalktoNearestPlayerCharacter, TaskSource.Npc);
+            TaskStart.Walk(world, n, to, SpeedMode.Free, Data.Gameplay.Ai.TaskType.SeekAndTalkAndSendSignal, TaskSource.Npc);
         }
     }
 

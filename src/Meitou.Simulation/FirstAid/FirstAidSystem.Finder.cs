@@ -387,6 +387,8 @@ public sealed partial class FirstAidSystem
         if (!MayLook(world, cold, ordered)) return (-1, 0);
 
         bool organic = HoldsKit(cold, ItemInfo.FirstAidKitFunction), robotic = HoldsKit(cold, ItemInfo.RobotKitFunction);
+        if (cold.Medical!.PlayingDead) return Itself(world, i, cold, robotics, organic, robotic);
+
         bool healAllies = (world.Player.SquadAi & SquadAi.Heal) != 0;
         bool healAll = cold.IsPlayer && (world.Player.SquadAi & SquadAi.HealAll) != 0, healNeutrals = healAll || cold.IsPlayer
                 && (world.Player.SquadAi & SquadAi.HealNeutrals) != 0;
@@ -403,12 +405,8 @@ public sealed partial class FirstAidSystem
         // Pass 1: allies.
         if ((organic || robotic) && Allies(look, taken, healAllies, ref best, ref bestScore)) return (best, bestScore);
 
-        float self = cold.Race!.IsRobot && !robotics ? 0 : Need(world, i, i, organic, robotic);
-        if (bestScore < self)
-        {
-            best = i;
-            bestScore = self;
-        }
+        var self = Itself(world, i, cold, robotics, organic, robotic);
+        if (bestScore < self.Score) (best, bestScore) = self;
 
         if (best >= 0) return (best, bestScore);
 
@@ -433,13 +431,25 @@ public sealed partial class FirstAidSystem
     }
 
     /// <summary>
+    /// The medic as its own patient at its plain need (a robot race only for Robotics); slot -1 with no need. All a medic playing dead treats: its
+    /// body lies as a whole ragdoll, which the original moves no step (<c>FUN_1405d00b0</c> updates no mover then), so it reaches no one else
+    /// (Meitou does not walk it to another patient, engine choice).
+    /// </summary>
+    (int Slot, float Score) Itself(World world, int i, CharacterCold cold, bool robotics, bool organic, bool robotic)
+    {
+        float need = cold.Race!.IsRobot && !robotics ? 0 : Need(world, i, i, organic, robotic);
+        return need > 0 ? (i, need) : (-1, 0);
+    }
+
+    /// <summary>
     /// One finder run's medic and what its passes share: its kits, its sight range (squared) and the characters to test.
     /// </summary>
     readonly record struct MedicLook(World World, int Slot, CharacterCold Cold, bool Organic, bool Robotic, bool Robotics, Vector3 Origin,
         float Range2, List<int> Candidates);
 
     /// <summary>
-    /// The finder's gates on the medic: able, not fighting (unless ordered), free; an NPC also not while its squad fights or it carries someone.
+    /// The finder's gates on the medic: able, not fighting (unless ordered), free, with a working arm (the treatment rows' state 38,
+    /// <see cref="HasWorkingArm"/>); an NPC also not while its squad fights or it carries someone.
     /// </summary>
     bool MayLook(World world, CharacterCold cold, bool ordered)
     {
@@ -447,8 +457,9 @@ public sealed partial class FirstAidSystem
         // A character carried awake treats no one, itself included, as with orders (engine choice, docs/simulation.md).
         if (!cold.CarriedBy.IsNone) return false;
 
-        if (cold.Medical is not { Incapacitated: false } own || cold.Race is null || cold.Stats is null || cold.InCombat && !ordered
-                || cold.IsImprisoned || !TaskStart.Eligible(world, cold, ordered ? TaskType.FirstAidOrder : TaskType.JobMedic))
+        var row = ordered ? TaskType.FirstAidOrder : TaskType.JobMedic;
+        if (!Awake(cold.Medical) || cold.Race is null || cold.Stats is null || cold.InCombat && !ordered
+                || cold.IsImprisoned || !TaskStart.Eligible(world, cold, row) || !HasWorkingArm(cold))
             return false;
 
         // No fight in the squad: the stand-in for the goal's desire of an NPC the AI weighs no goals for (an AI-run one's think weighs its own
@@ -852,7 +863,8 @@ public sealed partial class FirstAidSystem
 
 
         // no combat test: the original's finder has none (FUN_14099e240)
-        if (cold.Medical is not { Incapacitated: false } own || cold.Race is not { } ownRace || cold.Stats is not { } stats) return -1;
+        if (cold.Medical is not { Incapacitated: false } own || cold.Race is not { } ownRace || cold.Stats is not { } stats || !HasWorkingArm(cold))
+            return -1;
         if (OwnKit(cold, ItemInfo.SplintKitFunction) is not { } kit) return -1;   // the medic's own kit, as the order and the splint use
 
         // No fight test in the original finder (FUN_14099e240) and the job keeps a positive desire (FUN_140998410): a player's splint job runs during

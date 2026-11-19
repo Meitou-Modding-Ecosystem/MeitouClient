@@ -30,9 +30,10 @@ public readonly record struct AnimationLayer(string Name, float Time, float Weig
 
 /// <summary>
 /// The sound events a working machine puts on its operator's clip: the BUILDING_FUNCTIONALITY's <c>animation events</c> (string id) and the ANIMATION
-/// record (name) they ride on (docs/audio.md "Character tasks").
+/// record (name) they ride on (docs/audio.md "Character tasks"), and for standing work (<see cref="CharacterCold.ActionWork"/>) the functionality's
+/// <c>special tool</c> ITEM (string id) held in the <c>hands</c> point meanwhile (null: none).
 /// </summary>
-public readonly record struct WorkEvents(string Functionality, string Clip);
+public readonly record struct WorkEvents(string Functionality, string Clip, string? Tool = null);
 
 /// <summary>
 /// What a character is doing about its body: nothing, bandaging someone (<see cref="CharacterTask.Treat"/>) or resting
@@ -338,6 +339,27 @@ public sealed record InventoryItemView(int Index, string Record, string Name, st
     /// (<see cref="Crime.CrimeSystem.StealChanceOf(World, int, int, Items.ItemInstance)"/>): the tooltip's stealing chance. Null otherwise.
     /// </summary>
     public float? StealChance { get; init; }
+
+    /// <summary>
+    /// The view of <paramref name="item"/> as item <paramref name="index"/> of a window: everything the item itself says, none of what depends on
+    /// its holder (stolen marks, stealing chance).
+    /// </summary>
+    public static InventoryItemView Of(int index, Items.ItemInstance item) =>
+        new(index, item.Record, item.Name, item.Section, item.X, item.Y, item.Width, item.Height, item.Quantity, item.Weight, item.Quality)
+        {
+            Material = item.MaterialId,
+            Rotated = item.Rotated,
+            Colour = item.ColourId,
+            Charge = item.ChargeFraction,
+            Company = item.CompanyId,
+            Crafter = item.Crafter,
+            ModTag = item.ModTag,
+            Level = item.Level,
+            Charges = item.Charges,
+            MaxCharges = item.MaxCharges,
+            Unique = item.Unique,
+            BagItems = item.Contents?.Items.Count ?? -1,
+        };
 }
 
 /// <summary>
@@ -452,7 +474,8 @@ public sealed class CharacterSnapshot
     /// </summary>
     public bool IsPlayer { get; internal set; }
     /// <summary>
-    /// A member of a squad with a shop (right click trades).
+    /// A member of a squad with a shop (right click trades), or of an independent player squad with a shop a code mod gave it while it is awake
+    /// and not fighting (<see cref="Trading.TradeSystem.KeepsFactionShop"/>).
     /// </summary>
     public bool IsTrader { get; internal set; }
     /// <summary>
@@ -582,6 +605,11 @@ public sealed class CharacterSnapshot
     /// </summary>
     public IReadOnlyList<float> ModSkills { get; internal set; } = [];
     /// <summary>
+    /// A selected or inspected character's status effects from the code mods (docs/modding.md "Status effects"), in registration order; empty
+    /// otherwise.
+    /// </summary>
+    public IReadOnlyList<Bodies.StatusEffectView> Effects { get; internal set; } = [];
+    /// <summary>
     /// The inventory of a selected character, of the one whose loot window is open, or of a player character whose inventory is shown (null for
     /// the others).
     /// </summary>
@@ -629,6 +657,14 @@ public sealed class CharacterSnapshot
     /// </summary>
     public float Scale { get; internal set; } = 1;
     /// <summary>
+    /// A standing person's name tag height (<c>hull size Y</c> 17 plus 5, see <see cref="TagHeight"/>).
+    /// </summary>
+    public const float PersonTagHeight = 22;
+    /// <summary>
+    /// How far above the feet its name tag, task bar and speech bubble stand (<see cref="Combat.CombatSystem.NameTagHeight"/>).
+    /// </summary>
+    public float TagHeight { get; internal set; } = PersonTagHeight;
+    /// <summary>
     /// How many times farther than the draw distance D the body is drawn: 7 for a gigantic race (<c>FUN_140539020</c>, Verified), else 1.
     /// </summary>
     public float DrawDistanceScale { get; internal set; } = 1;
@@ -636,6 +672,11 @@ public sealed class CharacterSnapshot
     /// The movement task (<see cref="CharacterTask"/>); the host's sounds follow building, treating and looting from it.
     /// </summary>
     public CharacterTask Task { get; internal set; }
+    /// <summary>
+    /// The point its task has it look at this tick (<see cref="LookTargets"/>; the original's <c>Character::lookatPosition</c>); null when none. The
+    /// host turns the drawn head toward it (docs/animation.md "Head turning").
+    /// </summary>
+    public Vector3? LookAt { get; internal set; }
     /// <summary>
     /// Working on a cage's lock (the picker's order is given and it is in reach or walking there).
     /// </summary>
@@ -703,6 +744,11 @@ public sealed class CharacterSnapshot
     /// </summary>
     public uint PortraitSerial { get; internal set; }
     /// <summary>
+    /// Its lasting id (<see cref="CharacterCold.LastingId"/>; none until a code mod asked for one), for a mod's interface source, which must not
+    /// touch the world.
+    /// </summary>
+    public LastingId LastingId { get; internal set; }
+    /// <summary>
     /// The character this one carries (none when not carrying).
     /// </summary>
     public CharacterId Carrying { get; internal set; } = CharacterId.None;
@@ -735,7 +781,8 @@ public sealed class CharacterSnapshot
     /// </summary>
     public float Light { get; internal set; } = 1;
     /// <summary>
-    /// The floating progress bar over a player character picking a lock (docs/game/locks.md "Lockpicking"); null when none.
+    /// The floating progress bar over a player character picking a lock (docs/game/locks.md "Lockpicking"), cutting one or training, or the bar a
+    /// code mod set (<see cref="CharacterCold.ModTaskBar"/>); null when none.
     /// </summary>
     public TaskBar? Bar { get; internal set; }
     /// <summary>
@@ -941,9 +988,24 @@ public sealed record WorldSnapshot(long Tick, IReadOnlyList<CharacterSnapshot> C
     /// </summary>
     public SquadAi SquadAi { get; init; } = SquadAi.Defaults;
     /// <summary>
-    /// The player's squads in order (<see cref="SquadManagement.PlayerSquads"/>), each with its members in squad order (the first leads).
+    /// The player's squads the player leads, in order (<see cref="SquadManagement.LedSquads"/>), each with its members in squad order (the first
+    /// leads).
     /// </summary>
     public IReadOnlyList<SquadView> PlayerSquads { get; init; } = [];
+    /// <summary>
+    /// The player's squads the player does not lead (<see cref="Squad.Independent"/>), with their members: clicking one inspects it as another
+    /// faction's character is.
+    /// </summary>
+    public IReadOnlyList<SquadView> IndependentSquads { get; init; } = [];
+    /// <summary>
+    /// The player's characters alive, as the faction size cap counts them (<see cref="SquadManagement.FactionHeads"/>): the squads screen's
+    /// count and its dismiss rule read it.
+    /// </summary>
+    public int FactionHeads { get; init; }
+    /// <summary>
+    /// The player's characters alive that the faction size cap counts (<see cref="SquadManagement.CappedHeads"/>): the squads screen's faction size.
+    /// </summary>
+    public int CappedHeads { get; init; }
     /// <summary>
     /// The active squad's id (<see cref="PlayerState.Squad"/>; -1 none): the squad bar shows it.
     /// </summary>
@@ -970,6 +1032,10 @@ public sealed record WorldSnapshot(long Tick, IReadOnlyList<CharacterSnapshot> C
     /// The serial of the last held-item command applied (see <see cref="Held"/>).
     /// </summary>
     public long HeldSerial { get; init; }
+    /// <summary>
+    /// How often the world closed every inventory window (<see cref="Player.PlayerState.InventoriesClosed"/>).
+    /// </summary>
+    public long InventoriesClosed { get; init; }
     /// <summary>
     /// Player-built buildings and construction sites, in creation order (docs/simulation.md "Buildings").
     /// </summary>
