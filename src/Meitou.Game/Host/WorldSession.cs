@@ -150,7 +150,6 @@ public sealed class WorldSession : IDisposable
         var list = systems.ToList();
         var next = new World(_worldSettings, _worldWalkability, list);
         next.Floaters = World.Floaters;   // the host keeps drawing the floaters across the swap
-        next.NearRadius = World.NearRadius;   // the host's: the character draw distance and its margin (GameHost.CreateSession)
         next.BenchFacingFix = World.BenchFacingFix;
         next.PrisonPoseFix = World.PrisonPoseFix;
         next.CagedAnimalFix = World.CagedAnimalFix;
@@ -261,7 +260,7 @@ public sealed class WorldSession : IDisposable
         if (!Simulation.IsPaused)
         {
             // A speed change scales the estimate at once: a batch sized for 5x would hold the picture for frames at 1x.
-            if (_owedSpeed > 0 && Math.Abs(Simulation.Speed - _owedSpeed) > 0.0001) _owedPerFrame *= Simulation.Speed / _owedSpeed;
+            if (_owedSpeed > 0 && Simulation.Speed != _owedSpeed) _owedPerFrame *= Simulation.Speed / _owedSpeed;
             _owedSpeed = Simulation.Speed;
             _owedPerFrame += (n - _owedPerFrame) * 0.25;
         }
@@ -276,9 +275,8 @@ public sealed class WorldSession : IDisposable
             run -= Math.Min(run, take);
             if (_aheadTicks == 0) (_held, _heldPrevious, _heldCurrent) = (false, null, null);
         }
-        // Only a frame's last two ticks publish: the host draws between those two snapshots, and the ones before would go unseen. Of the two only
-        // the last is shown whole; the host reads the one before for its motion alone.
-        for (int i = 0; i < run; i++) SimulationTick(publish: i >= run - 2, views: i == run - 1);
+        // Only a frame's last two ticks publish: the host draws between those two snapshots, and the ones before would go unseen.
+        for (int i = 0; i < run; i++) SimulationTick(publish: i >= run - 2);
         if (Simulation.IsPaused) World.ApplyPausedInterfaceCommands();
         return n;
     }
@@ -292,7 +290,7 @@ public sealed class WorldSession : IDisposable
         EnsureNotRunning();
         if (!Simulation.IsPaused) throw new InvalidOperationException("step needs the simulation paused");
         SettleAhead();
-        for (int i = 0; i < ticks; i++) SimulationTick(publish: i >= ticks - 2, views: i == ticks - 1);
+        for (int i = 0; i < ticks; i++) SimulationTick(publish: i >= ticks - 2);
         return World.Tick;
     }
 
@@ -311,10 +309,10 @@ public sealed class WorldSession : IDisposable
     }
 
     /// <summary>
-    /// One simulation tick: the world runs its phases (publishing its snapshot when <paramref name="publish"/>, its views too when
-    /// <paramref name="views"/>), the game clock moves by one tick of game time.
+    /// One simulation tick: the world runs its phases (publishing its snapshot when <paramref name="publish"/>), the game clock moves by one tick of
+    /// game time.
     /// </summary>
-    void SimulationTick(bool publish, bool views)
+    void SimulationTick(bool publish)
     {
         World.GameHours = Clock.TotalHours;
         World.Daytime = Clock.IsDaytime;
@@ -323,7 +321,7 @@ public sealed class WorldSession : IDisposable
         World.ViewPosition = ViewEye ?? Camera.Current.Eye;
         World.ShownInteriors = ShownInteriors;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        World.RunTick(publish, views);
+        World.RunTick(publish);
         Measure(System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds);
         Clock.Advance(Simulation.TickSeconds);
     }
@@ -544,11 +542,11 @@ public sealed class WorldSession : IDisposable
                 long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 try
                 {
-                    // Only the last two publish, as in a frame, the last one whole (the shown pair keeps its buffers: World's snapshot ring).
+                    // Only the last two publish, as in a frame (the shown pair keeps its buffers: World's snapshot ring).
                     for (int i = 0; i < _starts.Length; i++)
                     {
                         (_world!.GameHours, _world.Daytime) = _starts[i];
-                        _world.RunTick(publish: i >= _starts.Length - 2, views: i == _starts.Length - 1);
+                        _world.RunTick(publish: i >= _starts.Length - 2);
                     }
                 }
                 catch (Exception e)

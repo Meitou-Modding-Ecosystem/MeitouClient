@@ -99,22 +99,11 @@ public static partial class SaveCapture
     }
 
     /// <summary>
-    /// Captures a world at a tick boundary and updates the derived file fields, ready for callers that consume the save immediately.
+    /// <paramref name="prepared"/> is a <see cref="PrepareBase"/> made with the same <paramref name="loaded"/> (null: made here, which is the
+    /// slow part).
     /// </summary>
     public static SaveGame Capture(World world, PopulationData data, SaveClock clock, LoadedSave? loaded = null, SaveCaptureOptions? options = null,
         SaveBuilder? prepared = null)
-    {
-        var game = CaptureState(world, data, clock, loaded, options, prepared);
-        game.UpdateDerived();
-        return game;
-    }
-
-    /// <summary>
-    /// Captures the world's state at a tick boundary. The writer must call <see cref="SaveGame.UpdateDerived"/> before writing the detached save.
-    /// <paramref name="prepared"/> is a <see cref="PrepareBase"/> made with the same <paramref name="loaded"/>, or null to make the base here.
-    /// </summary>
-    public static SaveGame CaptureState(World world, PopulationData data, SaveClock clock, LoadedSave? loaded, SaveCaptureOptions? options,
-        SaveBuilder? prepared)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(data);
@@ -156,6 +145,7 @@ public static partial class SaveCapture
         options.HandlesWritten?.Invoke(s_memoryPass?.Handles ?? []);
         game.LastingIds = world.LastingIds.Write(game, s_memoryPass?.ColdHandles ?? []);
         WriteMemories();
+        game.UpdateDerived();
         return game;
     }
 
@@ -229,9 +219,6 @@ public static partial class SaveCapture
         // Again, with the states of the buildings first written now (job targets name them by handle).
         buildings = HeldSave.BuildingStates(game);
         MachineSave.Write(game, world);
-
-        // Before the machines and furniture inventories, which write into the entries it makes.
-        world.Interiors.Write(game, world, data, buildings, options.Seed);
         TownMachineSave.Write(game, world);
         FurnitureInventorySave.Write(game, world, data.Db, buildings);
         RuinSave.Write(game, world, data, buildings);
@@ -558,8 +545,7 @@ public static partial class SaveCapture
 
     /// <summary>
     /// Each placed town's <c>replacementTown</c> (the TOWN in its place, "" none) and, while replaced, its <c>faction</c>, into its state; a town
-    /// whose new residents are still to be made gets <see cref="PopulationSystem.OverridePendingKey"/> when <see cref="PopulationSystem.OverrideSaved"/>
-    /// (dropped once they are).
+    /// whose new residents are still to be made gets <see cref="PopulationSystem.OverridePendingKey"/> (dropped once they are).
     /// </summary>
     static void WriteTownReplacements(SaveGame game, PopulationData data, PopulationSystem? population)
     {
@@ -573,7 +559,7 @@ public static partial class SaveCapture
         {
             if (town.IsNest || !sites.TryGetValue(town.Instance, out int site)) continue;
 
-            if (population?.OverrideSaved(site) == true) town.Record.Bools[PopulationSystem.OverridePendingKey] = true;
+            if (population?.OverridePending(site) == true) town.Record.Bools[PopulationSystem.OverridePendingKey] = true;
             else town.Record.Bools.Remove(PopulationSystem.OverridePendingKey);
             var replacement = data.Sites[site].Replacement;
             if (replacement is null && !town.Record.Strings.ContainsKey("replacementTown")) continue;

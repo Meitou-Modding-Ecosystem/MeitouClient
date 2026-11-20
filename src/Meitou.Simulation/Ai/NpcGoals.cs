@@ -529,22 +529,10 @@ public sealed class NpcGoals
     }
 
     /// <summary>
-    /// Whether an open conversation (a bubble or the player's) holds the character, which a release must not break.
+    /// Whether an open conversation (a bubble or the player's) or a trade holds the character, which a release must not break.
     /// </summary>
     static bool HeldElsewhere(World world, CharacterId id) =>
-        world.SystemOf<Dialogue.DialogueSystem>()?.Talking(id) == true;
-
-    /// <summary>
-    /// An order takes a held character (<see cref="Player.IDutyRelease"/>, through the AI): its record ends with the goal on its mind, and it is no
-    /// longer engaged, which tells the mod's system the character was let go (<see cref="Ended"/>).
-    /// </summary>
-    internal void ReleaseForOrder(World world, int slot)
-    {
-        if (!_held.Remove(slot, out var held) || world.Characters.Cold(slot) is not { } cold) return;
-
-        cold.Engaged = false;
-        EndOnMind(cold, held);
-    }
+        world.SystemOf<Dialogue.DialogueSystem>()?.Talking(id) == true || world.SystemOf<Trading.TradeSystem>()?.HoldsTrader(id) == true;
 
     /// <summary>
     /// Ends the goal on the character's mind when that mind still carries this record's start (<see cref="AiSystem.EndModGoal"/>), and asks it to

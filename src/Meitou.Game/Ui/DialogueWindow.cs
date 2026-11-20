@@ -25,10 +25,9 @@ sealed class DialogueWindow(PlayerInterface player)
     internal bool ConversationShown, ConversationEndSent;
 
     /// <summary>
-    /// The last dialogue request handled. Kept by reference, not by id: a loaded or new world numbers its requests from 1 again, so an id seen in
-    /// the world before would hide its first ones (the surgeon's editor after a load, #1047).
+    /// The id of the last dialogue request handled.
     /// </summary>
-    DialogueRequest? _dialogueRequestHandled;
+    long _dialogueRequestHandled;
 
     /// <summary>
     /// The NPC line shown; a new one scrolls the box back to the top.
@@ -71,9 +70,9 @@ sealed class DialogueWindow(PlayerInterface player)
             player.UpdateMenuPause();
         }
 
-        if (snapshot.DialogueRequest is { } request && !ReferenceEquals(request, _dialogueRequestHandled))
+        if (snapshot.DialogueRequest is { } request && request.Id > _dialogueRequestHandled)
         {
-            _dialogueRequestHandled = request;
+            _dialogueRequestHandled = request.Id;
             if (request.Kind == DialogueRequestKind.CharacterEditor)
                 player.CharacterEditor.OpenEditor(Simulation.Editing.EditKind.Surgery, [request.Player], request.Npc, paid: true);
             else if (request.Kind == DialogueRequestKind.RecruitEditor)

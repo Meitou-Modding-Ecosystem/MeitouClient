@@ -323,7 +323,7 @@ included), else 0.025 (outside every town too).
 
 | Deed | Where | Events |
 | --- | --- | --- |
-| melee blow lands | `FUN_1404394f0` (Character slot 62) via `FUN_140999f00` | kind 1 when the striker's status float `+0xac` (its current goal's intended aggression, below) > 0.1 (and the victim's combat byte `+0x130` clear); after the damage, if the victim is unconscious or dead (`+0x5b9`/`+0x5bc`): kind 2 if striker `+0xac` <= 0.15 else 3, plus kind 4 if dead. Every later blow on a downed body repeats it |
+| melee blow lands | `FUN_1404394f0` (Character slot 62) via `FUN_140999f00` | kind 1 when the striker's status float `+0xac` > 0.1 (and the victim's combat byte `+0x130` clear); after the damage, if the victim is unconscious or dead (`+0x5b9`/`+0x5bc`): kind 2 if striker `+0xac` <= 0.15 else 3, plus kind 4 if dead. Every later blow on a downed body repeats it |
 | bolt lands | `FUN_140439c90` via `FUN_140999d50` | as melee, thresholds 0.1; with no shooter nothing; a bolt whose flag (param 4, read as "aimed") is clear gives no kind 1 and kind 2 |
 | death | `FUN_1407a6200` (sets `+0x5bc`, runs inside the damage, so before the blow's own events) | kind 5 against the killer recorded in the character's handle at `+0x2c0` , and squad tag 9 |
 | caging | `Task_PutInSomething` `FUN_140358670`, after the bounty claim | kind = task `+0x7c`: 12 for the cage task, 9 (no row) for the bed (factory `FUN_14032ebd0`) against the putter's faction |
@@ -337,10 +337,7 @@ included), else 0.025 (outside every town too).
   target score spares a non-hostile one ([ai-tasks](ai-tasks.md#combat-goals)); they are sensed like anyone. Diplomats (NPC class 5) are sensed NEUTRAL by enemies inside their faction's
   `biomes` (by the player's side anywhere) and assaulting them there is code 9 ([perception](perception.md#sense-tags-who-is-an-enemy), [economy](economy.md)); **Verified** by disassembly of `FUN_140796240`.
 - Kind 8 is not a drift: nothing moves relations back over time.
-- Status `+0xac` (Character slot 61 `FUN_140598b90` returns it) is the intended aggression of the striker's current goal (**Verified**: the state broadcast `FUN_14050ed60` copies TaskData `+0x24` of the AI's goal `+0x1c0`,
-  0 without one or while the status byte `+0x41` is set; the rows hold only 1, 0.5, 0 and negatives, [ai-tasks](ai-tasks.md#combat-goals)). So a striker on an attack goal (16, 21, 144, an order's 61) costs kind 1 per blow and kind 3 per downing; one on 34, a protect goal
-  (15, 143, 288), Self preservation (32) or Attack Target (5) costs no kind 1 and kind 2 per downing. Meitou: `FactionDeeds.Rating` (the mind's goal in a fight its AI started, else the fight's row; a defence, row 13, rates 0 as the
-  32 or protect goal the original plans it under).
+- Status `+0xac` (Character slot 61 `FUN_140598b90` returns it) is summed by the perception (`FUN_140854370`) as a threat value. Meitou rates every striker above both thresholds (kinds 1 and 3; engine choice).
 - `FUN_140673a20(self, other, tag)` (not a witness function) sets a long-term tag (`CharacterPerceptionTags_LongTerm`, read by DC 23) in
   `self`'s squad memory (`platoon+0x98`, `FUN_140673930`, time-stamped): 1 MY_INTRUDER (trespass), 5 MY_CAPTOR (cage), 7 / 8 (the victim's
   squad tags the striker DEFEATED_MY_SQUAD_ONCE and the striker's tags the victim SQUAD_LOST_TO_ME_ONCE, on a downing blow when
@@ -614,7 +611,7 @@ Meitou: [ground items](../simulation.md#items-and-eating).
     the +8 flag skipped), scored by distance minus a pull towards the travel direction (reversed for the exit) of clamp(w, 0.2, 0.9). The road is
     taken when the two access legs together, and the legs plus w × the A* road length (`FUN_14045da60`), are each no longer
     than the straight line; the mover then heads for the first waypoint, keeping the final destination. Road data: ROAD records (`start`, `end`,
-    `length`, `width`, `weight`, `hidden`), their instances the polyline points ([by number](../formats/zones.md), not file order); `start`/`end` are junction numbers, each road one edge costing its
+    `length`, `width`, `weight`, `hidden`), their instances the polyline points; `start`/`end` are junction numbers, each road one edge costing its
     `length` (not its polyline; `weight` unread), the A* heuristic the straight distance to the goal, and `hidden` never read by routing (**Verified**).
 - **Meetings**: nothing looks at other platoons; there is no off-screen combat. Off-screen outcomes are campaign phases and despawning.
 - **Pool growth** (`FUN_1408f4c20`): each pool's current max (`pop`) grows `+0.21818` per game hour (5.24 a day) up to its desired max
@@ -642,14 +639,6 @@ Meitou: [ground items](../simulation.md#items-and-eating).
   is taken out of its pool (platoon +0xa8: 1 residents, 2 roaming) and, while that pool is above 0, lowers it by its living members (no floor);
   a `regenerates` platoon (+0xd9) is charged nothing and only marked to be remade. The platoon's faction's prosperity also drops by 10, floor 0, when its +0xa4 is above 0, pool or not (`FUN_1406bab60`, **Verified**; +0xa4 is the template's expected size above, which `FUN_14079acf0` compares with 4). Meitou: roamers and a save's wild platoons that despawn Faithful (`PayRoamerDespawn`, both costs) and nests
   (`PayNestDespawn`). Not intact is the squad-intact rule for all of them (`SquadIntact`); the pool is only charged while above 0, no floor; the prosperity drop applies to every wild site's squad that leaves not intact (nest or sector).
-- **Death cost** (**Verified**, the death function `FUN_1407a6200` -> `FUN_140796a50`): when a character of a faction that is not the player's dies
-  and its platoon has a town or nest, each of that site's pools (1, then 2) that lists the platoon loses 1 from its current max while it is
-  above 0. So a killed squad costs its pool its whole size (its dead here, its survivors when it leaves damaged, above), a nest's pool falls
-  with every kill, and once nothing fits the nest is wiped out. Meitou: `PopulationSystem.Died` (a death observer; loaded characters only, an
-  off-screen fight's dead are not charged), a nest's squad from its roaming pool, a town's platoon from the pool it is in (`InTownPool`); a
-  save's nest platoon in the world counts its living now for the nest's budget (`HoldOf`). **Observed** headless (#1033's save, `probe nests`):
-  the 8 members in the world of a `Nest of Beak Things` (15) killed, its pool goes 15 to 7 and it makes one squad of 1 once the pool passes
-  the 6 living elsewhere; a `Boneyard Wolf Den` (10) with all 10 killed goes to 0 and is wiped out.
 - **Town pools in saves** (**Observed**, saves 1, 2, wade): every town has `pop` = `popd`, `started` true when populated, `popd2` 0 (none of
   304), while `read_roaming_population_n4` (`0x1408f98d0`) would set pool 2 to the faction's `roaming population`. `pop` is near the living members of the town's resident platoons (`is resident`) of the town's own faction:
   save 2 Squin 36 = 36, the Hub 12 vs 10, Stack 93 vs 95 (Squin without a Tech Hunters resident shop of 4).
@@ -677,7 +666,7 @@ Meitou: [ground items](../simulation.md#items-and-eating).
   **Observed**) and never spawns again. New nests come only from the area tick, up to `num nests` per biome group. A group with `nests at fixed markers only` picks among its NEST_MARKER towns, leaving out every marker whose
   nearest town (by XZ, markers skipped) is within 2500 (3D) (**Verified**, `FUN_1408f6350`, 6,250,000 squared).
 - **Spot finder** (**Verified** by decompile; nests and homeless squads): a new nest (`FUN_1408f6350`) draws up to 10 random sectors of its group,
-  skipping the one in view, town-flagged ones (+0x30, below: every sector of a town's zone list) and ones with a town of their own (`FUN_1408f62e0`: the town nearest the sector's position, with no distance limit `DAT_14169bc38` = FLT_MAX, stands in it; a nest made before counts as such a town, **Observed**, the Wolf Pack Den hold below), and takes the first where `FUN_1408f50d0` places a spot (multipliers 1.4 and 3, `DAT_14169bb48`, `DAT_14168a254`; the last inside-town test × 1, `DAT_14167c308`); failing that, a random sector and whatever
+  skipping the one in view and town-flagged ones, and takes the first where `FUN_1408f50d0` places a spot; failing that, a random sector and whatever
   the finder left, unchecked (the sector's own position, +0x18, when nothing passed: the finder writes the out point only on a pass). `FUN_1408f50d0`:
   4 rounds of a uniform point in the sector, each pushed up to 10 times out of a town's radius × 1.4 (another faction's × 3; the nest call's
   arguments) and from within 1382.4 of the camera focus; a point passes when `FUN_1408f4d70` does: terrain height (`Terrain::getHeight`) not under
@@ -688,10 +677,9 @@ Meitou: [ground items](../simulation.md#items-and-eating).
   the water (surface 100). **Data** (vanilla `areasmap.tga`, 256 × 256): 33 % black; black cells are the base `NONE` group, which has no nests or
   homeless spawns; 917 black pixels (2 %) lie inside other groups' cells, at region edges. Meitou (`PopulationWild.cs` `SpotRefused`): the same three
   tests for a homeless spot; a nest's candidate spots take the height and pixel tests at layout and the gate code (where the navmesh is loaded)
-  when it picks its centre; a nest roll whose cell a town stands in (`TownZones`) or has its own town (a placed one or a nest rolled before, `CellTakesNest`), or has no passing spot, passes to the next
-  roll key (up to 10 a nest). A group still short of its count then rolls in any of its cells, the fallback, its spots tested all the same (engine choice).
-  **Observed** (`probe nests`, #1041's save under Rebirth): 331 nests with the fallback, 326 without, none rolled in a town's zone; that save's `River Nest` stands inside Blister Hill's walls (zone 23,22 of the town's list, gate code 1, 915 from a centre of radius 350), which
-  the 2 × radius test does not refuse (#496: before, navmesh water counted as walkable and camps stood in lakes).
+  when it picks its centre; a nest roll whose cell has no passing spot passes to the next roll key (up to 10 a nest). The unchecked fallback is not
+  modelled: **Observed** (`probe nests`, the seed of a save): every nest finds a passing spot, so it would not fire (#496: before, navmesh water
+  counted as walkable and camps stood in lakes).
 - **Nest furniture** (**Verified** by code unless marked): when an area loads (`FUN_1409fdbd0` → `FUN_1408f5e70`; "area load" **Observed**), each of its nests runs `Nest` slot 64
   (`FUN_1409278a0`), which queues its TOWN record at its position, owner none; the queue (`FUN_140928410`, "delayedSpawningChecks") runs `TownBase` slot 113
   (`FUN_140938440`) once the zone is loaded. That seeds `srand` from the nest's X/Z and places: `debris` (ITEM / NEST_ITEM, `FUN_140937510`, within

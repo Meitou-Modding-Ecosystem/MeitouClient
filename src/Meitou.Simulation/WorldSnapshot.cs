@@ -968,7 +968,7 @@ public sealed record WorldSnapshot(long Tick, IReadOnlyList<CharacterSnapshot> C
     /// </summary>
     public IReadOnlyList<Dialogue.SpeechBubble> Speech { get; init; } = [];
     /// <summary>
-    /// The last thing a conversation asked the host to do (the host acts on each request object once: ids start again in each world).
+    /// The last thing a conversation asked the host to do (the host acts on each <see cref="Dialogue.DialogueRequest.Id"/> once).
     /// </summary>
     public Dialogue.DialogueRequest? DialogueRequest { get; init; }
     /// <summary>

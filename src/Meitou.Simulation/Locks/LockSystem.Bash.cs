@@ -428,16 +428,12 @@ public sealed partial class LockSystem
     /// <summary>
     /// The row that takes the walker in <paramref name="s"/> through the building's locked doors (docs/game/locks.md "Locked doors on the way"):
     /// out of the building it stands in (<see cref="WayOut"/>), else into it (<see cref="WayIn"/>, through <paramref name="door"/>, else its main
-    /// door). <paramref name="order"/>: the walk is a player's order being planned (<see cref="Restricted"/>). None for a member of an AI-run
-    /// squad living in an outpost on a walk of the AI's, through a building of the player's (<see cref="SquadAutonomy.KeepsPlayerLocks"/>).
+    /// door). <paramref name="order"/>: the walk is a player's order being planned (<see cref="Restricted"/>).
     /// </summary>
     internal DoorWayKind WayThrough(World world, int s, string building, Fixture? door = null, bool order = false)
     {
         var c = world.Characters.Cold(s)!;
         var at = world.Characters.Next[s].Position;
-        if (!order && SquadAutonomy.KeepsPlayerLocks(c) && world.Fixtures.OwnsBuilding(building, world.Player.Faction))
-            return DoorWayKind.None;
-
         if (world.Sight.BuildingOf(s) == building) return WayOut(world, c, building, at);
 
         return WayIn(world, c, building, at, door ?? MainDoor(world, building), order);
@@ -779,17 +775,6 @@ public sealed partial class LockSystem
         StopBashing(table, s, c);
         TaskStart.Stand(table, s);
         c.WalkEnd = WalkEnd.Failed;
-    }
-
-    /// <summary>
-    /// An order takes the NPC: a bash errand on its way stops (<see cref="StopBashing"/>), else its way through a door is dropped
-    /// (<see cref="DropDoorWay"/>); a bash the player ordered is left to its order.
-    /// </summary>
-    static void ReleaseDoorWay(CharacterTable table, int s, CharacterCold c)
-    {
-        if (c.BashErrand && !c.BashOrdered) StopBashing(table, s, c);
-        else
-            DropDoorWay(c);
     }
 
     /// <summary>

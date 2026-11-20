@@ -109,7 +109,7 @@ set) and it has no `homebuilding`. While unloaded its position is at the host an
 characters' saved places belong to (at the old town), read back as the anchor so they come to the host with it. Read back as `Platoon.Guest`: never
 refused as a replaced town's platoon and not counted as the host's own squads. **Town override pending** (Meitou bool `meitou override pending` on a
 town's state, absent: none): the town changed version but its new residents are not made yet (`SiteState.Repopulate`, [simulation](../simulation.md)
-"Town overrides"); written with Towns change far away on, or for a change made away from a zone's load, and read back as such a change. The original ignores these keys.
+"Town overrides"). The original ignores these keys.
 
 **Building record** (Meitou keys on a registered town building's GAMESTATE_BUILDING, [locks](../game/locks.md#building-record)): int `meitou designation`, string `meitou template` (the last assigned SQUAD_TEMPLATE id, absent: none) and the stored public byte as `is public day`; a state without them is a building with no record yet.
 
@@ -452,8 +452,7 @@ saved look.
 
 Every saved NPC platoon with a `basetown` naming a placed town is restored (a characterless town-bound one is skipped). Its town is the one its `hometown` handle
 names when that town is the `basetown` (or was replaced by it), else the first placed town of that TOWN: several placements share one TOWN (the four Waystations of
-`44854-rebirth.mod`; issue #630, where the first-match rule homed another Waystation's residents 36 km away and they walked off). A `basetown` that is a TOWN
-no placed town is now (an older version of a town that changed since) leaves the platoon its `hometown` town's, whose activation then refuses it. Town-bound ones (an `sqt` 1 platoon, or a template that does not travel) are pinned to their town, and a town holding any
+`44854-rebirth.mod`; issue #630, where the first-match rule homed another Waystation's residents 36 km away and they walked off). Town-bound ones (an `sqt` 1 platoon, or a template that does not travel) are pinned to their town, and a town holding any
 is made of them alone: it makes no residents, default residents, housemates or bar squads (**engine rule**, after the original's: a zone with a save file makes no town
 population, [Zone files](#zone-files) Load; Meitou keys it on the saved platoons). A town Meitou made and unloaded before saving keeps its squads as stored
 platoons, which the save writes like the town's squads in the world, so a Meitou save holds the residents of every town it made a zone file for
@@ -596,33 +595,6 @@ has an override world state (its lists are then replaced) or `0-buildinglist` ho
   name no level building); `town` the town the building belongs to (3726 of 6743 name another town than the level state; the town states keep the level `hand`, 304 of 304 in
   saves 1 and 2). Record flags 0, name "0".
 - `serialised interior` = 1 stops the building factory (`FUN_14057cc70`) from generating the interior (**Verified** by code); absent or another value, it is generated.
-- A serialised interior's entries (**Verified**, `meitou-tools probe METARU interiors`: Meitou's written states against the save's, 14660 furniture
-  entries and 5627 item groups of 283 houses, every key of each; only live state differs: lock rolls, `batterycharge`, a lit campfire, a farm's keys).
-  One entry per object the house's interior and exterior layouts place, a record with `is node` excepted (none of 4485 saved); id
-  `<n>-zone<X>.<Y>-INGAME`, world position and rotation, state `<id>-S23`. Every state: `is inside building` true, `isInsideBuilding` the house's
-  handle (the factory skips an entry whose parent it cannot find, `FUN_14057cc70`), its own `handle` (slot in the zone's list), `floornum`,
-  `flags`, `version`, `serialised interior` 1, null `residents`, `foliage` / `pause` / `destroyed` false, `is complete` and `is public day` true
-  (whatever the house's), `world Y pos`, `player furniture Y offset` (its height less the house's `world Y pos`), `construction progress` (the
-  build target) and `<i>construction mats` (each material in full), `name` (the record's), `owner faction ID` (the house's), empty
-  `squad template` / `residents template`. By the record's `functionality`: any has `broken`, `power on`, `gets battery`, `batterycharge`;
-  function 15 (light) a null `mounted` handle; function 8 (cage) or `has lock` has `locked`, `lock lvl`, `hardness`; functions 1, 4, 5, 10, 23
-  have `resource mult` 1, `production amount` and one `consumption amount-<k>` per input section, a bench (10) also `num crafts`, `repeat`,
-  `craft partial item size`; `usagenode_<k>` only while used. The house's state names each furniture entry by `internalbuildings-<k>`
-  (`FUN_1405547f0`). An item slot's entry targets its ITEM_PLACEMENT_GROUP, with a state of that type under its own `<n>-zone<X>.<Y>-INGAME`
-  id (`is inside building`, `isInsideBuilding`, `floornum`, `respawn time`, `base data sid`) and no handle; its height is above the ground
-  (**Observed**, the 5627 groups against their layout slots), and a group made with no parent building adds its zone's ground height to its
-  own (`FUN_1405534f0`, `FUN_1409b3710`, **Verified** by code).
-  The original keeps a loaded entry as it is saved (**Observed**, harness: a Meitou-written interior of 242 objects and 36 groups loaded and saved
-  again came back with the same ids, handles and values, `usagenode_<k>` added).
-- Meitou (`Saving/InteriorSave`) writes a house's interior this way when one of its layout's cages holds a prisoner and its state has no
-  `serialised interior` 1 (a zone file Meitou made): a standing house that was neither bought nor furnished anew by an override. The locks are
-  the fixtures' (else the house's `meitou lock <i>`), an empty slot's `respawn time` its due hour, new handles take the slots after the
-  zone's last, and the machine and furniture-inventory writers then fill the entries as they do the original's. A group's height is taken
-  above Meitou's terrain height, at least the water level (**Observed**, METARU: within 0.5 of the saved height for 4370 of 5627 groups,
-  within 2 for 5276; under water the original's reference is 100.0). **Observed** (headless, feedback save of #1026): the slave shop's
-  49 objects and 19 groups and the police station's are written, a reload registers the same fixtures, occupants and container items, and
-  a second save writes the same file; (harness) the original loads it with the prisoner "Locked (lvl: 22)", still held an hour later, and
-  the shop's chest holding the 3 stacks Meitou saved.
 - A ruin (`destroyed` true) has no entry inside it: no state names it as `isInsideBuilding` (**Observed**, METARU, autosaves 1 and 2, redev, Beep Fan
   Club 1); its `internalbuildings-<k>` handles may name objects that are gone, their slots kept in the slot list
   ([ruins](../game/buildings-production.md#ruined-by-residents)). Meitou (`Saving/RuinSave`): a capture removes each entry inside a town building the
@@ -689,19 +661,12 @@ has an override world state (its lists are then replaced) or `0-buildinglist` ho
   ints, a `scale` vector and a `timeout` float (131.7).
 
 **Meitou** (`Saving/ZoneSave`, `Data/Save/SaveZoneBuilder`): every zone the population had active, and every zone of a town it made but another town's centre zone (engine choice:
-a town is made and saved whole; three such zones, e.g. Black Desert City's buildings in Scraphouse's 34.28), is visited (`World.VisitedZones`, not hashed). A save keeps the loaded save's zone files (locks, doors and player buildings are written into them), adds to a visited zone's file the level buildings its building list
-does not name that have a level state and stand inside no building (`SaveZoneBuilder.Complete`: each with its level state; an entry the list names, a removal too, stays as it is; a building
-inside another is not added, since a save takes those out of a ruin, a bought house and a home furnished anew; a level state whose handle slot a state of the file holds is written without its
-handle) and makes
+a town is made and saved whole; three such zones, e.g. Black Desert City's buildings in Scraphouse's 34.28), is visited (`World.VisitedZones`, not hashed). A save keeps the loaded save's zone files (locks, doors and player buildings are written into them) and makes
 the missing ones from the level data as above, with `town` set to the save's town state `hand` and a new save's town states taking their level `hand`; it writes no
-`serialised interior` but on a ruin's state and on a house that holds a prisoner in one of its layout's cages, whose interior it writes whole ([above](#zone-files)), no other furniture and no inventories but its town machines' (Town machines, above) and the furniture inventories of a save's entries (above), so the original makes every other interior as for a fresh zone from its `interior layout name` (only the residents differ: the
+`serialised interior` but on a ruin's state ([above](#zone-files)), no furniture and no inventories but its town machines' (Town machines, above) and the furniture inventories of a loaded save's entries (above), so the original makes each interior as for a fresh zone from its `interior layout name` (only the residents differ: the
 saved platoons). A load lays each town building whose saved state names an interior layout out with the saved interior and exterior names (the original generated
 the saved furniture from them; **Observed** headless, METARU: 972 such buildings, 117 named otherwise than Meitou's housing, all laid out with the saved names), and a
-save writes them back. A file that lacks level buildings comes from an import (it keeps the removals and the player's buildings only, [Importing a game](#importing-a-game-savemanagerimportgame-fun_140378a30)), from a save made
-before a mod placed them, or from a zone first written for loose items or the player's buildings alone; the town writers (owner, ruin and rebuild state, locks, residents) write only into a state
-the file holds. **Observed** (#1046, headless, a save after an import: Blister Hill's 23.22 and 24.22 held 15 building states each, 266 and 141 after): a ruined shack bought and rebuilt there
-had no state, so its reload stood it as the town's ruin for sale again; with the entries added the reload has it standing, the player's and not for sale, and two more saves with no time passed
-write the same zone files. **Observed** (headless new game, the player moved to Squin and Stack): 8 visited zones, 8 files, every handle in its slot list, 300 of 300 `town` handles
+save writes them back. **Observed** (headless new game, the player moved to Squin and Stack): 8 visited zones, 8 files, every handle in its slot list, 300 of 300 `town` handles
 name a town state; key set = the real saves' minus the runtime-only keys (`serialised interior`, `internalbuildings`, farm, craft and lock keys of buildings that have none
 here) plus `meitou lock <i>`; doors and an interior chest locked before the save are locked after reload, and a second save made with no time passed writes the same zone
 files. Once time passes a live farm's `save time` is the clock then, as the original's farm save (`FUN_1400e3b80`) writes it (**Observed** headless, METARU with
@@ -756,9 +721,7 @@ Shop prisoner's cage (`1783-gamedata.base`, an `<n>-zoneX.Y-INGAME` entry of the
 the shop's `interior layout name`, the next cage 27.8 away. A sleeper's generated interior bed is matched the same way
 (**Observed**: the 24 saved sleepers of the Rebirth garrison, record `3460-otto.mod`, at distance 0 from Meitou's beds, the next bed
 of the record 33 away). Meitou-only keys `meitou in something` (int) /
-`meitou in what` (fixture id) carry the rest and win on load. A prisoner in a layout cage is written with `in what` naming the cage's
-entry when the save holds it (the house's saved interior, else the one `InteriorSave` writes, [Zone files](#zone-files)), the entry's
-`locked` and `lock lvl` as the cage's lock is now; a prisoner of a platoon the save leaves as read gets it too. The held characters are bound (`FixtureRegistry.Bind`) when a town registers
+`meitou in what` (fixture id) carry the rest and win on load. The held characters are bound (`FixtureRegistry.Bind`) when a town registers
 and again when a saved or stored platoon comes in, since a town's saved platoons are made after it registers. Unchanged held state keeps
 the original keys as read; a changed one without a building handle writes `in something` 0 and the null handle. `sentence`/`psts` are written while a sentence is set or the save had them; Meitou's start equals `World.GameHours` (day x 24 + hour).
 
@@ -779,7 +742,7 @@ A player character's order queue (the deque at `AITaskSytem` +0x40, [order queue
 - **Observed** (60 of the owner's 511 saves, 191 characters, all original writes): queues of 1 order (186) or 2 (5), so the running front is saved; rows 29 move (163; null handle, point set),
   258 `USE_BED_ORDER` (11; a BUILDING handle, point set), 16 `ATTACK_ENEMIES` (11) and 5 (5) with a CHARACTER handle and a zero point (a queue of two is 5 then 16 on one target), 60 / 201 / 26 / 65 / 87
   once each. Meitou's Sleep order is the row 98 it starts, so it is written and read as 258.
-- **Load** (**Verified**): the loader reads `tjob<i>` until one is missing and adds each through the add function `FUN_1405086d0` without the permanent flag (it lands in the second list +0x70,
+- **Load** (**Verified**): the loader reads `tjob<i>` until one is missing and adds each through the add function `FUN_1405086d0` as a one-shot order (it lands in the second list +0x70,
   [precedence](../game/ai-tasks.md#precedence), not in the deque; a row with a job form is replaced by it), then the planner is re-run. Meitou instead restores the queue as saved: a load reads the
   orders into `CharacterCold.SavedOrders`; the decision step makes them the queue (nothing started) once every character and building exists, and the front starts through source 1.
   An order is dropped when no system owns its row (so 16, 60 and the other rows Meitou has no order for), its target character or building is not in the world, or its handle names nothing the
