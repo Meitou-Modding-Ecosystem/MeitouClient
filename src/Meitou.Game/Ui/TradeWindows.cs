@@ -35,6 +35,11 @@ sealed class TradeWindows(PlayerInterface player)
     bool _tradeCloseSent;
 
     /// <summary>
+    /// Meitou's auto arrange (the Gameplay page's Auto arrange shop inventories on open): a trader window sends ARRANGE when it opens.
+    /// </summary>
+    internal bool AutoArrange;
+
+    /// <summary>
     /// Opens the trader beside the inventory when a trade opens, and ends the trade when the player closes its window.
     /// </summary>
     internal void SyncTradeScreens()
@@ -61,6 +66,8 @@ sealed class TradeWindows(PlayerInterface player)
 
             player.FaithfulScreens.Open("trader");
             PlaceTradeWindows();
+            if (AutoArrange) player.Say(new ArrangeStock { Tick = player.Session.World.Tick });
+
             return;
         }
 
