@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
@@ -957,12 +958,27 @@ public sealed partial class MainWindow : Window
     void ModSearch_TextChanged(object? sender, TextChangedEventArgs e) => ApplyModSearch();
 
     /// <summary>
-    /// Shows only the rows matching the search box (<see cref="ModRow.Matches"/>), and says why the list is empty when it is.
+    /// The Regex box was ticked or cleared: the search is read again the new way.
+    /// </summary>
+    void ModSearchRegex_Click(object? sender, RoutedEventArgs e) => ApplyModSearch();
+
+    /// <summary>
+    /// Shows only the rows matching the search box (<see cref="ModRow.Matches"/>), and says why the list is empty when it is. An invalid
+    /// regular expression keeps the rows the last valid search showed, rims the box in red and says what is wrong.
     /// </summary>
     void ApplyModSearch()
     {
-        string search = ModSearch.Text?.Trim() ?? "";
-        foreach (var row in _mods) row.IsShown = row.Matches(search);
+        var test = ModSearchTest(out string? error);
+        bool wasInvalid = ModSearch.Classes.Contains("invalid");
+        ModSearch.Classes.Set("invalid", error is not null);
+
+        if (error is not null)
+        {
+            Status(Tr("Invalid regular expression: {1}", error));
+            return;
+        }
+        if (wasInvalid) StatusText.Inlines = [];
+        foreach (var row in _mods) row.IsShown = row.Matches(test);
 
         // Until a load ends the empty line is the load's own (its error, or nothing).
         if (!_modsReady) return;
@@ -972,6 +988,47 @@ public sealed partial class MainWindow : Window
         ModsEmpty.Text = Tr(!none ? "No mods match the search."
             : _install is null ? "Set the Kenshi folder in Settings to list its mods."
             : "No mods found in Kenshi's mods folder or among its Steam workshop items.");
+    }
+
+    /// <summary>
+    /// What a name must pass to stay shown: holding the search text, ignoring case, or with the Regex box ticked matching it as a regular
+    /// expression, ignoring case. An empty search passes everything; an invalid pattern passes everything and sets <paramref name="error"/>.
+    /// </summary>
+    Predicate<string> ModSearchTest(out string? error)
+    {
+        error = null;
+        string search = ModSearch.Text?.Trim() ?? "";
+
+        if (search.Length == 0) return _ => true;
+        if (ModSearchRegex.IsChecked != true) return text => text.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            // At most 50 ms per name, so a pattern that backtracks without end cannot hang the launcher.
+            var timeout = TimeSpan.FromMilliseconds(50);
+            var regex = new Regex(search, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, timeout);
+            return text => RegexMatches(regex, text);
+        }
+        catch (ArgumentException ex)
+        {
+            error = ex.Message;
+            return _ => true;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="regex"/> matches <paramref name="text"/>; a match that runs out of time counts as none.
+    /// </summary>
+    static bool RegexMatches(Regex regex, string text)
+    {
+        try
+        {
+            return regex.IsMatch(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

@@ -1656,6 +1656,15 @@ msgstr "Pesquisar mods"
 msgid "Show only the mods whose name or author holds this text"
 msgstr "Mostrar apenas os mods cujo nome ou autor contém este texto"
 
+msgid "Regex"
+msgstr "Regex"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "Ler a pesquisa como uma expressão regular, ignorando maiúsculas e minúsculas"
+
+msgid "Invalid regular expression: {1}"
+msgstr "Expressão regular inválida: {1}"
+
 msgid "No mods match the search."
 msgstr "Nenhum mod corresponde à pesquisa."
 
