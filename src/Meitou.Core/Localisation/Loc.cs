@@ -79,6 +79,12 @@ public static class Loc
     public static string Tr(string english, params object?[] args) => Format(Tr(english), args);
 
     /// <summary>
+    /// Layout captions Kenshi's catalog leaves English (the pause menu's "EXIT GAME", the stats window's title, the pack animal window's
+    /// "-BACKPACK-"): listed so the template carries them and Meitou's catalogs translate them, which <see cref="TrCaption"/> finds ignoring case.
+    /// </summary>
+    internal static readonly string[] UntranslatedLayoutCaptions = [Loc.Mark("Exit Game"), Loc.Mark("Character Stats"), Loc.Mark("-Backpack-")];
+
+    /// <summary>
     /// A UI layout's caption in the active language (<c>docs/native-ui.md</c>): the exact <c>msgid</c>, else the same text ignoring case — the
     /// layouts caption a section in capitals (<c>"SKILLS"</c>, <c>"WEAPON I"</c>) while the catalog keys are written normally (<c>"Skills"</c>,
     /// <c>"Weapon I"</c>). Anything with no translation passes through.
@@ -89,6 +95,12 @@ public static class Loc
         return s_catalog.Find(english) ?? s_meitou.Find(english) ?? s_catalog.FindIgnoringCase(english) ?? s_meitou.FindIgnoringCase(english)
                 ?? english;
     }
+
+    /// <summary>
+    /// <paramref name="english"/> unchanged (gettext's <c>N_</c>): marks a text kept in a table as a message, so the template lists it, for a later
+    /// <see cref="Tr(string)"/> of the variable to translate.
+    /// </summary>
+    public static string Mark(string english) => english;
 
     /// <summary>
     /// The plural message <paramref name="singular"/> / <paramref name="plural"/> for <paramref name="n"/> (<c>ngettext</c>): the catalog's form for

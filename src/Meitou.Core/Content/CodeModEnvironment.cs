@@ -1,3 +1,4 @@
+using Meitou.Localisation;
 using System.Text.Json;
 
 namespace Meitou.Content;
@@ -109,9 +110,9 @@ public sealed record CodeModEnvironment(string GameVersion, IReadOnlyList<CodeMo
             if (!current.TryGetValue(mod.Id, out var running)) lines.Add(Gone(mod));
             else if (VersionChange(mod, running) is { } change) lines.Add(change);
         }
-        if (OrderChanged(now, saved)) lines.Add("The code mods load in a different order than when this was saved");
+        if (OrderChanged(now, saved)) lines.Add(Loc.Tr("The code mods load in a different order than when this was saved"));
         foreach (var mod in now.Mods.DistinctBy(m => m.Id).Where(m => !saved.ContainsKey(m.Id)))
-            lines.Add($"{mod.Name} ('{mod.Id}') is new to this save");
+            lines.Add(Loc.Tr("{1} ('{2}') is new to this save", mod.Name, mod.Id));
         return lines;
     }
 
@@ -125,7 +126,7 @@ public sealed record CodeModEnvironment(string GameVersion, IReadOnlyList<CodeMo
     /// The change line for a mod the save ran that is not running now.
     /// </summary>
     static string Gone(CodeModEnvironmentEntry mod) =>
-        $"{mod.Name} ('{mod.Id}') was running when this was saved and is not now; its saved data is kept but unused";
+        Loc.Tr("{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused", mod.Name, mod.Id);
 
     /// <summary>
     /// The change line for a mod whose version differs between the save and now; null when it is the same. Notes a downgrade or a major update.
@@ -133,11 +134,19 @@ public sealed record CodeModEnvironment(string GameVersion, IReadOnlyList<CodeMo
     static string? VersionChange(CodeModEnvironmentEntry saved, CodeModEnvironmentEntry running)
     {
         if (saved.Version == running.Version) return null;
-        string from = saved.Version ?? "no version", to = running.Version ?? "no version";
-        string note = Parse(saved.Version) is { } a && Parse(running.Version) is { } b
-            ? b.CompareTo(a) < 0 ? " (older than the save's)" : b.Major != a.Major ? " (a major update: its saved data may not fit)" : ""
-            : "";
-        return $"{running.Name} ('{running.Id}') was {from} when this was saved and is {to} now{note}";
+
+        string from = saved.Version ?? Loc.Tr("no version");
+        string to = running.Version ?? Loc.Tr("no version");
+        var (before, after) = (Parse(saved.Version), Parse(running.Version));
+        if (before is { } a && after is { } b && b.CompareTo(a) < 0)
+            return Loc.Tr("{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)", running.Name, running.Id, from, to);
+        if (before is { } c && after is { } d && d.Major != c.Major)
+        {
+            return Loc.Tr("{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)", running.Name,
+                running.Id, from, to);
+        }
+
+        return Loc.Tr("{1} ('{2}') was {3} when this was saved and is {4} now", running.Name, running.Id, from, to);
     }
 
     /// <summary>

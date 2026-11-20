@@ -379,7 +379,9 @@ public sealed partial class MainWindow : Window
         foreach (var row in _mods) row.LanguageChanged();
         if (_modsReady) ShowDependencyProblems();
         ShowReleases();
-        PopulateLanguageOptions(_install);
+
+        // Refilling the box inside its own SelectionChanged throws (Avalonia's selection is still committing), so it waits for the next turn.
+        Dispatcher.UIThread.Post(() => PopulateLanguageOptions(_install));
     }
 
     /// <summary>

@@ -126,8 +126,8 @@ sealed class SquadPanel(PlayerInterface player)
     {
         var limits = SquadLimits?.Invoke();
         b.Text["FactionSizeText"] = $"{player.Session.CurrentSnapshot.CappedHeads}/{limits?.MaxFactionSize ?? 30}";
-        b.Text["NewSquadButton"] = "ADD SQUAD";
-        b.Text["lbSquadsDismiss"] = "DISMISS";
+        b.Text["NewSquadButton"] = Loc.Tr("Add squad").ToUpperInvariant();
+        b.Text["lbSquadsDismiss"] = Loc.Tr("DISMISS");
         b.Actions["NewSquadButton"] = "squad-new";
         b.Disabled.Remove("NewSquadButton");
         if (_portraitDrag is { } drag && Vector2.Distance(drag.From, player.Mouse) >= PlayerInterface.DragThreshold && OverDismiss(player.Mouse))
