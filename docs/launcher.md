@@ -270,6 +270,10 @@ interpolated string, which no translation could match.
   Mods in a dependency cycle are kept at the end, where the original drops them. Mods not in `__mods.list` are new and start enabled.
 - Ctrl+click and Shift+click select several mods; dragging a selected row's handle or Alt+Up / Alt+Down moves them all together,
   keeping their gaps, and stops at the list's ends.
+- The search box hides the rows whose name and author lack its text (ignoring case); hidden rows keep their place in the order, and
+  Select all / Select none tick or untick only the shown rows.
+- With **Regex** ticked the search is a .NET regular expression matched against name and author (ignoring case, 50 ms per name). An
+  invalid pattern rims the box red, says why in the status line and leaves the rows the last valid search showed.
 - Every change to the list (a tick, a drag, a preset, Arrange, From save) and Play write `mods.cfg` (enabled `<name>.mod`, list
   order, CRLF) and `__mods.list` (every listed name, plus old names not on disk). These are the files the original game reads, so the mod list applies to it too.
 - Discovery and the header reads run off the UI thread while the window opens; until they finish (or when they fail) Play and the

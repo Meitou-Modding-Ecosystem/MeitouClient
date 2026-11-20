@@ -2992,3 +2992,27 @@ msgstr "{1}花{3}开币买下了{2}"
 
 msgid "{1} sold {2} for c.{3}"
 msgstr "{1}以{3}开币卖出了{2}"
+
+msgid "Search mods"
+msgstr "搜索模组"
+
+msgid "Show only the mods whose name or author holds this text"
+msgstr "只显示名称或作者包含此文字的模组"
+
+msgid "Tick every mod the search shows"
+msgstr "勾选搜索显示的所有模组"
+
+msgid "Untick every mod the search shows"
+msgstr "取消勾选搜索显示的所有模组"
+
+msgid "No mods match the search."
+msgstr "没有符合搜索的模组。"
+
+msgid "Regex"
+msgstr "正则"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "将搜索内容视为正则表达式（不区分大小写）"
+
+msgid "Invalid regular expression: {1}"
+msgstr "正则表达式无效：{1}"

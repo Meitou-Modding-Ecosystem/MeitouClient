@@ -1562,3 +1562,27 @@ msgstr "{1} é procurado por {2} por {3}: recompensa de c.{4}"
 
 msgid "{1} has been caught committing {2}!"
 msgstr "{1} foi pego cometendo {2}!"
+
+msgid "Search mods"
+msgstr "Pesquisar mods"
+
+msgid "Show only the mods whose name or author holds this text"
+msgstr "Mostrar apenas os mods cujo nome ou autor contém este texto"
+
+msgid "Tick every mod the search shows"
+msgstr "Marcar todos os mods que a pesquisa mostra"
+
+msgid "Untick every mod the search shows"
+msgstr "Desmarcar todos os mods que a pesquisa mostra"
+
+msgid "No mods match the search."
+msgstr "Nenhum mod corresponde à pesquisa."
+
+msgid "Regex"
+msgstr "Regex"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "Ler a pesquisa como uma expressão regular, ignorando maiúsculas e minúsculas"
+
+msgid "Invalid regular expression: {1}"
+msgstr "Expressão regular inválida: {1}"

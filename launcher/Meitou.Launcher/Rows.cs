@@ -128,6 +128,27 @@ public sealed class ModRow(ModInfo mod, bool enabled, CodeModEntry? code = null)
     public bool HasNotes => Mod.HasNativePlugin || Mod.HasCode || Blanks.Count > 0;
 
     /// <summary>
+    /// Whether the row matches the Mods page's search (<see cref="Matches"/>); a hidden row keeps its place in the load order.
+    /// </summary>
+    public bool IsShown
+    {
+        get;
+        set
+        {
+            if (field == value) return;
+            field = value;
+            Changed();
+        }
+    } = true;
+
+    /// <summary>
+    /// Whether <paramref name="test"/> accepts the mod's name or its author.
+    /// </summary>
+    public bool Matches(Predicate<string> test) =>
+        test(Name)
+        || Mod.Header is { Author.Length: > 0 } h && test(h.Author);
+
+    /// <summary>
     /// Whether the mod is ticked; a change raises <see cref="PropertyChanged"/>.
     /// </summary>
     public bool Enabled
