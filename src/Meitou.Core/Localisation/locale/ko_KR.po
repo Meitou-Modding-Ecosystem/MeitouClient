@@ -4618,3 +4618,33 @@ msgstr "캐릭터 능력치"
 
 msgid "-Backpack-"
 msgstr "-배낭-"
+
+msgid "Pig Latin"
+msgstr "피그 라틴"
+
+msgid "Pirate"
+msgstr "해적 말투"
+
+msgid "Morse code"
+msgstr "모스 부호"
+
+msgid "Split stacks"
+msgstr "묶음 나누기"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "묶음을 클릭하면 전부, Shift+클릭은 절반, Ctrl+클릭은 하나를 집고, Shift+Ctrl+클릭은 슬라이더로 몇 개인지 묻습니다. 게임에서는 클릭이 하나를, Shift나 Ctrl이 묶음 전체를 집습니다."
+
+msgid "Talk across shop counters"
+msgstr "상점 계산대 너머로 대화"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "원작 그대로: 계산대 뒤의 상인과 대화하거나 거래하려면 캐릭터가 종종 계산대를 돌아 상인 뒤에 섭니다. Meitou: 계산대의 손님 쪽에서 상인에게 닿을 수 있습니다."
+
+msgid "Split stack"
+msgstr "묶음 나누기"
+
+msgid "Take"
+msgstr "가져가기"
+
+msgid "Take {1} of {2}"
+msgstr "{2}개 중 {1}개 가져가기"

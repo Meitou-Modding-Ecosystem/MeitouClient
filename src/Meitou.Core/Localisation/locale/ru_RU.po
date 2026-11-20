@@ -4631,3 +4631,33 @@ msgstr "Характеристики персонажа"
 
 msgid "-Backpack-"
 msgstr "-Рюкзак-"
+
+msgid "Pig Latin"
+msgstr "Поросячья латынь"
+
+msgid "Pirate"
+msgstr "Пиратский"
+
+msgid "Morse code"
+msgstr "Азбука Морзе"
+
+msgid "Split stacks"
+msgstr "Делить стопки"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Щелчок по стопке берёт её целиком, Shift+щелчок — половину, Ctrl+щелчок — один предмет, а Shift+Ctrl+щелчок спрашивает количество ползунком. В игре щелчок берёт один предмет, а Shift или Ctrl — всю стопку."
+
+msgid "Talk across shop counters"
+msgstr "Говорить через прилавок"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Как в игре: чтобы поговорить или поторговать с продавцом за прилавком, ваш персонаж часто обходит прилавок и встаёт за ним. Meitou: до продавцов можно дотянуться со стороны покупателя."
+
+msgid "Split stack"
+msgstr "Разделить стопку"
+
+msgid "Take"
+msgstr "Взять"
+
+msgid "Take {1} of {2}"
+msgstr "Взять {1} из {2}"

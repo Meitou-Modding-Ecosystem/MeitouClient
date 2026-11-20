@@ -138,6 +138,9 @@ msgstr "Away aracterchay atthay urnedtay itsway eadhay owardtay atwhay itway asw
 msgid "A character's bag window opens with their inventory until you close it with OPEN BAG. In the game every bag stays shut after loading until OPEN BAG is pressed for it."
 msgstr "Away aracter'schay agbay indowway opensway ithway eirthay inventoryway untilway youway oseclay itway ithway OPENWAY AGBAY. Inway ethay amegay everyway agbay aysstay utshay afterway oadinglay untilway OPENWAY AGBAY isway essedpray orfay itway."
 
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Away ickclay onway away ackstay ickspay upway allway ofway itway, Iftshay+ickclay alfhay, Ctrlay+ickclay oneway itemway, andway Iftshay+Ctrlay+ickclay asksway owhay anymay ithway away iderslay. Inway ethay amegay away ickclay ickspay upway oneway itemway andway Iftshay orway Ctrlay ethay olewhay ackstay."
+
 msgid "A double click on a squad member far from the view (or a double tap of their number) flies the camera there in an arc instead of cutting."
 msgstr "Away oubleday ickclay onway away uadsqay embermay arfay omfray ethay iewvay (orway away oubleday aptay ofway eirthay umbernay) iesflay ethay ameracay erethay inway anway arcway insteadway ofway uttingcay."
 
@@ -1068,6 +1071,9 @@ msgstr "Aithfulfay ascadescay"
 
 msgid "Faithful shows the game's logos at startup (Faithful UI); a key or a click skips each one. Meitou shows the menu as soon as the game has loaded."
 msgstr "Aithfulfay owsshay ethay ame'sgay ogoslay atway artupstay (Aithfulfay UIWAY); away eykay orway away ickclay ipsskay eachway oneway. Eitoumay owsshay ethay enumay asway oonsay asway ethay amegay ashay oadedlay."
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Aithfulfay, asway inway ethay amegay: otay alktay orway adetray ithway away opkeepershay ehindbay away ountercay, yourway aracterchay oftenway alksway oundray ethay ountercay otay andstay ehindbay emthay. Eitoumay: opkeepersshay ancay ebay eachedray omfray ethay ustomer'scay idesay ofway ethay ountercay."
 
 msgid "Faithful, as in the game: when the camera comes to places that are not loaded yet (a jump to a squad far away), the game pauses and shows Loading... until they are. Meitou: the game runs on while they load."
 msgstr "Aithfulfay, asway inway ethay amegay: enwhay ethay ameracay omescay otay acesplay atthay areway otnay oadedlay yetway (away umpjay otay away uadsqay arfay awayway), ethay amegay ausespay andway owsshay Oadinglay... untilway eythay areway. Eitoumay: ethay amegay unsray onway ilewhay eythay oadlay."
@@ -2150,6 +2156,9 @@ msgstr "Odsmay: {1} oadedlay"
 msgid "Mods: {1} of {2} loaded"
 msgstr "Odsmay: {1} ofway {2} oadedlay"
 
+msgid "Morse code"
+msgstr "Orsemay odecay"
+
 msgid "Move the camera backward."
 msgstr "Ovemay ethay ameracay ackwardbay."
 
@@ -2518,6 +2527,12 @@ msgstr "Icturepay izesay"
 
 msgid "Pictures"
 msgstr "Icturespay"
+
+msgid "Pig Latin"
+msgstr "Igpay Atinlay"
+
+msgid "Pirate"
+msgstr "Iratepay"
 
 msgid "Place here"
 msgstr "Aceplay erehay"
@@ -3176,6 +3191,12 @@ msgstr "Ashsplay oodblay onway allsway, uildingsbay andway ocksray asway ellway 
 msgid "Splash screens"
 msgstr "Ashsplay eensscray"
 
+msgid "Split stack"
+msgstr "Itsplay ackstay"
+
+msgid "Split stacks"
+msgstr "Itsplay acksstay"
+
 msgid "Squad XP"
 msgstr "Uadsqay XPAY"
 
@@ -3302,6 +3323,9 @@ msgstr "ANKTHAY YOUWAY"
 msgid "TRADER"
 msgstr "ADERTRAY"
 
+msgid "Take"
+msgstr "Aketay"
+
 msgid "Take picture"
 msgstr "Aketay icturepay"
 
@@ -3310,6 +3334,12 @@ msgstr "Aketay ethay odmay istlay andway oadlay orderway away avesay asway adema
 
 msgid "Take the mods and their load order from this save:"
 msgstr "Aketay ethay odsmay andway eirthay oadlay orderway omfray isthay avesay:"
+
+msgid "Take {1} of {2}"
+msgstr "Aketay {1} ofway {2}"
+
+msgid "Talk across shop counters"
+msgstr "Alktay acrossway opshay ounterscay"
 
 msgid "Tech level:"
 msgstr "Echtay evellay:"

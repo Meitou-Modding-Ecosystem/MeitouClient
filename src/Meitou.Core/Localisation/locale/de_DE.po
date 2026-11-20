@@ -4622,3 +4622,33 @@ msgstr "Figurenwerte"
 
 msgid "-Backpack-"
 msgstr "-Rucksack-"
+
+msgid "Pig Latin"
+msgstr "Schweinelatein"
+
+msgid "Pirate"
+msgstr "Piratisch"
+
+msgid "Morse code"
+msgstr "Morsecode"
+
+msgid "Split stacks"
+msgstr "Stapel teilen"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Ein Klick auf einen Stapel nimmt ihn ganz auf, Umschalt+Klick die Hälfte, Strg+Klick einen Gegenstand, und Umschalt+Strg+Klick fragt mit einem Schieberegler, wie viele. Im Spiel nimmt ein Klick einen Gegenstand auf und Umschalt oder Strg den ganzen Stapel."
+
+msgid "Talk across shop counters"
+msgstr "Über Ladentheken sprechen"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Originalgetreu, wie im Spiel: Um mit einem Händler hinter einer Theke zu sprechen oder zu handeln, läuft deine Figur oft um die Theke herum, um sich hinter ihn zu stellen. Meitou: Händler sind von der Kundenseite der Theke aus erreichbar."
+
+msgid "Split stack"
+msgstr "Stapel teilen"
+
+msgid "Take"
+msgstr "Nehmen"
+
+msgid "Take {1} of {2}"
+msgstr "{1} von {2} nehmen"

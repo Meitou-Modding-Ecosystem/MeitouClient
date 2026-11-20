@@ -4622,3 +4622,33 @@ msgstr "Statistiche del personaggio"
 
 msgid "-Backpack-"
 msgstr "-Zaino-"
+
+msgid "Pig Latin"
+msgstr "Latino maiale"
+
+msgid "Pirate"
+msgstr "Piratesco"
+
+msgid "Morse code"
+msgstr "Codice Morse"
+
+msgid "Split stacks"
+msgstr "Dividi pile"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Un clic su una pila la prende tutta, Maiusc+clic metà, Ctrl+clic un oggetto, e Maiusc+Ctrl+clic chiede quanti con un cursore. Nel gioco un clic prende un oggetto e Maiusc o Ctrl l'intera pila."
+
+msgid "Talk across shop counters"
+msgstr "Parla oltre i banconi"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Fedele, come nel gioco: per parlare o commerciare con un negoziante dietro un bancone, il tuo personaggio spesso gira intorno al bancone per mettersi dietro di lui. Meitou: i negozianti si raggiungono dal lato cliente del bancone."
+
+msgid "Split stack"
+msgstr "Dividi pila"
+
+msgid "Take"
+msgstr "Prendi"
+
+msgid "Take {1} of {2}"
+msgstr "Prendi {1} di {2}"

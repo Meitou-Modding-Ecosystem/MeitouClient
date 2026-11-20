@@ -4618,3 +4618,33 @@ msgstr "キャラクターステータス"
 
 msgid "-Backpack-"
 msgstr "-バックパック-"
+
+msgid "Pig Latin"
+msgstr "ピッグ・ラテン"
+
+msgid "Pirate"
+msgstr "海賊語"
+
+msgid "Morse code"
+msgstr "モールス信号"
+
+msgid "Split stacks"
+msgstr "スタックを分割"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "スタックをクリックすると全部、Shift+クリックで半分、Ctrl+クリックで 1 個を取り、Shift+Ctrl+クリックではスライダーで個数を尋ねます。ゲームではクリックで 1 個、Shift か Ctrl でスタック全体を取ります。"
+
+msgid "Talk across shop counters"
+msgstr "店のカウンター越しに話す"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "忠実（ゲームどおり）：カウンターの奥の店主と話したり取引したりするとき、キャラクターはよくカウンターを回り込んで店主の後ろに立ちます。Meitou：店主にはカウンターの客側から話しかけられます。"
+
+msgid "Split stack"
+msgstr "スタックを分割"
+
+msgid "Take"
+msgstr "取る"
+
+msgid "Take {1} of {2}"
+msgstr "{2} 個中 {1} 個を取る"
