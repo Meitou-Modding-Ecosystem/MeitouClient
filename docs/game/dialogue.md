@@ -293,6 +293,13 @@ NPC answers an event's lines like any other; the rule is also in [Arrival banter
   radius +0x364 x a scale) + 7 x 3 (7 x 2 when the target is a ragdoll), that reach **doubled when the talker is not moving**, and
   |dy| < 10 (< 35 on the same floor); else within 7 x 1.6 = 11.2 on the same floor or |dy| < 35. Meitou (`DialogueSystem.InTalkRange`):
   the target's scaled radius (`CombatSteering.Radius`: footprint x body scale) + 21, doubled once stopped, |dy| < 35; also for an NPC walking up to talk (task 102, engine choice).
+- **Counter reach** (Meitou only, Gameplay setting "Talk across shop counters", `World.CounterTalk`, on): a target whose AI goal is row 20
+  (standing at a shopkeeper node) is reached with 26 instead of 21 (doubled once stopped as above), so the customer talks and trades from the
+  counter's front. **Observed** (measured) from the base game's `interiors.level` layouts (gamedata.base, Newwworld, rebirth) and the counters' PhysX
+  boxes: 107 distinct shopkeeper nodes within the length of a `Shop Counter` (box half extents 15.8 long x 5.74 deep, centred) stand a median
+  12.4 behind its centre line (75% within 15.3, 90% within 20.0). A walker of footprint 4 against the counter's front then needs a reach beyond
+  the target's radius of median 18.1 (75%: 21.0, 90%: 25.7); one that passes only the front corner while rounding the counter's end median 22.2
+  (75%: 26.0, 90%: 28.9). 26 covers 92% of the nodes from the front and 76% from the corner (21: 75% and 41%).
 - **Walking to a moving NPC** (**Observed**: the player-reported vanilla behaviour of issue #136, the chase of a moving pick-up target; the task-12 walk's own re-aim code is not read): the talker follows the NPC's current position until in range. Meitou (`WalkUp`, shared by the Talk and Trade walks): every 0.5 s the Move order is renewed when the NPC is over 12 from the walk's goal or the walk has ended short of it; the NPC is kept still only when idle or wandering (`Hold`), so a walking NPC is chased; a talker found on any other task (another order, a fight) drops the approach (engine choice). Once the conversation opens, an NPC on its AI's walk stops and walks on after (`TaskStart.OnAiWalk`). The give-up after `ApproachSeconds` (60 s) without the talker moving on its walk (a long walk is not cut short, one stuck in place or re-aimed in vain is) is an engine choice.
 
 **Saying a line** (`FUN_1406839a0`): in a player conversation a line with **no children ends the conversation at once** without being

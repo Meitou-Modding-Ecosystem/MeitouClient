@@ -800,6 +800,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
         host.Session.World.CagedAnimalFix = host.Config.FixCagedAnimals;
         host.Session.World.BagSearchFix = host.Config.FixBagSearch;
         host.Session.World.AnimalTargetFix = host.Config.FixAnimalTarget;
+        host.Session.World.CounterTalk = host.Config.CounterTalk;
         host.Session.World.TakeIntoBackpack = host.Config.TakeIntoBackpack;
         host.Session.World.ActionLog = host.ActionLogs.Log;
         host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed);
@@ -1338,6 +1339,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
             AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
+            CounterTalkChanged = on => host.Session.World.CounterTalk = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TutorialsChanged = on => { if (host.Saves.Tutorials is { } t) t.Enabled = on; },
             ResetTutorials = () => host.Saves.Tutorials?.Reset(),

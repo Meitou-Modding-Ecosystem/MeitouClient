@@ -518,6 +518,7 @@ sealed class GameLoop(GameHost host)
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
             AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
+            CounterTalkChanged = on => host.Session.World.CounterTalk = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TimeSpeedsChanged = () => host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed),
             AnimalsPickUpChanged = on => EachSystem<Simulation.Player.PlayerSystem>(players => players.AnimalsPickUp = on),
