@@ -79,10 +79,10 @@ public static class Loc
     public static string Tr(string english, params object?[] args) => Format(Tr(english), args);
 
     /// <summary>
-    /// Layout captions Kenshi's catalog leaves English (the pause menu's "EXIT GAME", Kenshi_MainMenuPopupPanel.layout): listed so the template
-    /// carries them and Meitou's catalogs translate them, which <see cref="TrCaption"/> finds ignoring case.
+    /// Layout captions Kenshi's catalog leaves English (the pause menu's "EXIT GAME", the stats window's title, the pack animal window's
+    /// "-BACKPACK-"): listed so the template carries them and Meitou's catalogs translate them, which <see cref="TrCaption"/> finds ignoring case.
     /// </summary>
-    internal static readonly string[] UntranslatedLayoutCaptions = [Loc.Mark("Exit Game")];
+    internal static readonly string[] UntranslatedLayoutCaptions = [Loc.Mark("Exit Game"), Loc.Mark("Character Stats"), Loc.Mark("-Backpack-")];
 
     /// <summary>
     /// A UI layout's caption in the active language (<c>docs/native-ui.md</c>): the exact <c>msgid</c>, else the same text ignoring case — the
