@@ -434,6 +434,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     public Action<bool>? BagSearchChanged { get; init; }
 
     /// <summary>
+    /// Applies the animal target fix (<see cref="UserConfig.FixAnimalTarget"/>).
+    /// </summary>
+    public Action<bool>? AnimalTargetChanged { get; init; }
+
+    /// <summary>
     /// Called when an off-screen switch changes (the config holds the new values).
     /// </summary>
     public Action? OffscreenChanged { get; init; }
@@ -1522,6 +1527,8 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         BenchFacingChanged?.Invoke(true);
         Config.FixBagSearch = true;
         BagSearchChanged?.Invoke(true);
+        Config.FixAnimalTarget = true;
+        AnimalTargetChanged?.Invoke(true);
         OffscreenChanged?.Invoke();
         Config.Audio = new();
         AudioChanged?.Invoke();

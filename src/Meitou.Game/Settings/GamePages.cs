@@ -583,6 +583,11 @@ sealed class GamePages(SettingsMenu menu)
             + "confiscating stolen goods inside the worn backpack. The game misses those bags, so goods hidden in them are never found.",
             Toggle: new("Bags in the inventory", () => menu.Config.FixBagSearch,
                 v => { menu.Config.FixBagSearch = v; menu.BagSearchChanged?.Invoke(v); }, Remaster: true, OnOff: true)));
+        result.Add(new("Animals stay out of talks",
+            "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. "
+            + "In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing.",
+            Toggle: new("Animals stay out of talks", () => menu.Config.FixAnimalTarget,
+                v => { menu.Config.FixAnimalTarget = v; menu.AnimalTargetChanged?.Invoke(v); }, Remaster: true, OnOff: true)));
         result.Insert(0, menu.PageSidesEntry(result, "All fixes", "Every bug on this page as the game ships it, or every fix.", "fix"));
     }
 
