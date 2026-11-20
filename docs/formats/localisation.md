@@ -58,7 +58,7 @@ Addresses are `kenshi_x64.exe` (1.0.68).
   campaigns, construction, fixtures, discoveries, crime names ([economy 11.2](../game/economy.md#112-how-a-bounty-is-gained)), crimes, arrests, bail,
   locks, shackles, trade; the host's save/load notices). The simulation keeps its English markers (the dialogue's engine `[Leave]` choice,
   matched by that text) and translates only the text it publishes or posts; the world hash and saves never contain translated text. Layout
-  captions the original leaves English stay English.
+  captions the original leaves English (the pause menu's "EXIT GAME") get Meitou's entry when listed in `Loc.UntranslatedLayoutCaptions`.
 - **Meitou's own texts** (`MeitouTranslations`): the launcher, the title menu (`UpperTr`) and the settings menu's drawn captions, hints and choices
   are not in Kenshi's catalog, so after it `Loc.Tr` looks them up in a second gettext catalog: `src/Meitou.Core/Localisation/locale/<code>.po`
   (embedded; one per Kenshi language: `de_DE`, `es_ES`, `fr_FR`, `it_IT`, `ja_JP`, `ko_KR`, `pt_BR`, `ru_RU`, `zh_CN`). Over it go `locale/<code>/meitou.po` of the Kenshi folder, then of each loaded mod in load order, a

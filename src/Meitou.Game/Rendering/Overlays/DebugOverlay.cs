@@ -21,9 +21,14 @@ public sealed unsafe class DebugOverlay : IDisposable
     #region Setup
 
     /// <summary>
+    /// The first code point past the stb faces' baked range: text with only lower code points draws in every face.
+    /// </summary>
+    internal const int LastBakedChar = 0xB8;
+
+    /// <summary>
     /// The baked characters: printable ASCII and Latin-1 up to the middle dot (U+00B7), which the Meitou UI joins details with.
     /// </summary>
-    const int FirstChar = 32, CharCount = 0xB8 - FirstChar;
+    const int FirstChar = 32, CharCount = LastBakedChar - FirstChar;
 
     /// <summary>
     /// The size the glyphs are baked at (16 px; a display face is baked larger so it stays sharp drawn big).
