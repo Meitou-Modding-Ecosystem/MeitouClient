@@ -1224,7 +1224,7 @@ one starts with the order's provenance. The chain's rows and states are in [AI t
   (`DialogueSystem.FireEvent`, a bubble now) and the data decides ([economy 11.7](game/economy.md#117-arrest)): DA 29 arrests (`ArrestFromDialogue`,
   below; an animal target, or a guard outside his town, is attacked instead: `ArrestSystem.CapturesInTown`), "Small bounty" sends the leader to talk (DA 2) and its interrupt opens the fine window (DA 8 + 49 pay and clear; the rest DA 29), others
   say nothing more. The target is then left alone for 60 game s (`SpotRetrySeconds`, engine), longer while the guard still talks or walks up to talk (order 102 at
-  his queue's front); paying ends it.
+  his queue's front); paying ends it. DA 49 also has the speaker forgive the target (engine choice, `DialogueSystem.ClearBounties`): the speaker's faction's squads drop their short-term TEMP_ENEMY, criminal and aggressor tags on it, so a guard tag left by an arrest attempt (and saved) does not start a fight after the fine is paid. Observed 2026-11-20 in a traced run of a player save: without it, the guards fought the squad, and every police blow booked a squad member for Assault.
 - **Arrest orders** (DA 29, `ArrestSystem.OrderArrest`): in his own town (the town his resident squad belongs to, `Ai.AiSystem.TownAt` by its radius; engine stand-in without
   town data: within 2 x the squad's home radius of its centre) a non-animal target gets the guard 240 (his queue cleared), then 112 queued behind it; otherwise 4 Attacking
   (cleared; refused with "My arm is broken!" when no arm works), and his free squad mates near the target attack it too (engine reading). Without dialogue events (e.g.
