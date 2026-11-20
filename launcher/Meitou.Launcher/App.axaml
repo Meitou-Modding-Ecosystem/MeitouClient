@@ -443,6 +443,11 @@
     <Style Selector="TextBox:pointerover, TextBox:focus">
       <Setter Property="Foreground" Value="{StaticResource PaperLight}" />
     </Style>
+    <!-- A field whose text cannot be used (the mod search's invalid regular expression): a red rim, hovered or focused too -->
+    <Style Selector="TextBox.invalid /template/ Border#PART_BorderElement, TextBox.invalid:pointerover /template/ Border#PART_BorderElement, TextBox.invalid:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="#b0503c" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <Style Selector="ComboBox">
       <Setter Property="Background" Value="{StaticResource PlateButton}" />
       <Setter Property="Foreground" Value="{StaticResource Main}" />
