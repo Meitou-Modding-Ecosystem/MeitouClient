@@ -5060,3 +5060,9 @@ msgstr "Esta máquina precisa de eletricidade para funcionar. Ou você precisa c
 
 msgid "Exit Game"
 msgstr "Sair do jogo"
+
+msgid "Character Stats"
+msgstr "Atributos do personagem"
+
+msgid "-Backpack-"
+msgstr "-Mochila-"

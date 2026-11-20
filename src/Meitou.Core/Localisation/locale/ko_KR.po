@@ -4603,3 +4603,18 @@ msgstr "이 기계가 작동하려면 전기가 필요합니다. 발전기를 �
 
 msgid "Exit Game"
 msgstr "게임 종료"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "검색어를 정규식으로 읽기(대소문자 무시)"
+
+msgid "Regex"
+msgstr "정규식"
+
+msgid "Invalid regular expression: {1}"
+msgstr "잘못된 정규식: {1}"
+
+msgid "Character Stats"
+msgstr "캐릭터 능력치"
+
+msgid "-Backpack-"
+msgstr "-배낭-"

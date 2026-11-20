@@ -4607,3 +4607,18 @@ msgstr "Esta máquina necesita electricidad para funcionar. O necesitas construi
 
 msgid "Exit Game"
 msgstr "Salir del juego"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "Leer la búsqueda como expresión regular, sin distinguir mayúsculas"
+
+msgid "Regex"
+msgstr "Regex"
+
+msgid "Invalid regular expression: {1}"
+msgstr "Expresión regular no válida: {1}"
+
+msgid "Character Stats"
+msgstr "Estadísticas del personaje"
+
+msgid "-Backpack-"
+msgstr "-Mochila-"

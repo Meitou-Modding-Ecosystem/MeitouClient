@@ -4616,3 +4616,18 @@ msgstr "Этой машине для работы нужно электриче�
 
 msgid "Exit Game"
 msgstr "Выйти из игры"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "Читать поиск как регулярное выражение, без учёта регистра"
+
+msgid "Regex"
+msgstr "Regex"
+
+msgid "Invalid regular expression: {1}"
+msgstr "Неверное регулярное выражение: {1}"
+
+msgid "Character Stats"
+msgstr "Характеристики персонажа"
+
+msgid "-Backpack-"
+msgstr "-Рюкзак-"

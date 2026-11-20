@@ -4607,3 +4607,18 @@ msgstr "Diese Maschine braucht Strom, um zu funktionieren. Du musst entweder Gen
 
 msgid "Exit Game"
 msgstr "Spiel beenden"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "Die Suche als regulären Ausdruck lesen, ohne Groß-/Kleinschreibung"
+
+msgid "Regex"
+msgstr "Regex"
+
+msgid "Invalid regular expression: {1}"
+msgstr "Ungültiger regulärer Ausdruck: {1}"
+
+msgid "Character Stats"
+msgstr "Figurenwerte"
+
+msgid "-Backpack-"
+msgstr "-Rucksack-"

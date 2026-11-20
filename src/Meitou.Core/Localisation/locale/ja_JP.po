@@ -4603,3 +4603,18 @@ msgstr "この機械を動かすには電気が必要です。発電機を建て
 
 msgid "Exit Game"
 msgstr "ゲーム終了"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "検索を正規表現として扱う（大文字小文字を区別しない）"
+
+msgid "Regex"
+msgstr "正規表現"
+
+msgid "Invalid regular expression: {1}"
+msgstr "無効な正規表現：{1}"
+
+msgid "Character Stats"
+msgstr "キャラクターステータス"
+
+msgid "-Backpack-"
+msgstr "-バックパック-"

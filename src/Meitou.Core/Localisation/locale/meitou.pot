@@ -47,6 +47,10 @@ msgstr ""
 msgid "-Avg. Price"
 msgstr ""
 
+#: src/Meitou.Core/Localisation/Loc.cs
+msgid "-Backpack-"
+msgstr ""
+
 #: src/Meitou.Game/Ui/TooltipRuntime.cs
 msgid "-Combat skills bonus"
 msgstr ""
@@ -237,10 +241,6 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "A wounded prisoner on a pole or in a cage keeps the pole's or cage's pose. In the game it clutches its wounds there instead."
-msgstr ""
-
-#: src/Meitou.Game/Ui/SquadPanel.cs
-msgid "ADD SQUAD"
 msgstr ""
 
 #: src/Meitou.Game/Ui/TooltipRuntime.cs
@@ -529,7 +529,7 @@ msgstr ""
 msgid "Average minutes of silence between pieces of biome music."
 msgstr ""
 
-#: src/Meitou.Game/Ui/ScreenRouter.cs src/Meitou.Game/Ui/TradeWindows.cs
+#: src/Meitou.Game/Ui/ScreenRouter.cs
 msgid "BACKPACK"
 msgstr ""
 
@@ -779,6 +779,10 @@ msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoMode.cs src/Meitou.Game/Settings/GamePages.cs src/Meitou.Game/Ui/WorldMap.cs
 msgid "Character"
+msgstr ""
+
+#: src/Meitou.Core/Localisation/Loc.cs
+msgid "Character Stats"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/Settings/SettingHints.cs
@@ -2217,6 +2221,10 @@ msgstr ""
 msgid "Internal rendering resolution relative to the window."
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "Invalid regular expression: {1}"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "It supports me in the development of Meitou. ko-fi.com/martinvlcek"
 msgstr ""
@@ -3573,6 +3581,10 @@ msgstr ""
 msgid "Reach"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Read the search as a regular expression, ignoring case"
+msgstr ""
+
 #: src/Meitou.Game/Ui/ProductionWindows.cs src/Meitou.Game/Ui/TooltipRuntime.cs
 msgid "Ready to harvest"
 msgstr ""
@@ -3603,6 +3615,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "Refresh"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Regex"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml

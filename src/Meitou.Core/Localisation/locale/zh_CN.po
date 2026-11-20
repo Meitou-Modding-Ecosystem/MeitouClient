@@ -5468,3 +5468,9 @@ msgstr "这台机器需要电力才能运转。你要么需要建造发电机，
 
 msgid "Exit Game"
 msgstr "退出游戏"
+
+msgid "Character Stats"
+msgstr "角色属性"
+
+msgid "-Backpack-"
+msgstr "-背包-"
