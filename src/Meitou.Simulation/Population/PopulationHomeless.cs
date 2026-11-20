@@ -200,7 +200,7 @@ public sealed partial class PopulationSystem
     }
 
     /// <summary>
-    /// One squad's patrol (<c>Task_Patrol</c>): when its leader acts a PATROL goal that is not under a mission town (a trader on its way, an
+    /// One squad's patrol (<c>Task_Patrol</c>): when its leader acts a PATROL goal or order (<see cref="Patrols"/>) that is not under a mission town (a trader on its way, an
     /// assault or occupation roaming the town it took), it draws the next point once it has reached the last
     /// (<see cref="PatrolPoint"/>) and walks to it. Every squad does, homeless or not: the picker's only caller is the patrol task
     /// (<c>FUN_1408fd6c0</c>, <c>FUN_1408fe0d0</c>, <b>Verified</b>).
@@ -208,7 +208,7 @@ public sealed partial class PopulationSystem
     void PatrolStep(World world, Squad squad, int slot, int group, ZoneCoordinate zone)
     {
         var table = world.Characters;
-        if (table.Cold(slot)?.Ai is not { Goal.Task.Type: TaskType.Patrol } || squad.Ai is { Destination.IsNone: false }) return;
+        if (!Patrols(table.Cold(slot)) || squad.Ai is { Destination.IsNone: false }) return;
         _patrolSeen.Add(squad.Id);
         var at = new Vector2(table.Previous[slot].Position.X, table.Previous[slot].Position.Z);
         _homelessPatrols.TryGetValue(squad.Id, out var patrol);
@@ -218,6 +218,12 @@ public sealed partial class PopulationSystem
         squad.HomeCentre = next.Point;
         squad.HomeRadius = PointRadius;
     }
+
+    /// <summary>
+    /// Whether the leader acts a PATROL goal, or runs order 22 (a squad that moved out of a bought building, <see cref="Ai.EngineOrders"/>).
+    /// </summary>
+    static bool Patrols(CharacterCold? leader) =>
+        leader?.Ai is { Goal.Task.Type: TaskType.Patrol } || leader?.Running is { Source: TaskSource.Order, Row: TaskType.Patrol };
 
     /// <summary>
     /// The loaded squads outside the homeless sectors (a town's, a platoon's) whose leader acts a PATROL goal walk from sector to sector as well
@@ -435,7 +441,7 @@ public sealed partial class PopulationSystem
         var intactIn = new Dictionary<ZoneCoordinate, int>();
         var sectors = new List<int>();
         var ownTown = new List<bool>();
-        var towns = TownZones();
+        var towns = TownZones(_data);
         HashSet<int>? persistent = null;
         float target = 0, load = 0;
         var roaming = new Dictionary<ZoneCoordinate, float>();
@@ -592,10 +598,10 @@ public sealed partial class PopulationSystem
     /// position's zone, for every town type but Ruins and points of interest (a nest marker sets it); whether <c>setup</c> runs for the Null type is
     /// Unknown, so those are left out. Built afresh on each refill pass, so it follows town overrides (<see cref="TownSite.Replacement"/>).
     /// </summary>
-    HashSet<ZoneCoordinate> TownZones()
+    public static HashSet<ZoneCoordinate> TownZones(PopulationData data)
     {
         HashSet<ZoneCoordinate> zones = [];
-        foreach (var s in _data.Sites)
+        foreach (var s in data.Sites)
         {
             if (s.Town.Type is TownType.Ruins or TownType.PointOfInterest or TownType.Null) continue;
             if (s.Coverage.Count > 0) zones.UnionWith(s.Coverage);

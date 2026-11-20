@@ -7,8 +7,9 @@ namespace Meitou.Simulation.Population;
 
 /// <summary>
 /// The population's state for towns that change version away from their zone's load (docs/simulation.md "Town overrides"): each TOWN's
-/// <c>override town</c> entries read once, the answers of the world states they test, the towns code mods hold, the towns that need no new look
-/// until an answer changes, and the versions each town held since then (so a town is not switched back and forth at every look).
+/// <c>override town</c> entries read once, each town's answers of the world states its entries test, the towns code mods hold, the towns that need
+/// no new look until one of their answers changes, and the versions each town held since then (so a town is not switched back and forth at every
+/// look).
 /// </summary>
 sealed class TownOverrides(GameDatabase db)
 {
@@ -26,17 +27,17 @@ sealed class TownOverrides(GameDatabase db)
 
     /// <summary>
     /// The town's winning <c>override town</c> entry now (docs/game/factions-squads-towns.md "Town overrides"): of the entries whose every
-    /// <c>world state</c> holds, weighted by how many they have (none: never), other than the TOWN in place, the heaviest, the first of equals;
-    /// null when none qualifies.
+    /// <c>world state</c> holds, weighted by how many they have (none: never), other than the replacement in place, the heaviest, the first of
+    /// equals; null when none qualifies. An unreplaced town whose list names its own TOWN may take it, which then is the replacement in place.
     /// </summary>
     public TownData? Choose(TownSite site, IWorldStates states)
     {
-        string current = PopulationSystem.TownIdOf(site);
+        string? inPlace = site.Replacement?.Id;
         TownData? best = null;
         int weight = 0;
-        foreach (var entry in EntriesOf(current, site.Town.OverrideTown))
+        foreach (var entry in EntriesOf(PopulationSystem.TownIdOf(site), site.Town.OverrideTown))
         {
-            if (entry.Town.Id == current || entry.States.Length <= weight) continue;
+            if (entry.Town.Id == inPlace || entry.States.Length <= weight) continue;
             if (!entry.States.All(w => IWorldStates.Passes(states, db, w.Id, w.V0))) continue;
 
             (best, weight) = (entry.Town, entry.States.Length);
@@ -52,7 +53,12 @@ sealed class TownOverrides(GameDatabase db)
     {
         if (_entries.TryGetValue(town, out var entries)) return entries;
 
-        entries = [.. links.Select(l => db.Find(l.Id)).OfType<GameRecord>().Where(r => r.Type == FcsRecordType.Town).Select(EntryOf)];
+        entries = links
+            .Select(l => db.Find(l.Id))
+            .OfType<GameRecord>()
+            .Where(r => r.Type == FcsRecordType.Town)
+            .Select(EntryOf)
+            .ToArray();
         _entries[town] = entries;
         return entries;
     }
@@ -75,38 +81,49 @@ sealed class TownOverrides(GameDatabase db)
     #region Answers
 
     /// <summary>
-    /// The hash of the answers of every state an entry tests, as last computed; null before the first look.
+    /// What a town's answers cover: the TOWNs whose entries it can reach (from its own record and the version in its place), the WORLD_EVENT_STATEs
+    /// they test in ordinal order, and the hash of those states' answers as last taken.
     /// </summary>
-    long? _answers;
+    sealed class SiteAnswers
+    {
+        /// <summary>
+        /// The TOWNs covered, by string id.
+        /// </summary>
+        public required HashSet<string> Towns { get; init; }
+        /// <summary>
+        /// The states their entries test, in ordinal order.
+        /// </summary>
+        public required string[] Tested { get; init; }
+        /// <summary>
+        /// The hash of the tested states' answers as last taken.
+        /// </summary>
+        public long Hash { get; set; }
+    }
+
     /// <summary>
-    /// Every WORLD_EVENT_STATE an entry of a town's own TOWN, or of a TOWN reachable from it through the lists, tests, in ordinal order.
+    /// Each town's answers, by site index, from its first look.
     /// </summary>
-    string[]? _tested;
+    readonly Dictionary<int, SiteAnswers> _answers = [];
     /// <summary>
-    /// The towns looked at since the answers last changed that had no entry to take (looked at again only once their TOWN changes).
+    /// The towns looked at since their answers last changed that had no entry to take (looked at again only once their TOWN changes).
     /// </summary>
     readonly HashSet<int> _settled = [];
     /// <summary>
-    /// For each town changed off screen, the versions it held since the answers last changed ("": its own record).
+    /// For each town changed off screen, the versions it held since its answers last changed ("": its own record).
     /// </summary>
     readonly Dictionary<int, HashSet<string>> _visited = [];
 
     /// <summary>
-    /// Takes the world states' answers now: when an answer of a state an entry tests changed, every town is looked at again and may move again,
-    /// also back to a version it held.
+    /// Takes the world states' answers now: a town one of whose own tested states changed answer is looked at again and may move again, also back
+    /// to a version it held; the other towns keep what they had.
     /// </summary>
     public void Answers(IWorldStates states, IReadOnlyList<TownSite> sites)
     {
-        long answers = AnswersHash(states, sites);
-        if (answers == _answers) return;
-
-        _answers = answers;
-        _settled.Clear();
-        _visited.Clear();
+        foreach (var site in sites) TakeAnswers(site, states);
     }
 
     /// <summary>
-    /// Whether <paramref name="site"/> had no entry to take since the answers and its TOWN last changed.
+    /// Whether <paramref name="site"/> had no entry to take since its answers and its TOWN last changed.
     /// </summary>
     public bool IsSettled(int site) => _settled.Contains(site);
 
@@ -121,7 +138,7 @@ sealed class TownOverrides(GameDatabase db)
     public void Changed(int site) => _settled.Remove(site);
 
     /// <summary>
-    /// Whether <paramref name="site"/> already held <paramref name="version"/> ("": its own record) since the answers last changed: it would be
+    /// Whether <paramref name="site"/> already held <paramref name="version"/> ("": its own record) since its answers last changed: it would be
     /// switched back.
     /// </summary>
     public bool Revisits(int site, string version) => _visited.TryGetValue(site, out var held) && held.Contains(version);
@@ -137,24 +154,58 @@ sealed class TownOverrides(GameDatabase db)
     }
 
     /// <summary>
-    /// The hash of the answer of every tested state (<see cref="_tested"/>), in their order.
+    /// One town's answers: when one of its tested states changed answer, it is no longer settled and forgets the versions it held. A version in its
+    /// place that its lists do not reach (a mod's choice, a save's) widens what it covers, whose answers are taken as they are now.
     /// </summary>
-    long AnswersHash(IWorldStates states, IReadOnlyList<TownSite> sites)
+    void TakeAnswers(TownSite site, IWorldStates states)
     {
-        _tested ??= Tested(sites);
+        bool known = _answers.TryGetValue(site.Index, out var answers);
+        if (known && Moved(answers!, states))
+        {
+            _settled.Remove(site.Index);
+            _visited.Remove(site.Index);
+        }
+
+        if (known && answers!.Towns.Contains(PopulationSystem.TownIdOf(site))) return;
+
+        answers = Cover(site);
+        answers.Hash = HashOf(answers.Tested, states);
+        _answers[site.Index] = answers;
+    }
+
+    /// <summary>
+    /// Whether the answers of <paramref name="answers"/>' states changed since they were last taken; they are taken now.
+    /// </summary>
+    static bool Moved(SiteAnswers answers, IWorldStates states)
+    {
+        long hash = HashOf(answers.Tested, states);
+        if (hash == answers.Hash) return false;
+
+        answers.Hash = hash;
+        return true;
+    }
+
+    /// <summary>
+    /// The hash of the answer of each of <paramref name="tested"/>, in their order.
+    /// </summary>
+    static long HashOf(string[] tested, IWorldStates states)
+    {
         var h = new StateHasher();
-        foreach (string id in _tested) h.Add(states.IsTrue(id));
+        foreach (string id in tested) h.Add(states.IsTrue(id));
         return (long)h.Value;
     }
 
     /// <summary>
-    /// The states tested by the entries of every TOWN a town can be: its own, and those its lists lead to.
+    /// The TOWNs a town can be from its own record and the version in its place, through their lists, and the states their entries test.
     /// </summary>
-    string[] Tested(IReadOnlyList<TownSite> sites)
+    SiteAnswers Cover(TownSite site)
     {
         var tested = new SortedSet<string>(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var open = new Queue<TownData>(sites.Select(s => s.Record));
+        var open = new Queue<TownData>();
+        open.Enqueue(site.Record);
+        if (site.Replacement is { } replacement) open.Enqueue(replacement);
+
         while (open.TryDequeue(out var town))
         {
             if (!seen.Add(town.Id)) continue;
@@ -166,7 +217,7 @@ sealed class TownOverrides(GameDatabase db)
             }
         }
 
-        return [.. tested];
+        return new SiteAnswers { Towns = seen, Tested = [.. tested] };
     }
 
     #endregion

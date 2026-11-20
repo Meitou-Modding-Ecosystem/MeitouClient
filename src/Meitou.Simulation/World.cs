@@ -259,7 +259,8 @@ public sealed partial class World : IDisposable
             if (SimulationExtensions.FactoryOf((ITickSystem)owner) is { } made) Tasks.RegisterMod(owner, made.Owner, ClaimedTasks());
             else owner.RegisterTasks(Tasks);
         }
-        foreach (var owner in this._systems.OfType<IDecisionOwner>()) owner.RegisterSources(Decisions);
+        foreach (var owner in this._systems.OfType<IDecisionOwner>())
+            Decisions.RegisterFrom(owner, SimulationExtensions.FactoryOf((ITickSystem)owner)?.Owner);
         for (int k = 0; k < this._systems.Count; k++) if (this._systems[k] is Ai.AiSystem ai) ai.BindModGoals(this._systems);
         for (int k = 0; k < this._systems.Count; k++) if (DecidesAfter(this._systems[k])) _decideAfter = k;
 
@@ -531,6 +532,11 @@ public sealed partial class World : IDisposable
     /// </summary>
     public Items.ItemSlots ItemSlots { get; } = new();
     /// <summary>
+    /// The writer of the houses' interiors into a save, with the entry ids it gave this session (<see cref="Saving.InteriorSave"/>). Only read by
+    /// saves, so not hashed.
+    /// </summary>
+    public Saving.InteriorSave Interiors { get; } = new();
+    /// <summary>
     /// Every zone the population has had active in this world (docs/formats/save.md "Zone files": the original writes a file for each zone it
     /// loaded): a save writes a zone file for each that its loaded save has none of. Only read by saves, so not hashed.
     /// </summary>
@@ -713,7 +719,7 @@ public sealed partial class World : IDisposable
         DeathObservers.Register(system, _systems.Count - 1);
         ExperienceFilters.Register(system, _systems.Count - 1);
         CrimeObservers.Register(system, _systems.Count - 1);
-        if (system is IDecisionOwner owner) owner.RegisterSources(Decisions);
+        if (system is IDecisionOwner owner) Decisions.RegisterFrom(owner, SimulationExtensions.FactoryOf(system)?.Owner);
         if (DecidesAfter(system)) _decideAfter = _systems.Count - 1;
         WatchCharacters();
     }
@@ -799,15 +805,18 @@ public sealed partial class World : IDisposable
     }
 
     /// <summary>
-    /// Runs one simulation tick; <paramref name="publish"/> false skips its snapshot (a tick the host will not draw: not one of a frame's last two).
+    /// Runs one simulation tick; <paramref name="publish"/> false skips its snapshot (a tick the host will not draw: not one of a frame's last two),
+    /// <paramref name="views"/> false publishes only what the host interpolates from (a frame's second-to-last tick, docs/simulation.md
+    /// "Snapshots").
     /// </summary>
-    public void RunTick(bool publish = true)
+    public void RunTick(bool publish = true, bool views = true)
     {
         var table = Characters;
         var prof = Profile.Enabled ? Profile : null;
         prof?.Begin(_systems.Count);
         table.BeginTick();
         ModFaults.Settle();
+        Walkability.TickStarts(Tick, TickSeconds);
 
         // 1. Inputs (serial).
         RunInputs(table, prof);
@@ -837,7 +846,7 @@ public sealed partial class World : IDisposable
         prof?.Part("end tick");   // F12: the squads, the prune, the table's end and the logs, apart from the snapshot
         Tick++;
         GameHours += TickSeconds / SecondsPerGameHour;
-        if (publish && Settings.PublishSnapshots) Publish(prof, farShared: true);
+        if (publish && Settings.PublishSnapshots) Publish(prof, farShared: true, views);
 
         prof?.Lap(TickProfile.Publish);
     }
@@ -1267,6 +1276,7 @@ public sealed partial class World : IDisposable
         DeathObservers.HashFaults(ref h);
         ExperienceFilters.HashFaults(ref h);
         CrimeObservers.HashFaults(ref h);
+        Decisions.HashFaults(ref h);
         ModFaults.HashFaults(ref h);
         return h.Value;
     }

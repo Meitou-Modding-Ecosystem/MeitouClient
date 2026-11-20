@@ -30,7 +30,7 @@ taskbar entry, the launcher dialog included) and muted; a hidden game still rend
 | `cancel` | Ends the command in progress (a long `wait`), which then fails |
 | `shot <file.png>` | Screenshot of the frame, GUI included |
 | `ui [filter] [--all]` | The GUI as text: class, `"caption"`, `name=`, `@x,y` (where a click lands), size |
-| `state [--near=<radius>] [--brief] [--json]` | Clock, speed, camera, squad (position, `screen` point, health parts, stats); `--near` adds everyone else around the camera's centre; text, or JSON with `--json` |
+| `state [--near=<radius>] [--brief] [--addr] [--json]` | Clock, speed, camera, squad (position, `screen` point, health parts, stats); `--near` adds everyone else around the camera's centre; `--addr` adds each character's address to the text (`@1A2B3C`, for `peek`); text, or JSON with `--json` |
 | `containers [radius] [--all]` | The buildings and furniture with an inventory within `radius` (default 300) of the camera's centre, each with its items and stack sizes; `--all` also the empty ones |
 | `click <x> <y> [left\|right\|middle]` | A click; `--double`, `--hold=<ms>`, `--shift`, `--ctrl`, `--alt` |
 | `click <caption or name> [button]` | A click on a widget; `--nth=<n>` when several match |
@@ -62,6 +62,11 @@ are the raw skill levels.
 - Re_Dev: `kh key f6` toggles its window (`toggle_devtools` in `controls.cfg`); its tabs, buttons, search
   boxes and combo boxes are ordinary widgets, e.g. `kh click "Search for squads"`, `kh type "dust bandit squad"`,
   `kh click Spawn --nth=0`.
+- Re_Dev on the selected or clicked character: Stats tab `Give XP` (pick the stat, type the amount), Spawn tab `Give item` (clean items),
+  Main tab `Squish` (cutting 0, blunt 150 knocks an NPC out in a hit or two; more kills a weak one). An NPC is clicked 30 to 70 px above its
+  `screen` point when zoomed in.
+- Inventory: `kh drag` lifts and drops an item (a click does not lift), a right click moves it across; both work while paused. A locked
+  container is picked with `kh click <x> <y> right --alt`. `kh scroll` over the world zooms the camera, over a slider moves it.
 - A game loaded from a save runs unpaused: `kh speed 0` first for a fixed starting point.
 - RE_Kenshi opens its settings window at the main menu and after a load: `kh click "[close]" --nth=0`.
 

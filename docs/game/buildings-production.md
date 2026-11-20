@@ -148,12 +148,23 @@ score and the 0.75 falloff spread them). Work distance: [below](#work-distance).
 100 copper rocks, 140 hybrid stone mines. Which tasks reach their building through `isAtLocation` is **Observed** only through
 the goal conditions (the call is virtual). Meitou applies the height limit above wherever it applies the reach range of the same function: builders, fetchers, machine operators, haulers and corpse carriers (`SiteReach.AtHeight`; rocks and turret posts keep their own arrival test).
 
-Meitou's NPC town workers (189, 190, and a player slave's work, `AiSystem.AtWork`): within the building functionality's `use range` (30
-without one) of the building's position, doubled once its velocity is nearly 0, so a worker held off by the rock short of the reach has arrived
-(standing in for the touching test; the usage nodes of `getPositionMarker` are not read: engine choice). **Observed** (Meitou, Rebirth, before
-this rule: a fixed 30): every worker that reached its mine stood 57 to 71 units from the mine's position with its walk never over, and never mined;
-with it (the mines' `use range` 40) all 15 that reached their rock work at its clip. They still gather at the same point of each rock, where the
-original's spread round it (the usage nodes).
+**Where the walk to a building goes** (**Verified**, `getPosWithinChoppingRange` `FUN_14059bf30`, called by the move helper `FUN_1405c68a0`
+every update, and `FUN_140596800`, which gives the arrival test above its point): for a building that is not foliage and has no object at
+slot 0x2c8 (a constant null for `UseableStuff` and `ProductionBuilding`, `FUN_1400f6b20`) both are `getPositionMarker(the character's
+position)` (`FUN_14054b850`): with two or more use nodes the one nearest the character (squared 3D distance, the bad nodes skipped), else
+the marker. Data (**Verified**, merged base game): Quarry Mine A and B hold eight `Node Use` instances 120 to 140 units round the mine
+(local radius 133 to 155, `scale` 0.9), a Well eight at 21 to 33; the Stone mine's `use range` is 40, the Well's 18.
+
+Meitou's NPC town workers (189, 190, and a player slave's work, `AiSystem.AtWorkplace`, `WorkFunctionality.MarkerOf`): they walk to the
+workplace's use node nearest them and have arrived within the functionality's `use range` (30 without one) of the node nearest where they
+stand, twice that when not moving; a building with one node uses it, one with none its position. A node that cannot be stood on is passed
+over, and with none left the building's position is taken (engine choice for the bad-node map). Not moving is a velocity of nearly 0, so a
+worker held off by the rock short of the reach has arrived (standing in for the touching test). **Observed** (probe
+`slaves 3000 70 200 --nav`, #1059 save, Rebirth): measured from the mine's position every worker walked to the same point of the rock, 57 to
+71 from the mine's position, where the walk ended only once the mesh's edge refused its steps; one that came up behind a mate working there
+was held by that body (Meitou's contact, [bodies in the way](pathfinding.md#bodies-in-the-way)), stepped on the spot and never arrived: 6 of
+25 after 12 000 ticks, 13 still on a walk. With the nodes 23 to 24 of the 25 work at their clip from tick 8 300 until the night's cage hour,
+none stepping on the spot, the workplaces' operators 20 at tick 9 000 (8 at tick 5 000 before); a Well's worker stands on its node.
 
 Meitou (`SiteReach`): builders 40 (walls 60), operators and storage fetches the `use range`, doubled once stopped, measured
 to the building's footprint hull (engine choice standing in for touching; a building without collision uses its parts' bounds
@@ -711,7 +722,8 @@ Function 10, `CraftingBuilding` (**Observed** unless noted).
 - **Lists.** The functionality's `item crafts` (v0 = finished items the output holds), `armour crafts`, `weapon crafts`
   (MATERIAL_SPECS_WEAPON models), `crossbow crafts`, `backpack crafts`, `robotics crafts`. A weapon bench crafts every
   WEAPON in the `PLAYER_WEAPONS` manufacturer's `weapon types` in each listed model; the model's level is that
-  manufacturer's `weapon models` v0 (Rusted Junk 5 ... Edge Type 3 80). `tech level` caps the made level (0: none).
+  manufacturer's `weapon models` v0 (Rusted Junk 5 ... Edge Type 3 80). `tech level` does not cap what comes out: the
+  finish (`FUN_1402bcac0`) hands the factory only the record, the quality and the model (**Verified**, disassembly; #1069).
 - **Output section** (**Verified**, `FUN_1402b9aa0` code read): `out` is max `inventory footprint width` x max `inventory
   footprint height` (each taken on its own, at least 1) over the records of the item, armour, crossbow, backpack and robotics
   lists; a bench with `weapon crafts` adds every WEAPON record of the database. Meitou: `CraftBench.OutputWidth` / `OutputHeight`.
@@ -745,7 +757,7 @@ Function 10, `CraftingBuilding` (**Observed** unless noted).
 - **Quality.** Armour (`FUN_14082e6b0`): tier from the int skill (20, 40, 60, 80 -> 1..4), +1 on a critical, at most 5;
   quality by tier 5, 20, 40, 60, 80, 95 (**Verified**, jump table). A robotic limb (type 111) or crossbow takes the same roll as
   its `level` (`FUN_1402bcac0` passes it to the item factory, whose limb and crossbow branches hand it to the Gear constructor;
-  **Verified**, decompile); Meitou caps it at `tech level` as for armour. Critical chance (`FUN_1402b5900`): (skill -
+  **Verified**, decompile). Critical chance (`FUN_1402b5900`): (skill -
   threshold)/50, none below 0; threshold for stats 8 and 38 the floor of the skill's tier (80/60/40/20, else 5), else
   the item level. A weapon whose level is above the crafter's skill, with no critical, comes out as a lower model
   (`FUN_1402bcac0` -> `FUN_1402bb020`, **Verified**: the player-weapons maker's highest model level at or below the smith's level and the queued weapon's level whose model the bench lists
@@ -784,7 +796,8 @@ the [layout's plant count](#farm-plants), not `amount`.
   (0..1; the def field `+0x94` of the region's current weather at the farm, loader `FUN_1409de7b0`), not `rain intensity` and not times the weather's strength;
   any weather counts, acid included. Meitou: `WeatherHere.Wetness`, `ProductionSystem.FarmTick`. Water draw
   (`FUN_1400df4c0`): an input whose level is below `w x dt` takes one item from its section, or fails (level 0); then
-  level -= `w x dt`. Growth step `inc = h x F / growth time`, x `drought multiplier` when the draw failed, x health x
+  level -= `w x dt`. The draw comes before the growth branch and tests no stage, so a ripe, rotting or dead crop draws water as a
+  growing one does (**Verified**, `FUN_1400e5580` call order; no farm function but the setup `FUN_1400e8420` writes the rate `+0x534`). Growth step `inc = h x F / growth time`, x `drought multiplier` when the draw failed, x health x
   powerSat when the building uses power. Farm growth < 1: each plant with -1 <= g < 1 gains inc; farm growth = the
   lowest such g, capped at 1. 1 <= growth < 2: growth += h / `harvest time` (ripe; at 2 it rots). Growth >= 2:
   d += h / `death time`. While 0 < growth < 1 and `drought death time` > 0: a failed draw adds h / `drought death time`
@@ -794,7 +807,9 @@ the [layout's plant count](#farm-plants), not `amount`.
   section is asked for room for the item (**Verified**, `FUN_1400e59e0`): none sets status 1 and keeps the progress (the tick keeps 1 while the output
   cannot take the item, else resets to 2; the work function does nothing at 1). With room, ceil(`output per plant`) rolls give one item each with probability e (a do-while: 1 to 2 rolls
   for an output of 1 or 2; 0.5 gives one e-roll), then the fraction `output - int(output)` is rolled once against itself; the progress resets to 0, the plant's g = -10, `plants
-  harvested` += 1; the work point moves to the next plant. A crop of zero items floats "Failed".
+  harvested` += 1; the work point moves to the next plant. A plant of zero items floats "Failed" over its operator, any operator, only while the GUI's
+  shown flag `DAT_142133ae0` is set, whatever the floaters option: font 0 (small), colour (0.9, 0.9, 0.9, 0.9), 15 units up (**Verified**,
+  `FUN_1400e59e0`, the `FUN_14073faf0` call and its literals). Meitou: `ProductionSystem.HarvestFailed`, `FloaterKind.HarvestFailed` (#1044).
   e (`FUN_1400dfe10`) = `clamp01(lerp(farming/100, 0.5, 2))` x C x F, C = sum of the farm's crop weights x the biome
   coverages (1 indoors), farming the operator's effective stat (**Verified**: the 0.01 at `141682ad8` and the call order).
 - **Clearing**: d >= `death threshold`: clear progress += health x powerSat x P x dt x s x clear rate; at 1 one plant is

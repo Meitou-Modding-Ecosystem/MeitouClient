@@ -1395,12 +1395,16 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
             float v = s.Sight.Sees(s.Self, slot, s.Eye, other.Position, s.Outdoor, stealth);
             if (v > 0 && !SightRay.Clear(s.World.Walkability, s.Fights?.Buildings, s.Eye, other.Position)) v = 0;
 
+            // A looker whose task has no alertness (in bed, asleep on the floor) fills no meter and sees no sneaker (FUN_140856cb0).
+            float alertness = s.Cold is { } looker ? Orders.Alertness(looker) : Orders.SpotAlertness;
+            if (alertness <= 0) v = 0;
+
             bool full = SpotOf(s.Spots, slot, other.Generation) > 1;
 
             if (s.Meters)
             {
                 if (v > 0 && !Sighted(s.Sightings!, slot))
-                    s.Sightings!.Add(new Sighting(slot, other.Generation, Orders.SpotSeconds(v, stealth)));
+                    s.Sightings!.Add(new Sighting(slot, other.Generation, Orders.SpotSeconds(v, stealth, alertness)));
 
                 if (Vector3.DistanceSquared(other.Position, s.Eye) <= s.Range * s.Range)
                 {
@@ -2111,10 +2115,15 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     }
 
     /// <summary>
-    /// The candidate's own gates: a standing character not caged, not an owned slave the looker may not fight, not staying low inside a building.
+    /// The candidate's own gates: a standing character not carried or caged, not an owned slave the looker may not fight, not staying low inside
+    /// a building.
     /// </summary>
     static bool Targetable(ref Scan s, int slot, CharacterCold c)
     {
+        // The finders' tag filter drops the KO bit, which a carried character has too (FUN_1408580d0 sets it from FUN_1407d1440: down or carried,
+        // Verified): one that came round on a shoulder is nobody's target, its carrier's neither.
+        if (!c.CarriedBy.IsNone) return false;
+
         // A caged prisoner is nobody's target, an owned slave nobody's but its owner's enemies' (engine choice: the original's sensed-list filter is
         // not decoded; town cages hold enemies of their guards, and slaves of a hostile faction, such as Heng's Outlaws, stand among them). The
         // territorial finder (144, FUN_14059fd70, Verified) skips a slave only when the looker's faction is allied with its owner.
@@ -2142,6 +2151,10 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     static bool TakenAsEnemy(ref Scan s, int slot, CharacterCold c)
     {
         ref readonly var other = ref s.Table.Previous[slot];
+
+        // Slot 125 (FUN_14079c950, Verified) compares the real factions before it reads the disguise: a character of the looker's own faction is
+        // never an enemy, whatever uniform it wears (#1057: a squad mate in a hostile faction's armour).
+        if (c.Faction == s.Faction) return false;
 
         // Wanted characters are the arrest system's (Crime.ArrestSystem): the police spot, fine or arrest them there. A working disguise stands in
         // for the target's faction (slot 125, docs/game/perception.md "Sense tags"; Crime.ArrestSystem.SeenFaction).
@@ -2761,9 +2774,9 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     /// <summary>
     /// Whether the character in <paramref name="slot"/> would attack <paramref name="target"/> had it sensed it itself: its own look's gates (a slave
     /// and a faction without relations pick no fight) and its attack-on-sight finder (<see cref="Candidate"/>: the relations, a holder's post test).
-    /// Serial phases only.
+    /// Serial phases only. Also the probe's (<c>crime</c>: the squad mates that would attack a character).
     /// </summary>
-    bool Takes(World world, int slot, CharacterCold cold, int target, CharacterCold targetCold)
+    internal bool Takes(World world, int slot, CharacterCold cold, int target, CharacterCold targetCold)
     {
         if (cold.SlaveState == 1 || !Relations.Contains(cold.Faction)) return false;
 
@@ -2881,8 +2894,8 @@ public sealed class AggroSystem(FactionRelations relations, AggroSettings? setti
     static void StandDown(World world, int i, ref CharacterHot n, in Slot s, CharacterCold cold)
     {
         var table = world.Characters;
-        if (cold.Medical is { Incapacitated: true } || cold.InCombat || n.Task != (byte)CharacterTask.Idle)
-            return;   // down (it wakes into wandering) or busy with something else
+        if (cold.Medical is { Incapacitated: true } || cold.InCombat || n.Task != (byte)CharacterTask.Idle || DecisionSystem.Ordered(cold))
+            return;   // down (it wakes into wandering), busy with something else, or held by its order
 
         // A follow row whose fight was a step of it follows again under the row (as the decision step does for the characters it decides); else
         // the routine is taken up again as the fight's own end (a step: the provenance stays).
