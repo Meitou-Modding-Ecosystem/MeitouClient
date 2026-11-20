@@ -5066,3 +5066,33 @@ msgstr "Atributos do personagem"
 
 msgid "-Backpack-"
 msgstr "-Mochila-"
+
+msgid "Pig Latin"
+msgstr "Língua do P"
+
+msgid "Pirate"
+msgstr "Pirata"
+
+msgid "Morse code"
+msgstr "Código Morse"
+
+msgid "Split stacks"
+msgstr "Dividir pilhas"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Um clique numa pilha pega tudo, Shift+clique metade, Ctrl+clique um item, e Shift+Ctrl+clique pergunta quantos com um controle deslizante. No jogo um clique pega um item e Shift ou Ctrl a pilha inteira."
+
+msgid "Talk across shop counters"
+msgstr "Falar por cima do balcão"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Fiel, como no jogo: para falar ou negociar com um lojista atrás de um balcão, seu personagem muitas vezes contorna o balcão para ficar atrás dele. Meitou: os lojistas podem ser alcançados do lado do cliente do balcão."
+
+msgid "Split stack"
+msgstr "Dividir pilha"
+
+msgid "Take"
+msgstr "Pegar"
+
+msgid "Take {1} of {2}"
+msgstr "Pegar {1} de {2}"

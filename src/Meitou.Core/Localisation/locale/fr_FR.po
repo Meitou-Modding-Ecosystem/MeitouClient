@@ -4622,3 +4622,33 @@ msgstr "Statistiques du personnage"
 
 msgid "-Backpack-"
 msgstr "-Sac à dos-"
+
+msgid "Pig Latin"
+msgstr "Javanais"
+
+msgid "Pirate"
+msgstr "Pirate"
+
+msgid "Morse code"
+msgstr "Code Morse"
+
+msgid "Split stacks"
+msgstr "Diviser les piles"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Un clic sur une pile la prend en entier, Maj+clic la moitié, Ctrl+clic un objet, et Maj+Ctrl+clic demande combien avec un curseur. Dans le jeu, un clic prend un objet et Maj ou Ctrl toute la pile."
+
+msgid "Talk across shop counters"
+msgstr "Parler par-dessus les comptoirs"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Fidèle, comme dans le jeu : pour parler ou commercer avec un marchand derrière un comptoir, votre personnage fait souvent le tour du comptoir pour se placer derrière lui. Meitou : les marchands sont joignables depuis le côté client du comptoir."
+
+msgid "Split stack"
+msgstr "Diviser la pile"
+
+msgid "Take"
+msgstr "Prendre"
+
+msgid "Take {1} of {2}"
+msgstr "Prendre {1} sur {2}"

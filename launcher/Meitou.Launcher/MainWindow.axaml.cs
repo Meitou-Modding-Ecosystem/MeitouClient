@@ -457,6 +457,9 @@ public sealed partial class MainWindow : Window
         "zh-cn" => "Chinese",
         "ja-jp" => "Japanese",
         "ko-kr" => "Korean",
+        "en-piglatin" => "Pig Latin",
+        "en-pirate" => "Pirate",
+        "en-morse" => "Morse code",
         _ => code,
     };
 

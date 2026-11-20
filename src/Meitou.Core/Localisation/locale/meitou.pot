@@ -180,6 +180,10 @@ msgid "A character's bag window opens with their inventory until you close it wi
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
 msgid "A double click on a squad member far from the view (or a double tap of their number) flies the camera there in an arc instead of cutting."
 msgstr ""
 
@@ -689,7 +693,7 @@ msgstr ""
 msgid "Built into Meitou: {1}; this mod is not run"
 msgstr ""
 
-#: src/Meitou.Game/PlayerInterface.cs src/Meitou.Game/Title/FrontendScreens.cs
+#: src/Meitou.Game/PlayerInterface.cs src/Meitou.Game/Title/FrontendScreens.cs src/Meitou.Game/Ui/StackSplitDialog.cs
 msgid "CANCEL"
 msgstr ""
 
@@ -1415,6 +1419,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Faithful shows the game's logos at startup (Faithful UI); a key or a click skips each one. Meitou shows the menu as soon as the game has loaded."
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -2858,6 +2866,10 @@ msgstr ""
 msgid "Mods: {1} of {2} loaded"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "Morse code"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Move the camera backward."
 msgstr ""
@@ -3343,6 +3355,14 @@ msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoMode.cs
 msgid "Pictures"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "Pig Latin"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "Pirate"
 msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoPanel.cs
@@ -4221,6 +4241,14 @@ msgstr ""
 msgid "Splash screens"
 msgstr ""
 
+#: src/Meitou.Game/Ui/StackSplitDialog.cs
+msgid "Split stack"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Split stacks"
+msgstr ""
+
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Squad XP"
 msgstr ""
@@ -4389,6 +4417,10 @@ msgstr ""
 msgid "TRADER"
 msgstr ""
 
+#: src/Meitou.Game/Ui/StackSplitDialog.cs
+msgid "Take"
+msgstr ""
+
 #: src/Meitou.Game/Host/Photo/PhotoPanel.cs
 msgid "Take picture"
 msgstr ""
@@ -4399,6 +4431,14 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/ModsFromSave.cs
 msgid "Take the mods and their load order from this save:"
+msgstr ""
+
+#: src/Meitou.Game/Ui/StackSplitDialog.cs
+msgid "Take {1} of {2}"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Talk across shop counters"
 msgstr ""
 
 #: src/Meitou.Game/Ui/ProductionWindows.cs

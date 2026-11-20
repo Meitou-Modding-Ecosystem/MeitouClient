@@ -5474,3 +5474,33 @@ msgstr "角色属性"
 
 msgid "-Backpack-"
 msgstr "-背包-"
+
+msgid "Pig Latin"
+msgstr "猪拉丁语"
+
+msgid "Pirate"
+msgstr "海盗腔"
+
+msgid "Morse code"
+msgstr "摩尔斯电码"
+
+msgid "Split stacks"
+msgstr "拆分堆叠"
+
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "点击一堆物品会全部拿起，Shift+点击拿一半，Ctrl+点击拿一个，Shift+Ctrl+点击会用滑块询问数量。原版游戏中点击拿一个，Shift 或 Ctrl 拿整堆。"
+
+msgid "Talk across shop counters"
+msgstr "隔着柜台交谈"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "忠实（如原版）：要与柜台后的店主交谈或交易，你的角色常会绕过柜台站到店主身后。Meitou：可以从柜台的顾客一侧与店主交谈。"
+
+msgid "Split stack"
+msgstr "拆分堆叠"
+
+msgid "Take"
+msgstr "拿取"
+
+msgid "Take {1} of {2}"
+msgstr "拿取 {1} / {2}"

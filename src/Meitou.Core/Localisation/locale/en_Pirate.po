@@ -138,6 +138,9 @@ msgstr "A sea dog that turned its head toward what it was talkin' t' or watchin'
 msgid "A character's bag window opens with their inventory until you close it with OPEN BAG. In the game every bag stays shut after loading until OPEN BAG is pressed for it."
 msgstr "A character's bag window opens wi' their inventory until ye batten down it wi' OPEN BAG. In th' voyage every bag stays shut after haulin' until OPEN BAG be pressed fer it, arr!"
 
+msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "A click on a stack picks up all o' it, Shift+click half, Ctrl+click one booty, an' Shift+Ctrl+click asks how many wi' a slider. In th' voyage a click picks up one booty an' Shift or Ctrl th' whole stack, arr!"
+
 msgid "A double click on a squad member far from the view (or a double tap of their number) flies the camera there in an arc instead of cutting."
 msgstr "A double click on a crew hand far from th' view (or a double tap o' their number) flies th' camera thar in an arc instead o' cuttin', arr!"
 
@@ -1068,6 +1071,9 @@ msgstr "Faithful cascades"
 
 msgid "Faithful shows the game's logos at startup (Faithful UI); a key or a click skips each one. Meitou shows the menu as soon as the game has loaded."
 msgstr "Faithful shows th' game's logos at startup (Faithful UI); a key or a click skips each one. Meitou shows th' menu as soon as th' voyage has hauled, arr!"
+
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Faithful, as in th' voyage: t' talk or barter wi' a shopkeeper behind a counter, yer sea dog often walks round th' counter t' stand behind them. Meitou: shopkeepers can be reached from th' customer's side o' th' counter, arr!"
 
 msgid "Faithful, as in the game: when the camera comes to places that are not loaded yet (a jump to a squad far away), the game pauses and shows Loading... until they are. Meitou: the game runs on while they load."
 msgstr "Faithful, as in th' voyage: when th' camera comes t' places that be not hauled yet (a jump t' a crew far away), th' voyage pauses an' shows Haulin'... until they be. Meitou: th' voyage runs on while they haul, arr!"
@@ -2150,6 +2156,9 @@ msgstr "Contraptions: {1} hauled"
 msgid "Mods: {1} of {2} loaded"
 msgstr "Contraptions: {1} o' {2} hauled"
 
+msgid "Morse code"
+msgstr "Morse code"
+
 msgid "Move the camera backward."
 msgstr "Move th' camera backward, arr!"
 
@@ -2518,6 +2527,12 @@ msgstr "Picture size"
 
 msgid "Pictures"
 msgstr "Pictures"
+
+msgid "Pig Latin"
+msgstr "Pig Latin"
+
+msgid "Pirate"
+msgstr "Pirate"
 
 msgid "Place here"
 msgstr "Place here"
@@ -3176,6 +3191,12 @@ msgstr "Splash blood on walls, buildings an' rocks as well as th' ground; pools 
 msgid "Splash screens"
 msgstr "Splash screens"
 
+msgid "Split stack"
+msgstr "Split stack"
+
+msgid "Split stacks"
+msgstr "Split stacks"
+
 msgid "Squad XP"
 msgstr "Crew XP"
 
@@ -3302,6 +3323,9 @@ msgstr "THANK YE"
 msgid "TRADER"
 msgstr "TRADER"
 
+msgid "Take"
+msgstr "Take"
+
 msgid "Take picture"
 msgstr "Take picture"
 
@@ -3310,6 +3334,12 @@ msgstr "Take th' contraption list an' haul order a stow was made wi'"
 
 msgid "Take the mods and their load order from this save:"
 msgstr "Take th' contraptions an' their haul order from this stow:"
+
+msgid "Take {1} of {2}"
+msgstr "Take {1} o' {2}"
+
+msgid "Talk across shop counters"
+msgstr "Talk across port counters"
 
 msgid "Tech level:"
 msgstr "Tech level:"
