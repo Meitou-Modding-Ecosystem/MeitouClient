@@ -499,6 +499,11 @@ sealed class UserConfig
     /// </summary>
     public bool TakeIntoBackpack { get; set; }
     /// <summary>
+    /// A trader window arranges its stock when it opens, as its ARRANGE button does (Gameplay settings, an on / off switch, off by default). A
+    /// building shop's stock spreads over one rectangle per stock container and can open on an almost empty first container.
+    /// </summary>
+    public bool AutoArrangeShops { get; set; }
+    /// <summary>
     /// The pan speed factor while Shift is held (Controls settings, <see cref="MinShiftPanMultiplier"/> … <see cref="MaxShiftPanMultiplier"/>,
     /// default 2).
     /// </summary>

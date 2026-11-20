@@ -517,6 +517,12 @@ sealed class GamePages(SettingsMenu menu)
             + "uses more memory).",
             Toggle: new("Fast zone hopping", () => (menu.Config.Gameplay ??= new()).FastZoneHopping,
                 v => SetGameplay((menu.Config.Gameplay ?? new()) with { FastZoneHopping = v }), OnOff: true)));
+        result.Add(new("Auto arrange shop inventories on open",
+            "A trader's window arranges its stock when it opens, as its Arrange button does. A shop's goods otherwise lie in one block per storage "
+            + "box of the building, often far down the window.",
+            Toggle: new("Auto arrange shop inventories on open", () => menu.Config.AutoArrangeShops,
+                v => menu.Player.TradeWindows.AutoArrange = menu.Config.AutoArrangeShops = v,
+                OnOff: true)));
         result.Add(new("Tutorials", "Shows the tutorial hints as you play (the game: on).",
             Toggle: new("Tutorials", () => menu.Config.Tutorials != false, v => { menu.Config.Tutorials = v; menu.TutorialsChanged?.Invoke(v); },
                 OnOff: true)));
