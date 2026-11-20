@@ -989,11 +989,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The longest a regular expression search may spend on one name, so a pattern that backtracks without end cannot hang the launcher.
-    /// </summary>
-    static readonly TimeSpan ModSearchTimeout = TimeSpan.FromMilliseconds(50);
-
-    /// <summary>
     /// What a name must pass to stay shown: holding the search text, ignoring case, or with the Regex box ticked matching it as a regular
     /// expression, ignoring case. An empty search passes everything; an invalid pattern passes everything and sets <paramref name="error"/>.
     /// </summary>
@@ -1007,7 +1002,9 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var regex = new Regex(search, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, ModSearchTimeout);
+            // At most 50 ms per name, so a pattern that backtracks without end cannot hang the launcher.
+            var timeout = TimeSpan.FromMilliseconds(50);
+            var regex = new Regex(search, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, timeout);
             return text => RegexMatches(regex, text);
         }
         catch (ArgumentException ex)
