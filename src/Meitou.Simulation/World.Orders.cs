@@ -52,14 +52,38 @@ public sealed partial class World
         TaskType.MoveCusOrdered or TaskType.StayCloseToTarget or TaskType.Bodyguard => SystemOf<MovementSystem>(),
         TaskType.LiftPersonPlayerOrder or TaskType.KidnapOrder or TaskType.LootTarget or TaskType.StealthKnockout or TaskType.PutDownObject
             => SystemOf<Carrying.CarrySystem>(),
-        TaskType.FocusedMeleeAttack or TaskType.UnprovokedFocusedMeleeAttack => SystemOf<Combat.CombatSystem>(),
+        TaskType.FocusedMeleeAttack or TaskType.UnprovokedFocusedMeleeAttack or TaskType.MeleeAttack => SystemOf<Combat.CombatSystem>(),
         TaskType.Build or TaskType.Repair or TaskType.Dismantle => SystemOf<Construction.ConstructionSystem>(),
         TaskType.OperateMachinery or TaskType.OperateAutomaticMachinery or TaskType.OperateStorage or TaskType.UseTrainingDummy
             or TaskType.UseTurret or TaskType.Prospecting => SystemOf<Production.ProductionSystem>(),
         TaskType.FirstAidOrder or TaskType.SplintOrder or TaskType.Rest => SystemOf<FirstAid.FirstAidSystem>(),
         TaskType.Pickup => SystemOf<PlayerSystem>()?.PickUps,
         TaskType.UseBed or TaskType.PutSomeoneInBed => SystemOf<Locks.BedSystem>(),
-        TaskType.PutInCage => SystemOf<Crime.ArrestSystem>(),
+        TaskType.PutInCage or TaskType.LiftPersonSnatchingAllowed or TaskType.LiftPersonSnatchingAllowedInTownOnly or TaskType.FindCageAndPutIn
+            => SystemOf<Crime.ArrestSystem>(),
+        TaskType.GetOutOfCageLegit => Locks.FreedPrisoner.Instance,
+        TaskType.RunAway => SystemOf<Aggro.FleeSystem>(),
+        TaskType.GetUp or TaskType.Aoeu or TaskType.StumbleTaskForced or TaskType.GetOutOfBed => SystemOf<Combat.CombatSystem>()?.BodyOrders,
+        TaskType.SeekAndTalkAndSendSignal or TaskType.FollowWhileTalking or TaskType.TownStalker => SystemOf<Dialogue.DialogueSystem>()?.TalkOrders,
+        TaskType.GoHomebuilding or TaskType.Patrol or TaskType.MoveOnFreeWillFast or TaskType.RunAwayForced or TaskType.DefeatSquad
+            or TaskType.DefeatSquadLimitChaseRange => SystemOf<Ai.AiSystem>()?.NpcOrders,
         _ => Locks.LockSystem.OwnsRow(row) ? SystemOf<Locks.LockSystem>() : null,
     };
+
+    /// <summary>
+    /// An order's task is about to start on the NPC in <paramref name="slot"/> (serial): every system holding it on an engine duty lets it go
+    /// (<see cref="IDutyRelease.ReleaseForOrder"/>), in system order, all but <paramref name="keeps"/>, the order's giver, whose hold on
+    /// <see cref="CharacterCold.Engaged"/> (one bit all holders share) stays as it was.
+    /// </summary>
+    internal void ReleaseDuties(int slot, IDutyRelease? keeps)
+    {
+        var cold = Characters.Cold(slot)!;
+        bool engaged = cold.Engaged;
+        foreach (var system in _systems)
+        {
+            if (system is IDutyRelease holder && !ReferenceEquals(holder, keeps)) holder.ReleaseForOrder(this, slot);
+        }
+
+        if (keeps is not null) cold.Engaged = engaged;
+    }
 }

@@ -299,6 +299,10 @@ Same targets as picking; Task_CutLock / Task_BruteForceLock share the shackle ta
 | Storage Guard, Slaver Storage Guard | 197 Lock all the doors - stay outside | 23-7 |
 | Cage Warden (and copy) | 195 Lock all my cages | 22-24 (leader), 19-21 (squad) |
 
+- **Lock all my cages** (195, **Verified**, finder `FUN_1408cc2a0`, desire slot 19 = 1): only with an empty target, the finder walks the cages (function 8 list
+  `+0x1f0`) of the building the warden stands in, not its town's, and takes the first with an occupant whose lock is not effectively locked (factor 1, none 0); the
+  effect 54 is planned through 77 Locking door. 155 and 197's desire is [slot 31](ai-tasks.md#desire-and-commitment).
+
 - **Lock up from outside** (197; **Verified** rows, `FUN_140596e90`): list B is `!strangers in house` and `!107` (107 I_AM_INSIDE_TARGET_BUILDING), and the lock row 198 needs state 126 AT_LOCATION_BUILDING_DOOR_OUTSIDE
   (**Verified**, `FUN_140596e90`: true when the character's X/Z distance to the door's outer point is below its reach range, 45 for a door; the outer point is the door record's point `+0x3bc` pushed out
   by 1.1 times (`DAT_14169bb44`) its distance to the other point `+0x3c8`; the two points lie 15 either side of the leaf, so about 48 from the leaf), so a 197 worker inside first
@@ -363,8 +367,8 @@ Same targets as picking; Task_CutLock / Task_BruteForceLock share the shackle ta
   held building's handle `+0x300` is a building (`+0x308` = 0): the hold clear `FUN_140330600` sets it to none. 133 is given, with the order queue cleared
   (`FUN_1405d20d0` with its clear argument 1, **Verified** by disassembly), by `Task_ReleasePrisoner` (to a releaser that books bounties or is the player's), by the bail
   and by buying a slave free ([economy 11.5](economy.md#115-bail-and-sentence), [12](economy.md#12-slaves-prisoners-animals)); the release and the buy clear the hold
-  themselves right after the give, so only a bailed prisoner leaves through it. Meitou: `FixtureRegistry.GetOut` (207, 256) and `GetOutLegit` (133, the bail's
-  `ArrestSystem.SendOut`), both through `LeaveCage`; `LockSystem.OpportunisticEscapes`: an AI prisoner whose role list holds 256, 207 or 202 in its hours walks out of
+  themselves right after the give, so only a bailed prisoner leaves through it. Meitou: `FixtureRegistry.GetOut` (207, 256) and `GetOutLegit` (133, the act-out of
+  the order `Locks.FreedPrisoner` owns, given by the bail, the release and the buy), both through `LeaveCage`; `LockSystem.OpportunisticEscapes`: an AI prisoner whose role list holds 256, 207 or 202 in its hours walks out of
   an unlocked cage. Lifting a prisoner out of another faction's cage (`FUN_14034fbe0`): the lifter gets code 7; the prisoner gets the escaped flag and a code 0xc call made while it is still
   held (`+0x2f8` = 2), which the setter refuses ([carry-loot](carry-loot.md)), so no pending crime (**Verified**).
 - **Escaped flag** (`StateBroadcastData::isEscapedPrisoner` `+0xe8`, KenshiLib 1ce4a16; **Verified** by decompile: every write through `+0x1a0`). Set only by `FUN_14034fbe0`

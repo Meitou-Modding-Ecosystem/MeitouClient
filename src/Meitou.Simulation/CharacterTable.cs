@@ -252,6 +252,23 @@ public sealed class CharacterCold
     public long BlockedRetryTick { get; set; }
 
     /// <summary>
+    /// Where the walker stood at the first block <see cref="BlockedRepaths"/> counts: the count starts again only once it has left that spot. Not
+    /// hashed.
+    /// </summary>
+    public Vector2 BlockedAt { get; set; }
+
+    /// <summary>
+    /// The goal of the walk the movement system last gave up (no path, or blocked past the limits). Not hashed.
+    /// </summary>
+    public Vector2 GivenUpGoal { get; set; }
+
+    /// <summary>
+    /// The tick a walk sent to <see cref="GivenUpGoal"/> again asks for its path (<see cref="MovementSystem.BlockedRetrySeconds"/>); 0: no walk
+    /// given up. Not hashed.
+    /// </summary>
+    public long GivenUpRetryTick { get; set; }
+
+    /// <summary>
     /// The path request in flight, so an answer to an older one is ignored.
     /// </summary>
     public long PathRequest { get; set; }
@@ -993,10 +1010,11 @@ public sealed class CharacterCold
     public long StaggeredUntil { get; set; }
 
     /// <summary>
-    /// Until when a stagger outside a fight reports the Stumbling task (147, <c>Character::_startStumble</c> queues it in front of the character's
-    /// own task, which replans afterwards): set with the stumble clip's stun, display only. Not saved.
+    /// What the combat system's body step (parallel, its own slot) saw happen to the body this tick, for <see cref="Combat.BodyOrders"/>' serial pass
+    /// the same tick: gone down, woken, or back to standing from staying low or crawling. A wake while carried waits here until it is put down. Not
+    /// saved or hashed.
     /// </summary>
-    public long StumbleTaskUntil { get; set; }
+    internal Combat.BodyEvents BodyEvents { get; set; }
 
     /// <summary>
     /// The tick its get-up after a knockout ends (<see cref="Combat.CombatSystem.GetUpClipSeconds"/> from waking, after the clip; Character +0x278
@@ -1039,7 +1057,7 @@ public sealed class CharacterCold
     public AiMind? Ai { get; set; }
 
     /// <summary>
-    /// Held still by an interaction (a trader in an open trade, <see cref="Trading.TradeSystem"/>): the AI leaves it alone. Serial phases only.
+    /// Held on an engine duty by a system that steers it (<see cref="Player.IDutyRelease"/>): the AI leaves it alone. Serial phases only.
     /// </summary>
     public bool Engaged { get; set; }
 
@@ -1344,6 +1362,13 @@ public sealed class CharacterCold
     public string? OperateSite { get; set; }
 
     /// <summary>
+    /// The game hours (<see cref="World.GameHours"/>) until which the implicit "Sleep when injured" job (153) it is on holds against its job list
+    /// (<see cref="Production.ProductionSystem"/>, docs/game/ai-tasks.md "Perma-jobs"; 0: none). Serial phases only; not saved. Hashed
+    /// only while set.
+    /// </summary>
+    public double BedCommitUntil { get; set; }
+
+    /// <summary>
     /// The progress (0 to 1) of the <see cref="CharacterTask.Prospect"/> task (null: not prospecting). Serial phases only; not saved. Hashed only
     /// while set.
     /// </summary>
@@ -1450,9 +1475,22 @@ public sealed class CharacterCold
 
     /// <summary>
     /// The replan bit (<see cref="DecisionSystem.Request(CharacterCold)"/>): set by a replan trigger, consumed by the decision step. Player
-    /// characters only; not saved (a load sets it); hashed while set.
+    /// characters, and NPCs while they hold an order; not saved (a load sets it); hashed while set.
     /// </summary>
     public bool Replan { get; set; }
+
+    /// <summary>
+    /// An NPC's front order runs (the decision step's source 1 won, docs/simulation.md "Order queue"): its AI and the engine's reactions and duties
+    /// leave it alone (<see cref="DecisionSystem.Ordered"/>). Set and cleared by the decision step and <see cref="PlayerOrders.Give"/> (serial
+    /// phases); never set for a character the step decides. Not saved; hashed while set.
+    /// </summary>
+    public bool OrderWins { get; internal set; }
+
+    /// <summary>
+    /// The routine (wander or follow its leader) an NPC its AI does not fully run had when an order took it, taken up again once its order no
+    /// longer holds it (<see cref="DecisionSystem.Hold"/>); <see cref="CharacterTask.Idle"/>: none. Serial phases; not saved; hashed while set.
+    /// </summary>
+    public CharacterTask OrderRoutine { get; internal set; }
 
     /// <summary>
     /// The queued orders a load read (<see cref="Saving.OrderSave"/>), until the decision step makes them the <see cref="OrderQueue"/> once the world
@@ -2024,6 +2062,8 @@ public sealed class CharacterTable
 
         if (k.FollowResume) hasher.Add(0x46526573);
         if (k.Replan) hasher.Add(0x52706C6E);
+        if (k.OrderWins) hasher.Add(0x4F57696E);
+        if (k.OrderRoutine != CharacterTask.Idle) hasher.Add(0x4F527400 | (int)k.OrderRoutine);
         if (!k.TurretTarget.IsNone)
         {
             hasher.Add(0x54725467);
@@ -2203,6 +2243,12 @@ public sealed class CharacterTable
         {
             hasher.Add(0x4F706572);
             hasher.Add(Rng.StableHash(machine));
+        }
+
+        if (k.BedCommitUntil != 0)
+        {
+            hasher.Add(0x42436F6D);
+            hasher.Add(k.BedCommitUntil);
         }
 
         if (k.Prospecting is { } prospected)

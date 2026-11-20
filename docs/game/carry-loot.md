@@ -206,6 +206,13 @@ player's) only when `InventoryGUI::isStealing(source window, other window)` (`FU
 - the two windows trade for money (`isTradingForMoney`).
 
 The mark does not ask `isItOkForMeToLoot` (that only picks the crime), so a bandit's or bounty holder's gear is stolen from its faction too.
+The hand `notifyTheftFrom` writes (`FUN_140792780`, `FUN_140792680`, **Verified** by decompile and disassembly): a character source's own hand, so each robbed
+body gives its own owner; for a BUILDING source a hand kept on the building (`+0xd0`, of the building it is mounted on or inside when it has one,
+`FUN_1400d5fa0`), the null hand when that one's type is 0; a `ShopTraderClass` (0x5b) hand gives the null hand. With a null hand the item stays ownerless
+(`FUN_140792800` writes only onto an ownerless item). **Verified** (harness, 1.0.65, Stack): the building's hand names a character (item `+0x148` type 1 after
+the take): a clothes shop's goods read "Stolen from: Clothing trader holy", a home's chest "Stolen from: Holy Citizen", a knocked-out guard's kit
+"Stolen from: Holy Sentinel"; the player's own clean item put into such a container shows no owner there and is marked the same way when taken back.
+How the marks stack: [stack test](ui-screens.md#6-inventory-trade-dialogue-build).
 Right click and drag mark only an item with no owner yet; a give to a portrait (`FUN_140712490`) calls `notifyTheftFrom` whatever the owner (**Verified** call sites).
 `isStealing` also holds for a move out of the player's window into another faction's (a container, #851); the crime and roll are skipped for a source of
 the player's faction (`FUN_1407916d0`), an ownerless item stays unmarked, and a marked one put into the window of its from-owner, or of an owner of the
@@ -411,7 +418,8 @@ When the handle's character does not resolve, its platoon is looked up and the s
 **Observed** (1.0.68 `FUN_1405a4f50` and `FUN_1404fe6e0`): with neither found, the slave escapes unless the handle still names a registered object.
 A null handle (type 11) fails that check, so an ownerless slave becomes escaped even inside town; only the resolved-owner distance branch checks the town.
 A cage or a carry is not tested. Meitou keeps an unloaded master squad or pending saved `slaver` handle until it can resolve, and a slave whose Meitou save lost its owner
-([save](../formats/save.md) "Slave state") until it finds one.
+([save](../formats/save.md) "Slave state") until it finds one. A saved handle (or job 187's) whose platoon is not in the world, the owner's squad gone before the save,
+names no registered object: it is dropped and the slave escapes (`CaptiveSystem.OwnerGone`; **Observed** on #1073's save, whose Reaver owner platoon was no longer saved).
 
 Since the setter removes job 187 Obedient Slave, the slave then plans with its own lists. In the Rebirth hold (**Observed**, one slave), a slave sent to a workplace about 4 000 from its owner became an escaped slave and took its own 172 Getting in my cage, whose finder (`FUN_1408caaf0`) has no slave state test.
 

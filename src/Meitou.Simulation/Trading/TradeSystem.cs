@@ -54,6 +54,11 @@ public sealed record BuyItem(InventoryItemToken Item, int Quantity) : SimCommand
     /// </summary>
     public bool Equip { get; init; }
     /// <summary>
+    /// With <see cref="Equip"/>: the receiving character's bag window is open, so the units go into the worn bag first, then as
+    /// <see cref="Equip"/> says (the right click's target window is the bag's before the character's, <c>FUN_140714a20</c> -> <c>FUN_14070dcd0</c>).
+    /// </summary>
+    public bool IntoBag { get; init; }
+    /// <summary>
     /// The character whose window it goes into: the trade passes to them (<see cref="TradeSystem.TradeWith"/>). None: the customer, or the
     /// selection's.
     /// </summary>
@@ -290,9 +295,9 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     /// </summary>
     CharacterId _customer = CharacterId.None, _trader = CharacterId.None;
     /// <summary>
-    /// Whether the trade window is open (the customer reached the trader), and whether the trader was wandering when held.
+    /// Whether the trade window is open (the customer reached the trader).
     /// </summary>
-    bool _open, _traderWandered;
+    bool _open;
     /// <summary>
     /// The open trade's session (its buy-back receipts); closed and replaced when the trade closes.
     /// </summary>
@@ -369,7 +374,6 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
                         break;
                     }
 
-                    Hold(world, t);
                     _approach.Begin(world, _customer, c, t);
                     break;
                 case CloseTrade:
@@ -421,8 +425,8 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     }
 
     /// <summary>
-    /// The customer's walk to the trader, who is held for it: in talk range the trade opens; it closes when either party cannot trade or the walk is
-    /// given up (another order, or stuck).
+    /// The customer's walk to the trader, who goes on with what it does (the original holds no trader for a trade): in talk range the trade opens;
+    /// it closes when either party cannot trade or the walk is given up (another order, or stuck).
     /// </summary>
     void Approach(World world)
     {
@@ -438,20 +442,18 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
             return;
         }
 
-        if (_approach.Follow(world, _customer, c, t)) Hold(world, t);
-        else Close(world);
+        if (!_approach.Follow(world, _customer, c, t)) Close(world);
     }
 
     /// <summary>
-    /// Opens the trade: the customer stops where it stands (not at the trader's spot behind a counter) and the trader goes back to its AI, as the
-    /// original holds no trader for a trade (the Trade effect <c>FUN_1409524f0</c> only queues the windows, docs/game/economy.md "Trading range").
+    /// Opens the trade: the customer stops where it stands (not at the trader's spot behind a counter); the trader is not held, as the original
+    /// holds none for a trade (the Trade effect <c>FUN_1409524f0</c> only queues the windows, docs/game/economy.md "Trading range").
     /// </summary>
     void Open(World world, int c)
     {
         TaskStart.Stand(world.Characters, c);
         BuildView(world);
         _open = true;
-        Release(world);
     }
 
     /// <summary>
@@ -489,11 +491,6 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         world.Post("Out of trading range.");
         return false;
     }
-
-    /// <summary>
-    /// Whether <paramref name="who"/> is the trader the trade holds (walked up to or open; <see cref="Hold"/>), which nothing else may let go of.
-    /// </summary>
-    internal bool HoldsTrader(CharacterId who) => !_trader.IsNone && _trader == who;
 
     /// <summary>
     /// Passes the open trade to the player's character <paramref name="who"/> whose window the stock is dropped on or taken from (the customer's
@@ -538,35 +535,6 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     public TradeView? PublishTrade() => _view;
 
     /// <summary>
-    /// Keeps the trader standing while the customer walks up (residents wander; the original's shopkeepers stand at their node). Its wander
-    /// resumes when the trade opens or closes (<see cref="Release"/>); a travelling trader (a caravan's boss) stops too and its AI walks on after
-    /// (<see cref="TaskStart.OnAiWalk"/>). A walk another system holds it for is left alone.
-    /// </summary>
-    void Hold(World world, int t)
-    {
-        ref var n = ref world.Characters.Next[t];
-        bool travelling = TaskStart.OnAiWalk(world.Characters, t);
-        world.Characters.Cold(t)!.Engaged = true;   // the AI leaves it alone until it is released
-        if (n.Task == (byte)CharacterTask.Wander) _traderWandered = true;
-        if (n.Task is (byte)CharacterTask.Wander or (byte)CharacterTask.Idle || travelling)
-            TaskStart.Stand(world.Characters, t);
-    }
-
-    /// <summary>
-    /// Gives the held trader back to its AI, wandering again when it was.
-    /// </summary>
-    void Release(World world)
-    {
-        if (!world.Characters.TryResolveNext(_trader, out int t)) return;
-
-        world.Characters.Cold(t)!.Engaged = false;
-        if (_traderWandered && world.Characters.Next[t].Task == (byte)CharacterTask.Idle)
-            TaskStart.Become(world, t, CharacterTask.Wander, Data.Gameplay.Ai.TaskType.Wanderer, TaskSource.Npc);
-
-        _traderWandered = false;
-    }
-
-    /// <summary>
     /// Ends the open trade with every inventory window (<see cref="World.CloseInventories"/>); a customer walking up to a trader goes on.
     /// </summary>
     internal void EndTrade(World world)
@@ -578,16 +546,15 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     }
 
     /// <summary>
-    /// Closes the open trade: its session ends, the trader is released (<see cref="Release"/>), and the view goes.
+    /// Closes the open trade: its session ends and the view goes.
     /// </summary>
     void Close(World world)
     {
         _session.Active = false;
         _session = new();
-        if (!_open) Release(world);
 
         _customer = _trader = CharacterId.None;
-        _open = _traderWandered = false;
+        _open = false;
         _view = null;
     }
 
@@ -1566,7 +1533,8 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     }
 
     /// <summary>
-    /// Puts the bought units into the receiving character's inventory: at the cell dropped on, worn (a right click), else wherever they fit; the
+    /// Puts the bought units into the receiving character's inventory: at the cell dropped on, into the open bag window's bag (a right click), worn
+    /// (a right click), else wherever they fit; the
     /// units placed. A live animal's shut grid takes nothing (<see cref="InventoryCommands.MainClosed"/>), only its worn bag does: stock
     /// right-clicked into a bagless dog's window is "No room for that item." in the original.
     /// </summary>
@@ -1586,6 +1554,31 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
 
         if (buy.Section == "backpack_attach") return 0;
         if (buy.Section is { } section) return PlaceAt(into, bought, units, section, buy.X, buy.Y, shut);
+
+        int inBag = buy.Equip && buy.IntoBag ? IntoWornBag(into, bought) : 0;
+        if (inBag == units) return units;
+
+        return inBag + PutRest(buy, into, bought, units - inBag, shut, cold);
+    }
+
+    /// <summary>
+    /// Puts as many of the bought units as fit into the worn bag's grid (stacks of it first, then free cells, <see cref="Inventory.AddTo"/>); the
+    /// units placed, the others staying in <paramref name="bought"/>.
+    /// </summary>
+    static int IntoWornBag(Inventory into, ItemInstance bought)
+    {
+        if (into.Backpack?.Contents is not { } bag) return 0;
+
+        int units = bought.Quantity;
+        return bag.AddTo("backpack_content", bought) ? units : units - bought.Quantity;
+    }
+
+    /// <summary>
+    /// Puts the bought units not in the bag: with <see cref="BuyItem.Equip"/> one unit into the equipment slot that takes it when that is free,
+    /// then wherever they fit; the units placed.
+    /// </summary>
+    int PutRest(BuyItem buy, Inventory into, ItemInstance bought, int units, bool shut, CharacterCold cold)
+    {
         if (!buy.Equip || !InventoryCommands.TryEquip(into, bought.WithQuantity(1), cold)) return Place(into, bought, units, shut);
 
         // One unit is worn; the rest of a stack goes where it fits.

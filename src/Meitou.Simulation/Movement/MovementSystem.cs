@@ -23,8 +23,9 @@ namespace Meitou.Simulation.Movement;
 /// <item>Body contact (engine choice; the original only avoids the standing bodies round a character, no physical collision was found:
 /// docs/game/pathfinding.md "Bodies in the way"): two standing bodies (<see cref="BodyShare"/> of their footprints) do not stay overlapped. Each
 /// takes half of the overlap between its stepped position and the other's last position, averaged over the bodies it overlaps, so a walker shoves a
-/// stander aside; an imprisoned or bedded one does not give. Its own velocity into a body it already touches is dropped, so a crowd pressing on does
-/// not squash its front. A sitter is never moved, by contact or separation (the original pushes no sitter, Observed), and is not solid to others.
+/// stander aside; an imprisoned or bedded one does not give. Two walkers on their paths, out of a fight, are not solid to each other. Its own
+/// velocity into a body it already touches is dropped, so a crowd pressing on does not squash its front. A sitter is never moved, by contact or
+/// separation (the original pushes no sitter, Observed), and is not solid to others.
 /// Downed, dead and carried bodies neither push (separation) nor block (contact, the walk's covered goal, root motion): the original's avoidance list
 /// leaves them out (docs/game/pathfinding.md "Bodies in the way").</item>
 /// <item>Paths: a character that wants one is flagged in Think; the Schedule step of the next tick asks the <see cref="PathService"/>;
@@ -92,7 +93,8 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     }
 
     /// <summary>
-    /// A move order (29) needs an awake character (one out cold keeps it queued until it wakes); out of a building shut by locked doors, a way
+    /// A move order (29) needs an awake character (one out cold keeps it queued, and the wake's get-up order wipes it, <see cref="Combat.BodyOrders"/>);
+    /// out of a building shut by locked doors, a way
     /// out (state 60, <see cref="Locks.LockSystem.CanLeave"/>: "I can't get out of here."), and into one, a way in (state 59,
     /// <see cref="Locks.LockSystem.CanEnter"/>: "I can't get there."), the states' failure texts in the condition table <c>FUN_140610250</c>, in the
     /// order the move row lists them; a follow order (31, 45) a target that is there, and an awake, free character (not caged or carried).
@@ -223,6 +225,15 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// </summary>
     public static void GoTo(CharacterTable table, int slot, Vector2 target, byte mode)
     {
+        Aim(table, slot, target, mode);
+        table.Next[slot].Task = (byte)CharacterTask.GoTo;
+    }
+
+    /// <summary>
+    /// <see cref="GoTo"/> without the task (serial phases only): an act-out with a task of its own walks on it (<see cref="CharacterTask.Talk"/>).
+    /// </summary>
+    public static void Aim(CharacterTable table, int slot, Vector2 target, byte mode)
+    {
         ref var n = ref table.Next[slot];
         var cold = table.Cold(slot)!;
         cold.OrderMove = false;
@@ -230,7 +241,6 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
         cold.BlockedRepaths = 0;
         cold.BlockedRetryTick = 0;
         cold.WalkEnd = WalkEnd.None;
-        n.Task = (byte)CharacterTask.GoTo;
         n.Goal = target;
         n.Mode = mode;
         n.Flags = (ushort)((n.Flags & ~(ushort)MoveFlags.Pending) | (ushort)MoveFlags.NeedPath);
@@ -656,6 +666,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             if (!next[i].Alive || (next[i].Flags & (ushort)MoveFlags.NeedPath) == 0) continue;
 
             var cold = table.Cold(i)!;
+            if (WaitsAfterGivingUp(world, next[i], cold)) continue;
 
             // The goal's floor: the height the order was given at (a follower's leader on another storey), else the character's own (a wander or
             // follow goal on its level).
@@ -672,6 +683,25 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
 
         // The synchronous service has the answers already.
         if (Paths.IsSynchronous) ApplyAnswers(world);
+    }
+
+    /// <summary>
+    /// Whether a walk waits before asking for its path: one sent again to the goal a walk was just given up at (<see cref="GiveUpWalk"/>), until
+    /// <see cref="BlockedRetrySeconds"/> have passed since. The AI sends a failed errand again at its next think (a patrol leader the same tick),
+    /// and each try is a whole search (<b>Observed</b>, #1054: a pack beast herd's leader blocked where it stood asked for its 4,800-unit patrol
+    /// path every other tick, 20-130 ms a search). A player's move order asks at once.
+    /// </summary>
+    static bool WaitsAfterGivingUp(World world, in CharacterHot n, CharacterCold cold) =>
+        world.Tick < cold.GivenUpRetryTick && n.Task == (byte)CharacterTask.GoTo && !cold.OrderMove
+        && Vector2.DistanceSquared(n.Goal, cold.GivenUpGoal) < 1;
+
+    /// <summary>
+    /// Books a walk the movement system gives up, so that one sent to the same goal again waits (<see cref="WaitsAfterGivingUp"/>).
+    /// </summary>
+    static void GiveUpWalk(World world, in CharacterHot n, CharacterCold cold)
+    {
+        cold.GivenUpGoal = n.Goal;
+        cold.GivenUpRetryTick = world.Tick + (long)MathF.Ceiling(BlockedRetrySeconds / world.TickSeconds);
     }
 
     /// <summary>
@@ -755,6 +785,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
         if (n.Task == (byte)CharacterTask.GoTo)
         {
             LogDropped(world, n, cold, following ? "no path found on asking again (the path it followed is dropped)" : "no path found");
+            GiveUpWalk(world, n, cold);
             EndWalk(cold, WalkEnd.Failed);
             PlayerOrders.WalkFailed(cold);
             TaskStart.Step(world.Characters, slot, CharacterTask.Idle);
@@ -871,6 +902,8 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     static bool AsksAgainBlocked(World world, ref CharacterHot n, CharacterCold cold)
     {
         bool provisional = n.PathCursor >= cold.PathExact;
+        if (!provisional && cold.BlockedRepaths == 0) cold.BlockedAt = new Vector2(n.Position.X, n.Position.Z);
+
         bool within = provisional ? ++cold.ProvisionalBlocked <= ProvisionalBlockedLimit : ++cold.BlockedRepaths <= BlockedRepathLimit;
         if (!within && !cold.OrderMove) return false;
 
@@ -884,6 +917,14 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
 
         return true;
     }
+
+    /// <summary>
+    /// Whether a walker has left the spot its blocks are counted at (<see cref="CharacterCold.BlockedAt"/>) by more than a stride. A waypoint
+    /// passed there is no way on: a path asked for at a block starts where the walker stands, so its first point is reached without a step
+    /// (<b>Observed</b>, #1054: a follower blocked at the second point of each new path counted 1 again and asked for a path every tick).
+    /// </summary>
+    static bool LeftBlockedSpot(in CharacterHot p, CharacterCold cold) =>
+        Vector2.DistanceSquared(new Vector2(p.Position.X, p.Position.Z), cold.BlockedAt) > ArriveRadius * ArriveRadius;
 
     /// <summary>
     /// A blocked walk given up (<see cref="AsksAgainBlocked"/>): the path is dropped and the walker waits before trying again; a follower steering at
@@ -901,6 +942,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             ? $"blocked {cold.ProvisionalBlocked} times on the provisional long-range part (limit {ProvisionalBlockedLimit})"
             : $"blocked {cold.BlockedRepaths} times on the navmesh part (limit {BlockedRepathLimit})";
         LogDropped(world, n, cold, $"{why}, waypoint {n.PathCursor} of {cold.Path.Length}, stuck stepping to {x:0}, {z:0}");
+        GiveUpWalk(world, n, cold);
         EndWalk(cold, WalkEnd.Failed);
         PlayerOrders.WalkFailed(cold);
         TaskStart.Step(world.Characters, slot, CharacterTask.Idle);
@@ -1816,7 +1858,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             if (reached)
             {
                 n.PathCursor++;
-                if (cold.BlockedRepaths != 0) cold.BlockedRepaths = 0;
+                if (cold.BlockedRepaths != 0 && LeftBlockedSpot(p, cold)) cold.BlockedRepaths = 0;
 
                 if (last) s.Finished = true;
             }
@@ -1864,7 +1906,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
 
         // An NPC carrier in walk mode is raised to jog; a player's carrier keeps the mode it was given (#995; docs/game/pathfinding.md
         // "Force speed").
-        if (mode == SpeedMode.Walk && !cold.Carrying.IsNone && !cold.IsPlayer) mode = SpeedMode.Run;
+        if (mode == SpeedMode.Walk && !cold.Carrying.IsNone && !cold.IsPlayer && !CarriesOutAtWalk(cold)) mode = SpeedMode.Run;
 
         // Its squad template's force speed 0..2 replaces the AI's mode (FUN_140332390 never lowers an explicit task mode, so only a raise
         // is applied; docs/game/pathfinding.md "Force speed").
@@ -1890,6 +1932,14 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
 
         return desired;
     }
+
+    /// <summary>
+    /// Whether the character's task is a carry-out (224 <c>Task_TakeIntruderOutside</c>, 274 <c>...OutsideTown</c>): its start sets the mover's
+    /// mode itself and goes through neither reader that raises a carrier's walk to a jog, so it walks (<c>FUN_1403355e0</c>, <b>Verified</b>;
+    /// <b>Observed</b>, original 1.0.65, #1024 save: mode 0 at the race's walk speed from the lift to the drop).
+    /// </summary>
+    internal static bool CarriesOutAtWalk(CharacterCold cold) =>
+        cold.Running is { Row: TaskType.TakeIntruderOutside or TaskType.TakeIntruderOutsideTown };
 
     /// <summary>
     /// A follower near its aim (Think set it as the goal) steers straight at it at its desired speed, capped by its top speed, never past it.
@@ -2039,9 +2089,10 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
         if (s.Closing || seated) push.Sum = Vector2.Zero;
 
         var at = new Vector2(p.Position.X, p.Position.Z);
-        var drive = s.Closing || seated ? s.Dir * s.Speed : Blocked(world, cold, ref push, at, s.Dir * s.Speed);
+        bool walker = s.AgentWalk && !cold.InCombat;
+        var drive = s.Closing || seated ? s.Dir * s.Speed : Blocked(world, cold, ref push, at, s.Dir * s.Speed, walker);
         var step = (drive + push.Sum * SeparationStrength) * dt;
-        var shove = s.Closing || seated ? Vector2.Zero : Contact(world, i, cold, ref push, at + step);
+        var shove = s.Closing || seated ? Vector2.Zero : Contact(world, i, cold, ref push, at + step, walker);
         step += shove;
         float x = p.Position.X + step.X, z = p.Position.Z + step.Y, y = 0;
         bool stands = false;
@@ -2288,11 +2339,12 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// Whether a medic's ask to stand still holds the character (<see cref="CharacterCold.StandStillUntil"/>): the original's patient takes 62
     /// Standing still as an urgent goal (a tier 3 request, docs/game/ai-tasks.md "Stand still"), which the front of its order queue outranks (the
     /// chooser's source 1) and which beats its jobs and routine (sources 5 and 6); its row needs no attack on it (<c>!isAggressionTowardsMe</c>).
-    /// So an NPC or a player's character with no order in hand is held; not one fighting or fleeing.
+    /// So a player's character with no order in hand, or an NPC its order does not hold (<see cref="DecisionSystem.Ordered"/>), is held; not one
+    /// fighting or fleeing.
     /// </summary>
     static bool AskedToStandStill(in CharacterHot n, CharacterCold cold, long tick) =>
-        cold.StandStillUntil > tick && (!cold.IsPlayer || cold.OrderQueue.Count == 0) && !cold.InCombat && !cold.Fleeing && cold.CarriedBy.IsNone
-        && n.Task != (byte)CharacterTask.Attack;
+        cold.StandStillUntil > tick && (cold.IsPlayer ? cold.OrderQueue.Count == 0 : !DecisionSystem.Ordered(cold)) && !cold.InCombat && !cold.Fleeing
+        && cold.CarriedBy.IsNone && n.Task != (byte)CharacterTask.Attack;
 
     /// <summary>
     /// The factor on a character's step time: <see cref="OffViewTime"/> out of view.
@@ -2309,9 +2361,10 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// last tick's state of the others): half of each overlap with the other's last position, all of it against one held in a bed or cage, averaged
     /// over the bodies it overlaps (a sum overshoots in a packed crowd and the whole crowd shakes). Lying, sitting and carried bodies are not in the
     /// way (a walker only steers past a sitter, so a ring of sitters cannot wall it in), and a carried or bedded one is not moved. Not where the
-    /// other's velocity takes it: in a jam that is where it wants to go, not where it gets to.
+    /// other's velocity takes it: in a jam that is where it wants to go, not where it gets to. <paramref name="walker"/>: it walks a path out of
+    /// a fight (<see cref="InTheWay"/>).
     /// </summary>
-    static Vector2 Contact(World world, int self, CharacterCold cold, ref SeparationState near, Vector2 at)
+    static Vector2 Contact(World world, int self, CharacterCold cold, ref SeparationState near, Vector2 at, bool walker)
     {
         if (!cold.CarriedBy.IsNone || cold.InSomething != Locks.HeldState.None) return Vector2.Zero;
 
@@ -2327,7 +2380,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             if (table.Cold(other) is not { } them || them.Medical is { Incapacitated: true }) continue;
 
             ref readonly var o = ref all[other];
-            if (Seated(o, them)) continue;
+            if (!InTheWay(o, them, walker)) continue;
 
             var d = at - new Vector2(o.Position.X, o.Position.Z);
             float len = d.Length(), reach = mine + BodyRadius(them);
@@ -2346,7 +2399,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// blocked one do not press it into those in front and a crowd does not squash; what is left slides it round them. The bodies counted are
     /// <see cref="Contact"/>'s.
     /// </summary>
-    static Vector2 Blocked(World world, CharacterCold cold, ref SeparationState near, Vector2 at, Vector2 drive)
+    static Vector2 Blocked(World world, CharacterCold cold, ref SeparationState near, Vector2 at, Vector2 drive, bool walker)
     {
         if (drive == Vector2.Zero || !cold.CarriedBy.IsNone) return drive;
 
@@ -2360,7 +2413,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             if (table.Cold(other) is not { } them || them.Medical is { Incapacitated: true }) continue;
 
             ref readonly var o = ref all[other];
-            if (Seated(o, them)) continue;
+            if (!InTheWay(o, them, walker)) continue;
 
             var d = at - new Vector2(o.Position.X, o.Position.Z);
             float len = d.Length();
@@ -2373,6 +2426,15 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
 
         return drive;
     }
+
+    /// <summary>
+    /// Whether the standing body of <paramref name="them"/> is in a stepping character's way (<see cref="Contact"/>, <see cref="Blocked"/>): not a
+    /// sitter's, and for a <paramref name="walker"/> (on a path, out of a fight) not that of another one walking its own path out of a fight. The
+    /// original's walkers only push each other apart (docs/game/pathfinding.md "Bodies in the way"); solid to each other, two columns meeting on
+    /// a stair stood still and a carrier among them made a unit a second (#1024).
+    /// </summary>
+    static bool InTheWay(in CharacterHot o, CharacterCold them, bool walker) =>
+        !Seated(o, them) && !(walker && !them.InCombat && ((MoveFlags)o.Flags & MoveFlags.HasPath) != 0);
 
     /// <summary>
     /// Whether another standing character's footprint covers <paramref name="goal"/> (last tick's positions).
