@@ -50,6 +50,7 @@ public sealed partial class DialogueSystem
         if (offers.Count == 0) world.Post(Loc.Tr("Nobody here to bail out."));
         _bailList = [.. offers.Select(o => o.Prisoner)];
         _open = c;
+        Hold(world, n);
     }
 
     /// <summary>
@@ -74,9 +75,9 @@ public sealed partial class DialogueSystem
     public bool FireEvent(World world, CharacterId npc, CharacterId target, int ev) => Settings.AmbientEvents && Fire(world, npc, target, ev);
 
     /// <summary>
-    /// Whether <paramref name="npc"/> is saying a line, is in the open conversation or is on its order 102 (walking up to talk, DA 2).
+    /// Whether <paramref name="npc"/> is saying a line or is in the open conversation.
     /// </summary>
-    public bool Engages(CharacterId npc) => _open?.Npc == npc || BubbleOf(npc) || _npcApproaches.Has(npc);
+    public bool Engages(CharacterId npc) => _open?.Npc == npc || BubbleOf(npc);
 
     #endregion
 }

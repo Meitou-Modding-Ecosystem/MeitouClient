@@ -928,7 +928,7 @@ public sealed partial class FixtureRegistry
     /// A BUILDING's NODE_USE instances (<see cref="UseNode"/>) in instance id order, placed by the building's <c>scale</c> as its parts are; null with
     /// none (a bed with none is lain in at its position marker, <see cref="Fixture.Marker"/>).
     /// </summary>
-    internal static UseNode[]? UseNodes(GameDatabase db, GameRecord building)
+    static UseNode[]? UseNodes(GameDatabase db, GameRecord building)
     {
         float scale = building.GetFloat("scale", 1) is > 0 and var s ? s : 1;
         UseNode[] nodes = [.. building.Instances.Values.Where(i => !i.IsCleared && db.Find(i.Target) is { } n && n.GetBool("is node")
@@ -1969,14 +1969,14 @@ public sealed partial class FixtureRegistry
     }
 
     /// <summary>
-    /// Puts a character into its fixture: placed there, standing, its path dropped. Its queued orders stay (the cage or bed entry
-    /// <c>FUN_140330600</c> wipes no queue, docs/game/ai-tasks.md "What clears the queue").
+    /// Puts a character into its fixture: placed there, standing, its path and orders dropped.
     /// </summary>
     static void Hold(CharacterTable table, int slot, CharacterCold c, Vector3 at, float yaw)
     {
         table.Place(slot, at, yaw);
         TaskStart.Step(table, slot, CharacterTask.Idle);   // the teleport stands it
         c.Path = [];
+        c.OrderQueue.Clear();
     }
 
     /// <summary>
@@ -2366,7 +2366,7 @@ public sealed partial class FixtureRegistry
     /// <summary>
     /// The start of <see cref="InteriorKey"/>'s keys.
     /// </summary>
-    internal const string InteriorLockPrefix = "meitou lock ";
+    const string InteriorLockPrefix = "meitou lock ";
 
     /// <summary>
     /// Whether a fixture of <paramref name="building"/> is one of its layout's objects (id <c>&lt;building&gt;/&lt;object&gt;</c>).

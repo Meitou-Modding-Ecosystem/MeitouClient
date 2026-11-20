@@ -41,7 +41,6 @@ sealed class HudPanels(PlayerInterface player)
         CharacterTask.Haul => Loc.Tr("Hauling"),
         CharacterTask.Prospect => Loc.Tr("Prospecting"),
         CharacterTask.Sleep => Loc.Tr("Sleeping"),
-        CharacterTask.Talk => Loc.Tr("Talking"),
         _ => Loc.Tr("Aimless"),
     };
 

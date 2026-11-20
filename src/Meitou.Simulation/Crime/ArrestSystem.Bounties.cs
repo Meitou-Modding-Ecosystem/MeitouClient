@@ -275,13 +275,17 @@ public sealed partial class ArrestSystem : IOrderOwner
     /// The end of each freed prisoner's block in <c>FUN_1406ae170</c> (<b>Verified</b> by disassembly): one that could not speak (event 51 returned
     /// 0) is given 128 Retreat to hometown, then every one 133 Get out of cage (legit); both gives clear the order queue first (<c>FUN_1405d20d0</c>
     /// with its clear argument 1: <c>FUN_1405074a0</c> and <c>FUN_140507530</c>), so 133 replaces 128 and the prisoner only steps out of its
-    /// unlocked cage (<see cref="FixtureRegistry.GetOutLegit"/>); its own AI goes on from there. <b>Engine order</b>: 133 is given before event 51,
-    /// since Meitou's events need a speaker out of its cage, so whether the event would fail is not known before it and 128, which 133 wipes
-    /// unrun, is not given. A prisoner whose chooser does not run (no squad, out cold) keeps the order queued in its unlocked cage until it does.
+    /// unlocked cage (<see cref="FixtureRegistry.GetOutLegit"/>); its own AI goes on from there. Engine order: out before event 51, since Meitou's
+    /// events need a free speaker.
     /// </summary>
     void SendOut(World world, CharacterId prisoner)
     {
-        if (world.Characters.TryResolveNext(prisoner, out int p)) FreedPrisoner.Give(world, p);
+        var table = world.Characters;
+        if (!table.TryResolveNext(prisoner, out int p)) return;
+
+        table.Cold(p)!.OrderQueue.Clear();
+        world.Fixtures.GetOutLegit(world, prisoner, Crimes);
+        TaskStart.Stand(table, p);
     }
 
     #endregion
@@ -322,20 +326,20 @@ public sealed partial class ArrestSystem : IOrderOwner
     }
 
     /// <summary>
-    /// Put in prison 108 needs a character carrying someone (else it leaves the queue), awake and free, and a free cage ("no free cage nearby",
-    /// posted).
+    /// Put in prison 108 needs a player character carrying someone (else it leaves the queue), awake and free, and a free cage ("no free cage
+    /// nearby", posted).
     /// </summary>
-    OrderCheck CanCage(World world, int slot, OrderEntry order)
+    OrderCheck IOrderOwner.CanRun(World world, int slot, OrderEntry order)
     {
-        if (Carry is null || world.Characters.Cold(slot) is not { Carrying.IsNone: false } c) return OrderCheck.Gone;
+        if (Carry is null || world.Characters.Cold(slot) is not { IsPlayer: true, Carrying.IsNone: false } c) return OrderCheck.Gone;
         if (c is not { IsImprisoned: false, Medical.Incapacitated: false }) return OrderCheck.Blocked();
         return CageFor(world, slot, c, order.Site) is null ? OrderCheck.Blocked($"{c.Name}: no free cage nearby", posted: true) : OrderCheck.Run;
     }
 
     /// <summary>
-    /// Starts the put-in-cage order: drops the carrier's old caging and walks to the cage with the carried body as target.
+    /// Starts the order: drops the carrier's old caging and walks to the cage with the carried body as target.
     /// </summary>
-    void StartPutInCage(World world, int slot, OrderEntry order)
+    void IOrderOwner.Start(World world, int slot, OrderEntry order)
     {
         var c = world.Characters.Cold(slot)!;
         var cage = CageFor(world, slot, c, order.Site)!;
@@ -419,7 +423,7 @@ public sealed partial class ArrestSystem : IOrderOwner
         {
             if (FindCageFor(world, s, c, k) is not { } other)
             {
-                if (DestinationAccess.PlayerSide(world, c)) world.Post(Loc.Tr("{1}: no free cage nearby", c.Name));
+                world.Post(Loc.Tr("{1}: no free cage nearby", c.Name));
                 return false;
             }
             k.Cage = other.Id;
@@ -436,7 +440,7 @@ public sealed partial class ArrestSystem : IOrderOwner
             Carry!.LetGo(world, s);
             if (!world.Fixtures.Imprison(world, k.Captive, cage, constants.PrisonTime))
             {
-                if (DestinationAccess.PlayerSide(world, c)) world.Post(Loc.Tr("{1} could not put the captive in the cage", c.Name));
+                world.Post(Loc.Tr("{1} could not put the captive in the cage", c.Name));
                 return false;
             }
             Claim(world, s, k.Captive, cage);
@@ -484,16 +488,23 @@ public sealed partial class ArrestSystem : IOrderOwner
     }
 
     /// <summary>
-    /// <c>DA_ARREST_TARGET</c> (29, <c>FUN_140680560</c>): in his own town the speaker is ordered 240 Capture Target and 112 Find and put in cage on
-    /// the target, elsewhere 4 Attacking (<see cref="OrderArrest"/>). <paramref name="capture"/> is <see cref="CapturesInTown"/>, asked once by the
-    /// caller, which tags the memory by the same answer. False: either is gone.
+    /// <c>DA_ARREST_TARGET</c> (29, <c>FUN_140680560</c>): in his own town the speaker captures the target and cages it (the original's tasks 240 and
+    /// 112: an arrest with no fine); elsewhere he and his squad attack it (task 4). <paramref name="capture"/> is <see cref="CapturesInTown"/>, asked
+    /// once by the caller, which tags the memory by the same answer; <paramref name="leashed"/>: the capture keeps to the towns
+    /// (<see cref="Arrest.Leashed"/>). False: the speaker is busy, or either is gone or down.
     /// </summary>
-    public bool ArrestFromDialogue(World world, CharacterId guard, CharacterId target, bool capture)
+    public bool ArrestFromDialogue(World world, CharacterId guard, CharacterId target, bool capture, bool leashed = true)
     {
         var table = world.Characters;
-        if (!table.TryResolveNext(guard, out int g) || !table.TryResolveNext(target, out int t) || g == t) return false;
+        if (!table.TryResolveNext(guard, out int g)
+            || table.Cold(g) is not { IsPlayer: false, Medical.Incapacitated: false, Carrying.IsNone: true } || Busy(guard))
+        {
+            return false;
+        }
 
-        OrderArrest(world, g, t, capture);
+        // a carried target is snatched by the capture (task 240)
+        if (!table.TryResolveNext(target, out int t) || !table.Next[t].Alive || table.Cold(t) is not { IsImprisoned: false }) return false;
+        Start(world, g, t, force: true, capture, leashed);
         return true;
     }
 
@@ -532,30 +543,36 @@ public sealed partial class ArrestSystem : IOrderOwner
     }
 
     /// <summary>
-    /// The hand-over of DA 30 <c>DA_ARREST_TARGETS_CARRIED_PERSON</c>, 40 <c>DA_ENSLAVE_TARGETS_CARRIED_PERSON</c> (<paramref name="enslave"/>) and
-    /// 10 <c>DA_PAY_BOUNTY</c> (<c>FUN_140680560</c>, <b>Verified</b>): <paramref name="carrier"/> drops the body it carries and
-    /// <paramref name="guard"/> is ordered 213 Lifting/Snatching on it, his queue cleared, then 112 Find and put in cage queued behind it, so he
-    /// carries it to a free cage. The order check <c>FUN_1405d1940</c> refuses 213 to a guard whose left arm cannot carry ("I can't carry anyone with
-    /// this arm."), and 112 is given all the same. DA 40's caging makes the body the guard faction's slave (engine: the original's slaver processing,
-    /// task 182, is not built). False: no body.
+    /// <c>DA_ARREST_TARGETS_CARRIED_PERSON</c> (30, economy.md 11.7, <b>Observed</b>): <paramref name="carrier"/> drops the body it carries and
+    /// <paramref name="guard"/> takes it over: he lifts it and carries it to a free cage as an arrest does (no cage: he drops it). False: no body, or
+    /// the guard is busy. <paramref name="enslave"/>: <c>DA_ENSLAVE_TARGETS_CARRIED_PERSON</c> (40, the same hand-over, <c>FUN_140680560</c>): once
+    /// caged the captive is the guard faction's slave (engine: the original's slaver processing, task 182, is not built).
     /// </summary>
     public bool TakeOver(World world, CharacterId guard, CharacterId carrier, bool enslave = false)
     {
         var table = world.Characters;
-        if (Carry is null || !table.TryResolveNext(guard, out int g) || table.Cold(g) is not { } gc) return false;
-        if (!table.TryResolveNext(carrier, out int c) || table.Cold(c) is not { } cc || !table.TryResolveNext(cc.Carrying, out int t) || t == g)
+        if (Carry is null || !table.TryResolveNext(guard, out int g)
+            || table.Cold(g) is not { IsPlayer: false, Medical.Incapacitated: false, Carrying.IsNone: true } gc || Busy(guard))
+        {
             return false;
-
-        var body = cc.Carrying;
+        }
+        if (!table.TryResolveNext(carrier, out int c) || table.Cold(c) is not { } cc || !table.TryResolveNext(cc.Carrying, out int t)
+            || table.Cold(t) is not { } tc)
+        {
+            return false;
+        }
+        var target = cc.Carrying;
         Carry.LetGo(world, c);
-        if (CanLift(gc))
-            PlayerOrders.Give(world, g, new OrderEntry(TaskType.LiftPersonSnatchingAllowed, this) { Target = body }, queued: false);
-        else
-            world.Bark(guard, Loc.Tr("I can't carry anyone with this arm."));
-
-        PlayerOrders.Give(world, g, CageOrder(body, enslave), queued: true);
-        int bounty = table.Cold(t)!.Bounties?.BookedAmount(Crimes.Factions.Relations, gc.Faction) ?? 0;
-        Note(world, ArrestEventKind.Arrest, guard, body, gc.Faction, bounty);
+        var arrest = new Arrest { Guard = guard, Target = target, Faction = gc.Faction, Phase = ArrestPhase.Fight,
+            Enslave = enslave, Takeover = true };
+        _arrests.Add(arrest);
+        gc.Engaged = true;
+        if (tc.Medical is { Incapacitated: true }
+            && Carry.BeginPickUp(world, g, target, source: TaskSource.Npc, row: TaskType.LiftPersonSnatchingAllowed))
+        {
+            arrest.Phase = ArrestPhase.Lift;
+        }
+        Note(world, ArrestEventKind.Arrest, guard, target, gc.Faction, tc.Bounties?.BookedAmount(Crimes.Factions.Relations, gc.Faction) ?? 0);
         return true;
     }
 
@@ -585,7 +602,7 @@ public sealed partial class ArrestSystem : IOrderOwner
         var table = world.Characters;
         if (!table.Next[slot].Alive || table.Next[slot].Task is (byte)CharacterTask.Attack or (byte)CharacterTask.Treat) return false;
         if (table.Cold(slot) is not { IsPlayer: false, InCombat: false, Fleeing: false, IsImprisoned: false, Medical.Incapacitated: false,
-            Carrying.IsNone: true, CarriedBy.IsNone: true, Fighter.CanAttack: true } hc || DecisionSystem.Ordered(hc))
+            Carrying.IsNone: true, CarriedBy.IsNone: true, Fighter.CanAttack: true })
         {
             return false;
         }
@@ -604,7 +621,7 @@ public sealed partial class ArrestSystem : IOrderOwner
         var hc = table.Cold(hunter)!;
         hc.Engaged = true;
         _hunts.Add(new Hunt { Hunter = table.IdOf(hunter), Target = table.IdOf(target) });
-        Attack(world, null, hunter, target);
+        Attack(world, hunter, target);
         world.Post(Loc.Tr("{1} is after the bounty on {2}!", hc.Name, table.Cold(target)!.Name));
         Note(world, ArrestEventKind.Hunt, table.IdOf(hunter), table.IdOf(target), hc.Faction, HuntBounty(table.Cold(target)!, hc.Faction));
     }
@@ -640,37 +657,15 @@ public sealed partial class ArrestSystem : IOrderOwner
                 else
                 {
                     h.Time = 0;
-                    Attack(world, null, g, t);
+                    Attack(world, g, t);
                 }
             }
         }
         if (!over) return true;
-        EndHunt(world, h, gc);
-        return true;
-    }
-
-    /// <summary>
-    /// A hunt is over: the hunter goes back to the AI and the hunt rests for <see cref="ArrestSettings.HuntRestSeconds"/>.
-    /// </summary>
-    void EndHunt(World world, Hunt h, CharacterCold gc)
-    {
         gc.Engaged = false;
         h.Rest = Settings.HuntRestSeconds;
         Note(world, ArrestEventKind.HuntOver, h.Hunter, h.Target, gc.Faction, 0);
-    }
-
-    /// <summary>
-    /// An order takes the hunter in <paramref name="slot"/>: each hunt of his under way is over (<see cref="EndHunt"/>).
-    /// </summary>
-    void ReleaseHunts(World world, int slot)
-    {
-        if (_hunts.Count == 0 || world.Characters.Cold(slot) is not { } gc) return;
-
-        var id = world.Characters.IdOf(slot);
-        foreach (var h in _hunts)
-        {
-            if (h.Hunter == id && h.Rest <= 0) EndHunt(world, h, gc);
-        }
+        return true;
     }
 
     /// <summary>

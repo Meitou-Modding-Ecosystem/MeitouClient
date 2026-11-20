@@ -93,7 +93,6 @@ Building state writer/reader (**Verified** by code, no player-built building in 
 | `destroyed` | bool | +0x1a1 |
 | `town` | handle | its town (outpost), only when the building is not inside another one (**Observed** condition) |
 | `flags` | int | bit0 is outside (+0x240), bit1 foliage, bit2 +0x241 ; old saves use bools `is outside` / `foliage` |
-| (a layout object's state) | | An `interiors.level` instance can list several states (a later file adds its own; a container lists its INVENTORY_STATE first). The object is made from the last GAMESTATE_BUILDING (an item slot: the last ITEM_PLACEMENT_GROUP): its `floornum`, and `flags` bit 0 alone, a state with only the old `is outside` giving an inside object (**Verified**, `meitou-tools probe METARU interiors`: the saved `floornum` and `flags` of all 14660 generated furniture entries and 5627 groups; reading the first state missed 904 and 232). Meitou `BuildingLayouts.StateOf`. |
 | `serialised interior` | int 1 | when not in interior edit mode, followed by the interior layout records; on load 1 keeps the saved furniture, anything else makes the building generate its interior (**Verified** by code, [zone files](save.md#zone-files)) |
 | `construction progress` | float | progress in material units |
 | `is complete` | bool | absent means complete |
@@ -174,12 +173,8 @@ zone file ([player outposts](save.md#player-outposts)); the buildings' `town` ha
 GAMESTATE_TOWN state `-S5e`. **Verified**304 targets resolve;224 town states listing zones contain
 their town,80 list none. Keys `zones_count`, `zone_x_<i>`, `zone_y_<i>`, handle `hand*`, string
 `instance`=list entry ID. ROAD keys: `hidden`, `width`46..200, `length`, `weight`, `start`, `end`
-(junction numbers, [roads](../game/factions-squads-towns.md#off-screen-world)); instances target `-`, absolute positions, rotation w1/y0/z0,
-x0..1. A road's points are its instances by number: the id is the point's number in lowercase hex without padding (`0`..`f`, `10`..), and the
-loader (`FUN_14045e760`, id made by `FUN_1400ac750`) asks for 0, 1, 2.. until an id is missing or the point read has rotation x >= 1, the mark of
-the last point (**Verified**: `meitou-tools world`, of 2109 roads each has the mark on its highest id and on no other point, and none ends before
-its instances). The files list the ids as text (`1`, `10`..`1f`, `2`), so file order is not the road's order for the 368 roads of over 16 points
-(`WorldLevelData.RoadPoints`; **Observed**, #1065: `1154-Newwworld`, 46 points, read in file order ran (22104,13517) → (29077,5154) → (21889,13829)). `5-roadfoliage` ids are hex slot numbers too (**Observed**, `FUN_14045eb80`, `strtol` base 16); its target- points use quaternion w as
+(junction numbers, [roads](../game/factions-squads-towns.md#off-screen-world)); ordered instances target `-`, absolute positions, rotation w1/y0/z0,
+x0..1 (**Observed**, purpose Unknown). `5-roadfoliage` target- points use quaternion w as
 size0.1..3590 (**Observed**, likely clearing radius). Furnished interiors use GAMESTATE_BUILDING,
 ITEM_PLACEMENT_GROUP, inventory states and collections, often `<n>-[basedata]-INGAME` IDs;
 `WorldLevelData.Load(includeInteriors:true)` merges them. Item groups: [loose items](../game/factions-squads-towns.md#loose-items-in-buildings); inventory semantics Unknown.

@@ -138,7 +138,6 @@ public sealed partial class ProductionSystem
             TaskType.PickupIntrudersTown])
             decisions.RegisterJob(type, errands);
 
-        decisions.Register(new BedCommitment(this));
         decisions.Register(new ImplicitJobs(this));
     }
 
@@ -205,38 +204,6 @@ public sealed partial class ProductionSystem
         /// Ends the character's list job.
         /// </summary>
         public void Stop(World world, int slot, int k) => End(world, slot);
-    }
-
-    /// <summary>
-    /// The chooser's committed stop before step 5 (<c>FUN_140510ef0</c>, <b>Verified</b>; docs/game/ai-tasks.md "Perma-jobs"): the implicit 153
-    /// "Sleep when injured" job is a priority-2 goal with the commit flag, so while its commitment runs the job list and the implicit jobs are not
-    /// asked, and a list job that turns runnable does not get the sleeper up (#1034). Orders, urgent jobs and the priority-3 goals are asked before it.
-    /// </summary>
-    sealed class BedCommitment(ProductionSystem owner) : IDecisionSource
-    {
-        /// <summary>
-        /// The trace name.
-        /// </summary>
-        public string Name => "153 Going to bed (committed)";
-        /// <summary>
-        /// Step 5, the jobs.
-        /// </summary>
-        public DecisionStep Step => DecisionStep.Jobs;
-        /// <summary>
-        /// Before the list (its key 0).
-        /// </summary>
-        public int Key => -1;
-
-        /// <summary>
-        /// Runs while the character's bed trip or sleep is committed (<see cref="BedCommitted"/>).
-        /// </summary>
-        public DecisionCheck CanRun(World world, int slot) =>
-            owner.BedCommitted(world, slot) ? DecisionCheck.Runs : DecisionCheck.No("not committed to a bed");
-
-        /// <summary>
-        /// Nothing to start: it only keeps the running job.
-        /// </summary>
-        public void Start(World world, int slot) { }
     }
 
     /// <summary>
@@ -351,7 +318,7 @@ public sealed partial class ProductionSystem
 
         // Sleep and Sit not while holding position (FUN_1402b2b90) or carrying someone (+0x348; FUN_14050e5b0).
         if (Orders.Holding(cold) || !cold.Carrying.IsNone) return null;
-        if ((options & SquadAi.Sleep) != 0 && WantsBed(world, slot, cold) && Beds is not null)
+        if ((options & SquadAi.Sleep) != 0 && Injured(cold) && Beds is not null)
         {
             if (on == TaskType.GoHomeAndGoToBed && cold.OperateSite is { } bed && world.Fixtures.Find(bed) is { } kept
                 && Gap(kept.Position, at) <= Locks.FixtureRegistry.BedSearchRange)
@@ -418,85 +385,27 @@ public sealed partial class ProductionSystem
         OperatorsOf(world, site.Id) - (cold.OperateSite == site.Id ? 1 : 0) < m.Data.MaxOperators;
 
     /// <summary>
-    /// The player branch of row 98 Sleeping's desire (<c>FUN_1405a0880</c>, <b>Verified</b>; 153 plans into 98, and a node whose desire is 0 is
-    /// dropped): it stands in a player place (<see cref="InPlayerPlace"/>), its organic first aid need is 0 (everything bandaged) and it is
-    /// <see cref="Unrested"/>.
+    /// A body part at least <see cref="HealedSlack"/> below its maximum (<b>engine choice</b>: the original's injury test is Unknown; its 257 is "get
+    /// out of bed once healed").
     /// </summary>
-    bool WantsBed(World world, int slot, CharacterCold cold) =>
-        Unrested(cold) && FirstAid.FirstAidSystem.OrganicAidNeed(world, cold) <= 0 && InPlayerPlace(world, slot, cold);
-
-    /// <summary>
-    /// The player branch's place test (<c>FUN_1405a0880</c>, <b>Verified</b> decompile): the character's status town (status <c>+0x88</c>) is set,
-    /// and that town's faction is the player's, or the building it stands in (its <c>isIndoors</c> handle, vfunc <c>0x1d8</c>) is the player's.
-    /// So a character out in the wild, or outdoors in another faction's town, is not sent to bed. A world built without town data has no towns to
-    /// test, so there it is not asked.
-    /// </summary>
-    bool InPlayerPlace(World world, int slot, CharacterCold cold)
-    {
-        if (_towns is not { } towns) return true;
-
-        int player = world.Player.Faction;
-        var town = Ai.AiSystem.StatusTownAt(towns, world, world.Characters.Next[slot].Position, cold.StatusTown);
-        if (town.IsNone) return false;
-        if (town.Owner(world, towns) == player) return true;
-
-        return world.Sight.BuildingOf(slot) is { } building && world.Fixtures.OwnerOf(building) == player;
-    }
-
-    /// <summary>
-    /// A living character whose rested level (<see cref="MedicalState.RestedLevel"/>, medical <c>+0xb0</c>) is at most
-    /// <see cref="RowStates.RestedPast"/> (0.9, which <c>FUN_1405a0880</c> and state 72's <c>FUN_140643cd0</c> both read): the sleeping desire's
-    /// injury test, and the opposite of state 72 <c>isFullyRested</c>, row 98's done test. A robot's is 1, so it never is. <b>Engine choice</b>: a
-    /// part within <see cref="HealedSlack"/> of its maximum counts as full.
-    /// </summary>
-    static bool Unrested(CharacterCold cold) =>
-        cold is { Medical: { Dead: false } medical, Race: { } race } && medical.RestedLevel(race, HealedSlack) <= RowStates.RestedPast;
-
-    /// <summary>
-    /// How far below its maximum a part may stay and count as full: the HUD shows it full, and healing from the treated pool can stop a hundredth
-    /// short, which nothing heals (#500: a healed sleeper kept going back to bed). The rested level stores a part's raw health, so without it a
-    /// part whose maximum is 90 or less would never read as rested with that residue.
-    /// </summary>
-    const float HealedSlack = 0.5f;
+    static bool Injured(CharacterCold cold) =>
+        cold.Medical is { Dead: false } medical && medical.Parts.Any(p => p.MaxHp > 0 && p.Flesh - p.Stun + p.Rig <= p.MaxHp - HealedSlack);
 
     /// <summary>
     /// The original's 257 "Getting out of bed once healed", above 153 in the implicit list (docs/game/ai-tasks.md "Perma-jobs"): a player character
     /// asleep in a bed with no order, under the <see cref="SquadAi.Sleep"/> option and the jobs switch, not sneaking, not a slave, not holding
-    /// position, and rested. Engine reading: it applies to any such sleeper, not only one the 153 job put there.
+    /// position, with no part injured. Engine reading: it applies to any such sleeper, not only one the 153 job put there.
     /// </summary>
     bool GetsUpHealed(World world, int slot, CharacterCold cold) =>
         cold.IsPlayer && cold.InSomething == Locks.HeldState.Bed && world.Characters.Next[slot].Task == (byte)CharacterTask.Sleep
         && (world.Player.SquadAi & SquadAi.Sleep) != 0 && (cold.Orders & CharacterOrders.Jobs) != 0 && (cold.Orders & CharacterOrders.Sneak) == 0
-        && cold.SlaveState == 0 && !Orders.Holding(cold) && !PlayerOrders.Holds(world, slot) && !Unrested(cold);
+        && cold.SlaveState == 0 && !Orders.Holding(cold) && !PlayerOrders.Holds(world, slot) && !Injured(cold);
 
     /// <summary>
-    /// Whether the character is on the implicit 153 job (walking to its bed or lying in it) and committed to it: its commitment
-    /// (<see cref="CharacterCold.BedCommitUntil"/>) has not passed, the bed is still there, and it is still <see cref="Unrested"/> (row 98 is done
-    /// by state 72, which ends the plan and with it the goal). The switches the implicit pass tests are not asked again, as the original's
-    /// committed chooser returns before that pass.
+    /// How far below its maximum a part may stay and count as healed: the HUD shows it full, and healing from the treated pool can stop a hundredth
+    /// short, which nothing heals (#500: a healed sleeper kept going back to bed).
     /// </summary>
-    bool BedCommitted(World world, int slot)
-    {
-        var table = world.Characters;
-        var cold = table.Cold(slot)!;
-        var job = PermaJobs.ListJob(cold, (CharacterTask)table.Next[slot].Task);
-        if (job is not { Implicit: true, Row: TaskType.GoHomeAndGoToBed }) return false;
-        if (world.GameHours >= cold.BedCommitUntil || !Able(cold) || !Unrested(cold)) return false;
-
-        return cold.OperateSite is { } bed && world.Fixtures.Find(bed) is not null;
-    }
-
-    /// <summary>
-    /// Starts the commitment of the implicit 153 job (the goal setter <c>FUN_14050caf0</c>, <b>Verified</b>: a new committing goal's expiry is now
-    /// plus the row's 2 + r x 8 game hours, <see cref="TaskProfiles"/>).
-    /// </summary>
-    static void CommitToBed(World world, int slot, CharacterCold cold)
-    {
-        var profile = TaskProfiles.Of(TaskType.GoHomeAndGoToBed);
-        ulong salt = SeedSalts.AiCommit ^ (ulong)world.Tick << 9 ^ (ulong)TaskType.GoHomeAndGoToBed;
-        ulong roll = Rng.Hash(world.Seed, Rng.Key(world.Characters.IdOf(slot)), RngPurpose.Think, salt);
-        cold.BedCommitUntil = world.GameHours + profile.CommitMin + Rng.Float(roll) * profile.CommitRange;
-    }
+    const float HealedSlack = 0.5f;
 
     /// <summary>
     /// The player's complete building nearest <paramref name="at"/> within <paramref name="range"/> whose machine passes <paramref name="ok"/> (ties:
@@ -531,10 +440,7 @@ public sealed partial class ProductionSystem
         // A bed fixture: the bed system walks it there and lays it in (task Sleep); the job keeps the bed's id.
         if (task == CharacterTask.Sleep && (world.Fixtures.Find(siteId) is null || Beds is null)) return;
         if (TaskStart.Start(world, slot, new TaskRequest(task, type, TaskSource.Job) { Site = siteId, Implicit = true }) != StartResult.Started) return;
-        if (task != CharacterTask.Sleep || table.Next[slot].Task != (byte)CharacterTask.Sleep) return;
-
-        cold.OperateSite = siteId;
-        CommitToBed(world, slot, cold);
+        if (task == CharacterTask.Sleep && table.Next[slot].Task == (byte)CharacterTask.Sleep) cold.OperateSite = siteId;
     }
 
     /// <summary>
@@ -619,7 +525,7 @@ public sealed partial class ProductionSystem
         switch (job.Type)
         {
             case TaskType.OperateMachinery:
-                if (IsSeat(m)) return SeatTaken(world, site, id, -1, cold.OperateSite == id ? 1 : 0, m.Data.MaxOperators);
+                if (IsSeat(m)) return SeatOccupied(world, site) || OperatorsOf(world, id) - (cold.OperateSite == id ? 1 : 0) >= m.Data.MaxOperators;
                 if (!m.Data.Operable) return true;
                 if (OperatorsOf(world, id) - (cold.OperateSite == id ? 1 : 0) >= m.Data.MaxOperators || !HasWorkingArm(cold)) return true;
                 return !HasWork(world, site, m, cold);

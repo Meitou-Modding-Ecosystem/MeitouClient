@@ -8,7 +8,6 @@ using Meitou.Simulation.Carrying;
 using Meitou.Simulation.Factions;
 using Meitou.Simulation.Locks;
 using Meitou.Simulation.Movement;
-using Meitou.Simulation.Player;
 using Meitou.Simulation.Population;
 
 namespace Meitou.Simulation.Kidnap;
@@ -195,7 +194,7 @@ public readonly record struct KidnapEvent(long Tick, KidnapEventKind Kind, Chara
 /// What the captors then do with the captive is <see cref="CaptiveSystem"/>'s. Not built: the witnesses' kidnapping crime.
 /// </summary>
 public sealed class KidnapSystem(PopulationData data, PopulationSystem population, CarrySystem carry, KidnapSettings? settings = null) : ITickSystem,
-        IStateHashed, IDutyRelease
+        IStateHashed
 {
     #region State
 
@@ -275,8 +274,7 @@ public sealed class KidnapSystem(PopulationData data, PopulationSystem populatio
                         or (byte)CharacterTask.GoTo))
             return false;
 
-        return table.Cold(slot) is { IsPlayer: false, Fleeing: false, Engaged: false } c && CarrySystem.CanCarry(world, c, TaskType.KidnapOrder)
-            && !DecisionSystem.Ordered(c);
+        return table.Cold(slot) is { IsPlayer: false, Fleeing: false, Engaged: false } c && CarrySystem.CanCarry(world, c, TaskType.KidnapOrder);
     }
 
     /// <summary>
@@ -447,9 +445,6 @@ public sealed class KidnapSystem(PopulationData data, PopulationSystem populatio
         }
 
         if (tc.IsImprisoned) return End(world, a, KidnapEventKind.GaveUp);
-
-        // A stumble or a get-up (an order on the body, which lets no duty go) holds the carrier a moment: the kidnap waits for it.
-        if (PlayerOrders.BodyHolds(gc)) return true;
         a.Time += dt;
         ref var gn = ref table.Next[g];
         switch (a.Phase)
@@ -693,27 +688,6 @@ public sealed class KidnapSystem(PopulationData data, PopulationSystem populatio
         carry.LetGo(world, g);
         _refused.Add((a.Victim, world.GameHours + Settings.RefuseHours));
         return End(world, a, KidnapEventKind.Dropped);
-    }
-
-    /// <summary>
-    /// An order takes the carrier (<see cref="IDutyRelease"/>): its abduction ends, the victim let go where it stands (<see cref="Drop"/>'s
-    /// unlink) and its walk stood rather than turned into a follow, which the order's own start replaces.
-    /// </summary>
-    void IDutyRelease.ReleaseForOrder(World world, int slot)
-    {
-        var table = world.Characters;
-        var id = table.IdOf(slot);
-        for (int k = _abductions.Count - 1; k >= 0; k--)
-        {
-            var a = _abductions[k];
-            if (a.Carrier != id) continue;
-
-            bool carries = table.Cold(slot)?.Carrying == a.Victim;
-            if (carries) carry.LetGo(world, slot);
-            if (table.Next[slot].Task == (byte)CharacterTask.GoTo) TaskStart.Stand(table, slot);
-            End(world, a, carries ? KidnapEventKind.Dropped : KidnapEventKind.GaveUp);
-            _abductions.RemoveAt(k);
-        }
     }
 
     /// <summary>

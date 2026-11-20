@@ -463,7 +463,7 @@ Meitou (`CombatSystem.HasSlot` / `MayJoin`, `Fighting.Steer`):
   target's sneaking, adds the attacker to its engaged list, to its senses (seen, alert timer 5) and to its squad memory as TEMP ENEMY (kind 4,
   not for allies; the whole squad then takes it for an enemy, [squad memory](dialogue.md#squad-memory)), tells a campaign, and when the target's fight is off: unless it is getting up, or is player-side and moving (CharMovement
   +0x24, `Character::isWithThePlayer`), its current goal is cleared and it replans (`AITaskSytem` vfunc 3); a target getting up instead has a
-  10% chance of its knockout timer (+0x4f8 = MedicalSystem +0xa0) being set to 10.0: knocked down again for 10 s (**Verified**). The roll is one per attacker per target taken, with no limit on the attackers: the setters call only when the target changes (`FUN_140665580` compares the held pointer, `FUN_140665650` returns for the same hand) and the roll has no other test than fight off and getting up (`FUN_140999f00`). One getting up can be taken from the get-up's start: `Task_GetUp`'s start queues the whole-body ragdoll off (`FUN_1405c69f0` calls `FUN_1405cbd60` with off and WHOLE) and the request setter `FUN_1405d0db0` holds only an "on" request while the get-up blend runs, so `isRagdoll` (`FUN_1407d1440`, which the chooser skips) is false through the blend and the clip; the chooser's best starts at -9999 and the goal finders `FUN_14059ee50`, `FUN_14059f3a0`, `FUN_14059f720`, `FUN_14059fa70`, `FUN_14059fd70`, `FUN_140794160` take any candidate it returns, so the x0.1 leaves a lone candidate in (**Verified**, decompile). So one getting up stays up with 0.9^n for the n attackers that take it: a player character ordered up from playing dead in a crowd is all but surely down again for 10 s, without a blow. **Observed** in Meitou (#1024's save, 77 hostile thralls in one room; headless `probe`, whose get-up lasts 25 ticks: 5 of 6 ordered get-ups ended by a roll within 2 ticks; the report's action log shows the same 10 s cycle). The targeting path sets the call's last flag (r9b = 1 in the disassembly), the hit path
+  10% chance of its knockout timer (+0x4f8 = MedicalSystem +0xa0) being set to 10.0: knocked down again for 10 s (**Verified**). The targeting path sets the call's last flag (r9b = 1 in the disassembly), the hit path
   clears it. With the flag, when the target is the player's, or the attacker is the player's and the target is not yet aware of it, the call
   is ignored unless both are in the same building and on the same floor and the target has a clear line to the attacker. So targeting a
   player's character through a wall, or an unaware NPC from another floor, alerts nobody until a blow lands. The line test (`FUN_1408533a0`) is a ray between
@@ -529,7 +529,7 @@ Meitou (`CombatSystem.HasSlot` / `MayJoin`, `Fighting.Steer`):
   task. So a character with an order does not defend itself: a hit staggers it (below) and the queue's first order then runs again, unless its row needs no melee threat
   (146 Turret gunner's `!158`: that plan fails, the order stays queued and Self preservation runs; [precedence](ai-tasks.md#precedence)); one on a job
   (not urgent) does ([precedence](ai-tasks.md#precedence)).
-  `Character::addOrder` without Shift clears the order queue and the second list (the job list stays, [order givers](ai-tasks.md#order-givers)), sets the AI's centre of movement to the order
+  `Character::addOrder` without Shift clears the order queue and the jobs, sets the AI's centre of movement to the order
   point ([area](perception.md#the-attack-on-sight-tests)), queues the order at priority 3 and replans at once.
 - **Right click elsewhere mid-fight.** Ground: `PlayerInterface::playerMove` gives each selected character order 29 Move order. At the replan
   its fight task ends (above): it no longer blocks or dodges, since a target whose fight is off always answers an ask with "attack"
@@ -544,15 +544,12 @@ Meitou (`CombatSystem.HasSlot` / `MayJoin`, `Fighting.Steer`):
 - **Stagger outside a fight** (`Character::_startStumble` `FUN_1404391f0`, from every landed blow). A shackled defender is knocked out
   instead 25% of the time (`FUN_140644980` with factor 0.002, the leg-loss KO shape, so its 3 s floor). Otherwise the movement stops, and when the defender's fight is off: one
   getting up is left alone; else, unless it is shooting at a live target, its current task ends (`FUN_1400522c0`), and task 147
-  `STUMBLE_TASK_FORCED` ("Stumbling") is pushed to the front of its order queue (`AI::forceOrderInsert`, which also replans), after an [immediate update](ai-tasks.md#immediate-update)
-  request, queued at the back of the immediate-update queue whatever the faction (**Verified**, `FUN_1404391f0`, `FUN_140507cd0`): a second 147 becomes the current goal at priority 3 and the body task
-  (CharBody slot 3 `FUN_1405c6ec0`), which ends the running one. There is no "already queued" test: a hit during a stumble pushes another 147, while the body task keeps the
-  running stumble (same type and hand) and deletes the new one. `Task_Stumble` locks the mover at its start (`FUN_14065e240`) and unlocks it at its end (`FUN_140335040`).
+  `STUMBLE_TASK_FORCED` ("Stumbling") is pushed to the front of its order queue (`AI::forceOrderInsert`, which also replans).
   `Task_Stumble` tracks the clip's root motion until `Character::stumbleState` reports the clip done (`AnimationClass::isLinearAnimationDone`),
   then ends and is popped (`AITaskSytem::bodyTaskComplete` pops the front order when it is the finished task). The interrupted order stays
   queued behind it and is planned again from its start. The clip itself is picked only for a humanoid that is not a ragdoll, not KO'd or dead
   and standing (prone state 0), and only when none is playing or the blow is heavy ([hit reactions](#hit-reactions)); without one the
-  Stumbling task ends on its first update. A fighting defender stays in its fight's stumble state instead. Meitou: the stagger gives order 147 at the front of the queue (`BodyOrders.Stumble`, `PlayerOrders.GiveFront`, [simulation](../simulation.md#order-queue)); its act-out stands in place while the combat timers hold the character (`StunUntil`, `StaggeredUntil`, the clip, honoured by the movement system; the hold time matches the clip length), then it leaves the queue and the interrupted order starts again; the HUD's goal text is Stumbling meanwhile (`AiSystem.ActivityText`).
+  Stumbling task ends on its first update. A fighting defender stays in its fight's stumble state instead. Meitou keeps the stumble as combat timers (`StunUntil`, `StaggeredUntil`, the clip) honoured by the movement system; the hold time already matches (the clip length). Meitou reports Stumbling (147) as the goal text for the clip's stun (`CharacterCold.StumbleTaskUntil`, unsaved, display only via `AiSystem.ActivityText`; no `CharacterTask` value, so saving and hashing are untouched) and the replan stays the existing `DecisionSystem.Request`.
 - **Actions mid-fight.** Any order runs during a fight. First aid 25, splint 249, repair 60 and pick lock 76/201 test no threat in their rows
   or task updates, so they run while their character is attacked (after sheathing), but every landed blow cuts them off with a stagger and
   the order is planned again afterwards (walk, sheathe, act; what the action keeps of its progress is per task, not traced). Meitou: move, follow, First Aid, Splint, Rest, the Medic and
@@ -677,12 +674,6 @@ which its next update (`FUN_14050d920` → `FUN_14050d7d0`) consumes by dropping
   and a task target in a cage counts as gone. The original ends such a fight through its goal ([arrest chain](ai-tasks.md): effect 129 holds once the target is
   imprisoned), which the engine's own fights (an arrest's, a joiner's) lack. **Observed** (Meitou, headless The Slaves start, a player slave put in a cage
   mid-arrest): without it the guards stayed in combat mode while they sensed the prisoner and turned on it when it was let out (#629).
-  An NPC's attack goal (16, 21, 144, 34) ends such a targetless fight sooner. **Observed** (decompile): the scorer `FUN_14050df10` scores the current goal like any other, desire x
-  finder (`FUN_14060fd80` → `FUN_14060f460` → `FUN_14060f1d0`, which calls the finder once per finder and target hand and then answers from the character's map at `+0x208`), puts
-  only scores above 0 among the candidates, and the pick (`FUN_140510650`) walks them from the best down, keeping the current goal when it comes to it and else planning the
-  candidate over the fight; `numEnemies` still counts enemies no longer seen or heard (entries not yet decayed), which the finders skip. Meitou: `AiSystem.FightFactor` keeps a
-  running attack goal by the enemy count only while its fight has a target; without one the finder's factor decides. **Observed** (probe, #1035 save): held by the count alone, an
-  ex-slave whose last target fell stood in its stance for 370 ticks, and 1500 after a later fight, on the entry of a Bonedog out of sight; with the target test it leaves within 40.
 - **Path chase give-up** (`ChaseMode`, a base of `Task_MeleeAttack` at task `+0x78`): checked only while the fight is in
   state 11, the path chase that `CombatClassAI::vfunc_9` enters from state 10 when the navmesh line to the target is
   blocked, the two are in different places, or the 2 s chase timer runs ([Combat stance](#combat-stance)). Any other

@@ -280,17 +280,14 @@ public sealed partial class CombatSystem
         // it out again.
         bool crawling = cold.Medical.Crawling;
         bool atTreatment = FirstAid.FirstAidSystem.AtTreatment(cold, (CharacterTask)next[i].Task);
-        bool stood = s.Crawl && !crawling && !atTreatment && !s.Down && !cold.Medical.Incapacitated && !cold.Medical.Prone && cold.CarriedBy.IsNone;
-        if (stood) cold.BodyEvents |= BodyEvents.StoodUp;
-        if (stood && GetUpClipSeconds > 0)
+        if (s.Crawl && !crawling && !atTreatment && !s.Down && !cold.Medical.Incapacitated && !cold.Medical.Prone && GetUpClipSeconds > 0
+            && cold.CarriedBy.IsNone)
         {
             cold.GettingUpUntil = now + (int)MathF.Ceiling(GetUpClipSeconds / dt);
             cold.StaggeredUntil = Math.Max(cold.StaggeredUntil, cold.GettingUpUntil);
             if (Orders.Has(cold, CharacterOrders.Hold)) cold.HoldPoint = prev[i].Position;
         }
         s.Crawl = crawling || cold.Medical.StayingLow;   // any posture above 0: the setter queues task 65 whenever it returns to 0 (FUN_1405c7e20)
-
-        Lie(cold);
         s.Down = cold.Medical.Incapacitated;
         if (s.Down)
         {
@@ -309,18 +306,6 @@ public sealed partial class CombatSystem
             s.NextBlow = 0;
             s.ReactTech = -1;
         }
-    }
-
-    /// <summary>
-    /// Going down (knocked out or dead, whichever phase did it) turns the whole-body ragdoll on, whose setter wipes the orders (<c>FUN_1405d0db0</c>):
-    /// the serial <see cref="BodyOrders"/> pass does it. <see cref="BodyEvents.Lying"/> remembers the body step's last look.
-    /// </summary>
-    static void Lie(CharacterCold cold)
-    {
-        bool down = cold.Medical!.Incapacitated;
-        bool lay = (cold.BodyEvents & BodyEvents.Lying) != 0;
-        if (down && !lay) cold.BodyEvents = BodyEvents.Downed | BodyEvents.Lying;
-        else if (!down && lay) cold.BodyEvents &= ~BodyEvents.Lying;
     }
 
     /// <summary>
@@ -349,13 +334,11 @@ public sealed partial class CombatSystem
         var table = world.Characters;
         var prev = table.Previous;
 
-        // Waking while sneaking it stays low (posture 1, docs/game/ragdolls.md "Staying low"); otherwise it stands. The serial pass gives the wake
-        // order (BodyOrders).
+        // Waking while sneaking it stays low (posture 1, docs/game/ragdolls.md "Staying low"); otherwise it stands.
         if (s.Down && !cold.Medical!.Incapacitated)
         {
             cold.Medical.StayingLow = cold.Medical.WokenLow ?? Orders.Has(cold, CharacterOrders.Sneak);
             cold.Medical.WokenLow = null;
-            cold.BodyEvents |= BodyEvents.Woke;
         }
 
         // A leg down replaces it with the forced crawl (posture 2), which ends standing.

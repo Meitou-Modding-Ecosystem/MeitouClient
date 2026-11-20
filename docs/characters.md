@@ -108,7 +108,7 @@ player squad, floor(weirdness x 10) goes into the generated morph mesh's name (w
 
 CHARACTER `race` overrides the body file's race (fcs.def "will override race in .body file"; the viewer
 follows this, not traced). The candidates (`Faction::chooseARace` `FUN_1407ff1a0`, **Verified** in outline): the squad template's
-`race override` (7 templates) when one is given, else the CHARACTER's `race`, else the faction's `races` (the faction the character is made for: a squad member's is its squad's, the template's `faction` else the town's, which `createRandomSquad` `FUN_140583a10` hands every member and a `slaves` squad its own template's, **Verified** decompile; so the `UC town racists` (template faction United Heroes League) draw from its Greenlander-only `races` in any town, #1050); a weighted draw by the reference value, where an entry of value 0 or less is never drawn (**Verified** for the faction list, `FUN_1407fe270`). The body file is not consulted for the race (**Verified**: `FUN_140581770` calls `chooseARace` with the CHARACTER and fills the chosen race's appearance from the body afterwards, `FUN_1406c3a70` has no race read); Meitou uses the body file's race only after
+`race override` (7 templates) when one is given, else the CHARACTER's `race`, else the faction's `races`; a weighted draw by the reference value, where an entry of value 0 or less is never drawn (**Verified** for the faction list, `FUN_1407fe270`). The body file is not consulted for the race (**Verified**: `FUN_140581770` calls `chooseARace` with the CHARACTER and fills the chosen race's appearance from the body afterwards, `FUN_1406c3a70` has no race read); Meitou uses the body file's race only after
 when all of those give none (engine fallback; the 19 base-game CHARACTERs with a body and no race list either have an unreadable old-format body or are mod characters). With no candidate the original logs "Missing race" and uses RACE `17-gamedata.quack` (Greenlander) **by id**
 (`FUN_140074f00`, `FUN_140538360`, **Verified** read), so a translation mod that renames it changes nothing.
 
@@ -324,8 +324,7 @@ exe decompile unless marked; Meitou: `CharacterDraft` (data), `EditCharacter` / 
   only); each control is a template widget stacked at its template's height (`kenshi_templates.xml`): a list is `Kenshi_ListSlider` (name box,
   arrows, value name, "n/count"; captions "Face", "Hair", "Beard"), a slider `Kenshi_Slider` (name box, `Kenshi_ScrollBar` with arrows, value
   box), the hair colour one `Kenshi_MultiSlider` "Hair colour" with "Colour", "Saturation", "Brightness". Captions are catalog messages, not
-  upper-cased. The rows scale with the screen (55 layout px = 73 px at 1440p in the vanilla screenshot). Meitou: a code mod's rows follow the
-  game's on their tab, in those templates ([modding](modding.md), "Character editor rows").
+  upper-cased. The rows scale with the screen (55 layout px = 73 px at 1440p in the vanilla screenshot).
 - **Tabs** (`FUN_1405ebd50`, Body first): FACE = head list (if more than one) + XML Face ranges + colours; BODY = "Idle stance" slider, then
   `Skin Tone` (vec3 interpolated; only with more than one colour), then XML Body ranges, then other colours (order also seen in the original's
   screen); HAIR = Hair (attach slot 2) and Beard (13) lists with
