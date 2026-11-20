@@ -434,6 +434,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     public Action<bool>? BagSearchChanged { get; init; }
 
     /// <summary>
+    /// Applies the shop counter talk reach (<see cref="UserConfig.CounterTalk"/>).
+    /// </summary>
+    public Action<bool>? CounterTalkChanged { get; init; }
+
+    /// <summary>
     /// Called when an off-screen switch changes (the config holds the new values).
     /// </summary>
     public Action? OffscreenChanged { get; init; }
@@ -1513,6 +1518,8 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Player.InventoryWindows.SplitStacks = Config.SplitStacks = true;
         Config.AnimalsPickUp = false;
         AnimalsPickUpChanged?.Invoke(false);
+        Config.CounterTalk = true;
+        CounterTalkChanged?.Invoke(true);
         Config.FixDoorBreak = Config.FixAmbienceSuffix = Config.FixWindStop = true;
         Player.Frontend.FixLoadButton = Config.FixLoadButton = true;
         Config.FixGunnerFacing = true;

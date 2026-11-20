@@ -62,7 +62,7 @@ sealed class ApproachQueue(DialogueSystem dialogue)
             int n = -1, t = -1;
             bool done = !table.TryResolveNext(a.Npc, out n) || !DialogueSystem.Awake(table, n)
                 || !table.TryResolveNext(a.Target, out t) || !DialogueSystem.Awake(table, t);
-            if (!done && !dialogue.InConversation && DialogueSystem.InTalkRange(table, n, t))
+            if (!done && !dialogue.InConversation && DialogueSystem.InTalkRange(world, n, t))
             {
                 TaskStart.Stand(table, n);
                 _approaches.RemoveAt(k--);

@@ -791,6 +791,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             systems: systems, walkability: walkability);
         host.Session.World.BenchFacingFix = host.Config.FixBenchFacing;
         host.Session.World.BagSearchFix = host.Config.FixBagSearch;
+        host.Session.World.CounterTalk = host.Config.CounterTalk;
         host.Session.World.TakeIntoBackpack = host.Config.TakeIntoBackpack;
         host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed);
         host.Render.Grid = host.Sandbox.IsSandbox;
@@ -1251,6 +1252,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             },
             BenchFacingChanged = on => host.Session.World.BenchFacingFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
+            CounterTalkChanged = on => host.Session.World.CounterTalk = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TutorialsChanged = on => { if (host.Saves.Tutorials is { } t) t.Enabled = on; },
             ResetTutorials = () => host.Saves.Tutorials?.Reset(),

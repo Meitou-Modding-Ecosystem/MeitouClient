@@ -43,7 +43,7 @@ sealed class WalkUp(float giveUpSeconds)
         _nextAim = world.Tick + Ticks(world, RepathSeconds);
         _aimedAt = Xz(at);
         _lastAt = Xz(table.Next[w].Position);
-        if (!DialogueSystem.InTalkRange(table, w, n)) world.Defer(new MoveOrder([walker], at) { Tick = world.Tick + 1 });
+        if (!DialogueSystem.InTalkRange(world, w, n)) world.Defer(new MoveOrder([walker], at) { Tick = world.Tick + 1 });
     }
 
     /// <summary>
