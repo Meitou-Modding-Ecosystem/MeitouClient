@@ -214,7 +214,14 @@
               <Button Content="Arrange" Click="ArrangeMods_Click"
                       ToolTip.Tip="Propose an order where each enabled mod loads after the mods it needs; nothing moves until you accept" />
             </StackPanel>
-            <TextBox x:Name="ModSearch" Margin="6,0" PlaceholderText="Search mods" TextChanged="ModSearch_TextChanged"
+          </DockPanel>
+          <!-- The search on a row of its own, so it stays wide; Regex reads it as a regular expression (ApplyModSearch) -->
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <CheckBox x:Name="ModSearchRegex" DockPanel.Dock="Right" Click="ModSearchRegex_Click" VerticalAlignment="Center" Margin="12,0,0,0"
+                      ToolTip.Tip="Read the search as a regular expression, ignoring case">
+              <TextBlock Text="Regex" FontSize="13" FontWeight="Medium" Foreground="{StaticResource Quiet}" />
+            </CheckBox>
+            <TextBox x:Name="ModSearch" PlaceholderText="Search mods" TextChanged="ModSearch_TextChanged"
                      ToolTip.Tip="Show only the mods whose name or author holds this text" />
           </DockPanel>
           <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">

@@ -241,12 +241,11 @@ public sealed class ModRow(ModInfo mod, bool enabled, CodeModEntry? code = null)
     } = true;
 
     /// <summary>
-    /// Whether <paramref name="search"/> is empty or found, ignoring case, in the mod's name or author.
+    /// Whether <paramref name="test"/> accepts the mod's name or its author.
     /// </summary>
-    public bool Matches(string search) =>
-        search.Length == 0
-        || Name.Contains(search, StringComparison.OrdinalIgnoreCase)
-        || Mod.Header is { Author.Length: > 0 } h && h.Author.Contains(search, StringComparison.OrdinalIgnoreCase);
+    public bool Matches(Predicate<string> test) =>
+        test(Name)
+        || Mod.Header is { Author.Length: > 0 } h && test(h.Author);
 
     /// <summary>
     /// Whether the mod is ticked; a change raises <see cref="PropertyChanged"/>.
