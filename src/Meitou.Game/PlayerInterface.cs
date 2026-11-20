@@ -235,6 +235,10 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     /// UI modes.
     /// </summary>
     internal TradeWindows TradeWindows => field ??= new(this);
+    /// <summary>
+    /// The split stack dialog of Meitou's stack splitting (Shift + Ctrl on a stack, <see cref="InventoryWindows.SplitStacks"/>).
+    /// </summary>
+    internal StackSplitDialog StackSplitDialog => field ??= new(this);
 
     #endregion
 
