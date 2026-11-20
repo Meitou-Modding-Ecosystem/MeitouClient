@@ -16,9 +16,10 @@ namespace Meitou.Game.Host;
 
 /// <summary>
 /// Quicksave (F5) and quickload (F9), docs/simulation.md "Saves". The key only sets a request (a control tick runs inside
-/// <c>WorldSession.Advance</c>). The frame loop takes the request right after <c>Advance</c> returns, when no world tick is in flight. A save
-/// captures the world on the frame thread and finalizes and writes the detached records on a worker. A load reads on a worker and swaps in the
-/// new world between ticks. Meitou's quicksave slot is <c>%LOCALAPPDATA%\Meitou\save\quicksave</c> (<see cref="QuickSave"/>).
+/// <c>WorldSession.Advance</c>); the frame loop takes the request right after <c>Advance</c> returns, when no world tick is in flight. A save
+/// captures the world there, on the thread that ticks it (a few milliseconds), and writes the files on a worker; a load reads the files on a worker
+/// and swaps in a new world there. The slot is Meitou's own <c>%LOCALAPPDATA%\Meitou\save\quicksave</c> (<see cref="QuickSave"/>), never a folder of
+/// the original game.
 /// </summary>
 sealed class GameSaves(GameHost host)
 {
@@ -150,8 +151,9 @@ sealed class GameSaves(GameHost host)
     /// </summary>
     IReadOnlyList<string>? _saveDataFiles;
     /// <summary>
-    /// The save a capture starts from (a copy of the loaded one, or a new one from the data). It is made ahead on a worker because it holds no live
-    /// state. Stale after loading a different save.
+    /// The save a capture starts from (a copy of the loaded one, or a new one from the data) costs tens of milliseconds and holds nothing of the
+    /// world: it is made ahead on a worker, so the capture at the tick boundary only reads the squad (a few ms). Stale (for another loaded save)
+    /// after a load.
     /// </summary>
     internal Task<SaveBuilder>? PreparedBase;
     /// <summary>
@@ -211,7 +213,18 @@ sealed class GameSaves(GameHost host)
         bool ahead = PreparedBase is { IsCompletedSuccessfully: true } && ReferenceEquals(_preparedFor, LoadedSave);
         try
         {
-            game = CaptureSave(world, ahead);
+            var clock = host.Session.Clock;
+            var prepared = ahead ? PreparedBase!.Result : null;
+            PreparedBase = null;   // used, or stale
+            game = SaveCapture.Capture(world, host.PopData!, new SaveClock((int)clock.Day, clock.Hour, clock.Minute),
+                LoadedSave, CaptureOptions(), prepared);
+            Difficulty.Write(game.Camera);
+            WriteWeather(game, (int)clock.Day, clock.HourOfDay);
+            host.BloodDecals.WriteDecals(game);
+            host.BloodDecals.WriteWeaponBlood(game);
+            host.Player.BiomeBanner.WriteBiome(game.Camera);
+            host.Modding.CaptureModData(world, game);
+            host.LevelEditorHost.WriteLevelEdits(game);
         }
         catch (Exception e)
         {
@@ -222,51 +235,23 @@ sealed class GameSaves(GameHost host)
         double captureMs = watch.Elapsed.TotalMilliseconds;
         string folder = destination ?? QuickSave.Folder();
         if (!feedback) SaveInUse = folder;
-        SaveWrite = Task.Run(() => WriteSave(game, folder, captureMs, ahead, feedback));
-    }
-
-    /// <summary>
-    /// Captures the live world and the host state on the frame thread, leaving file finalization to the worker.
-    /// </summary>
-    SaveGame CaptureSave(World world, bool ahead)
-    {
-        var clock = host.Session.Clock;
-        var prepared = ahead ? PreparedBase!.Result : null;
-        PreparedBase = null;   // used, or stale
-        var game = SaveCapture.CaptureState(world, host.PopData!, new SaveClock((int)clock.Day, clock.Hour, clock.Minute),
-            LoadedSave, CaptureOptions(), prepared);
-
-        Difficulty.Write(game.Camera);
-        WriteWeather(game, (int)clock.Day, clock.HourOfDay);
-        host.BloodDecals.WriteDecals(game);
-        host.BloodDecals.WriteWeaponBlood(game);
-        host.Player.BiomeBanner.WriteBiome(game.Camera);
-        host.Modding.CaptureModData(world, game);
-        host.LevelEditorHost.WriteLevelEdits(game);
-        return game;
-    }
-
-    /// <summary>
-    /// Finalizes the captured records, writes the save and queues its result for the frame thread.
-    /// </summary>
-    void WriteSave(SaveGame game, string folder, double captureMs, bool ahead, bool feedback)
-    {
-        try
+        SaveWrite = Task.Run(() =>
         {
-            var written = Stopwatch.StartNew();
-            game.UpdateDerived();
-            game.Write(folder);
-            Console.WriteLine($"save      {folder}: captured in {captureMs:0.0} ms{(ahead ? "" : " (the base made on the spot)")}, "
-                + $"written in {written.ElapsedMilliseconds} ms");
-            if (!feedback) _saveNotices.Enqueue(("Saved", false, folder));
-        }
-        catch (Exception e)
-        {
-            Console.Error.WriteLine($"save      write failed: {e}");
-            if (feedback) throw;
-
-            _saveNotices.Enqueue((Loc.Tr("Save failed: {1}", e.Message), true, null));
-        }
+            try
+            {
+                var written = Stopwatch.StartNew();
+                game.Write(folder);
+                Console.WriteLine($"save      {folder}: captured in {captureMs:0.0} ms{(ahead ? "" : " (the base made on the spot)")}, "
+                    + $"written in {written.ElapsedMilliseconds} ms");
+                if (!feedback) _saveNotices.Enqueue(("Saved", false, folder));
+            }
+            catch (Exception e)
+            {
+                Console.Error.WriteLine($"save      write failed: {e}");
+                if (feedback) throw;
+                _saveNotices.Enqueue((Loc.Tr("Save failed: {1}", e.Message), true, null));
+            }
+        });
     }
 
     /// <summary>
@@ -360,7 +345,6 @@ sealed class GameSaves(GameHost host)
                 prepared = PrepareSystems(read!, interactive: true);
                 return null;
             }, duringAscent: true),
-            GameHost.Stage("navmesh", () => NavmeshOfPlayer(read!)),
             GameHost.Stage("build", () => SwapInSave(read!, interactive: true, out summary, prepared: prepared)),
             GameHost.Stage("finishing", () =>
             {
@@ -416,8 +400,10 @@ sealed class GameSaves(GameHost host)
                 prepared = PrepareSystems(read!, interactive: true);
                 return null;
             }, duringAscent: true),
-            // The squads moved to the reset place stand on its ground, whose navmesh is waited for; else the mesh they are made on.
-            GameHost.Stage("navmesh", () => ImportNavmesh(read!, options)),
+            // The squads moved to the reset place stand on its ground, whose navmesh is waited for.
+            GameHost.Stage("navmesh",
+                () => (options & ImportOptions.ResetPositions) != 0 && read!.IsCompletedSuccessfully
+                ? NavmeshAround(SaveImport.ResetPosition) : null),
             GameHost.Stage("build", () =>
             {
                 if ((options & ImportOptions.ResetPositions) != 0 && host.Nav is not null && read!.IsCompletedSuccessfully)
@@ -585,29 +571,6 @@ sealed class GameSaves(GameHost host)
     void PauseAfterLoad()
     {
         if (host.Config.PauseOnLoad) host.Session.Simulation.Pause();
-    }
-
-    /// <summary>
-    /// The navmesh an import waits for before its world is made: round the reset place when the squads are moved there, else round the save's
-    /// player (<see cref="NavmeshOfPlayer"/>).
-    /// </summary>
-    Task ImportNavmesh(Task<SaveGame> read, ImportOptions options)
-    {
-        bool reset = (options & ImportOptions.ResetPositions) != 0 && read.IsCompletedSuccessfully;
-        return reset ? NavmeshAround(SaveImport.ResetPosition) : NavmeshOfPlayer(read);
-    }
-
-    /// <summary>
-    /// The navmesh round the save's first player character, waited for before the save's world is made: a character made on a loaded mesh is
-    /// seated on it, as the original loads the mesh before its characters (docs/game/pathfinding.md "Made on the mesh"). Done at once for a save
-    /// that was not read or has no player character.
-    /// </summary>
-    internal Task NavmeshOfPlayer(Task<SaveGame> read)
-    {
-        if (!read.IsCompletedSuccessfully || read.Result.PlayerFaction is not { } player) return Task.CompletedTask;
-
-        var first = read.Result.Characters.FirstOrDefault(c => c.Platoon.FactionId == player.Id);
-        return first is null ? Task.CompletedTask : NavmeshAround(first.Position);
     }
 
     /// <summary>

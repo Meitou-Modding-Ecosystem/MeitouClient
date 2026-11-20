@@ -363,8 +363,7 @@ holds refuses the second mod.
   DIALOG_ACTION's `condition name` / `action name`. A condition gets `DialogueCheck` (world, speaker, the subject `who` picked, the
   condition) with `Matches(bool)` and `Compare(double)` that apply the vanilla value and `compare by` rules; it only reads (it also runs
   for interface previews). An effect gets `DialogueAct` (world, speaker, target, effect) in a serial step. An unregistered code
-  computes "no" / does nothing, as an unknown vanilla code. A handler that throws is logged once with the mod id and code; that call computes
-  "no" / does nothing more, and the handler is still asked later (the interface asks conditions too, so a drop would depend on what it asked).
+  computes "no" / does nothing, as an unknown vanilla code.
 - **World states:** `AddWorldState(record)` claims a WORLD_EVENT_STATE of the merged data (`ModWorldState`, `src/Meitou.Simulation/Factions`; a
   record of another type, or one another mod claimed, refuses the mod, and so loses all its registrations, not only the claim: two mods that
   claim the same state never run together). The mod's system sets its answer in a world with `state.Set(world, bool)` through the handle
@@ -411,41 +410,6 @@ holds refuses the second mod.
   neither. Weapon slots, bags and mod slots are asked too, so a rule meant for clothing checks the item's type (`ctx.Data`); no item record
   changes, so it works with other mods' gear. It may run on any thread: quick, no world state, the same answer for the same arguments. A
   throw counts as yes and is logged once; with no rule the race lists alone decide.
-- **Character editor rows:** `AddEditorRows(context => rows)` (`ModLooks`, `src/Meitou.Data/Characters`) adds rows to the character editor's
-  tabs, after the game's own, in registration order (mods in load order). The source is asked on the interface's thread for the character shown
-  (`LookRowContext`: its `Race`, `Female`, the `Look` record being edited, read only, and `Creation`, true in a new game's creation, false for a
-  surgeon's, recruit's or bought slave's edit), again whenever the look changes, so it answers per race, sex or head: none leaves that
-  character's editor as it was. A `LookRow` is `LookRow.Slider(tab, key, caption, min, max, default)`, `LookRow.Choice(tab, key, caption,
-  choices, default)` or `LookRow.Colour(tab, key, caption, hue, saturation, brightness)` (each 0..1), drawn as the game's `Kenshi_Slider`,
-  `Kenshi_ListSlider` and `Kenshi_MultiSlider` (three sliders, as the hair colour). A value lives on the look record (CHARACTER_APPEARANCE) under
-  `mod id:key` (`ModLooks.KeyOf`): a slider's value or a choice's index as an int, a colour as a vec3 of hue, saturation and brightness. No other
-  code reads those keys, and the editor's CONFIRM (`EditCharacter`), the save and EXPORT carry every key of the record, so the value is kept with
-  the character with no save data of the mod's own; a row the source stops returning (another race, an unknown head) keeps its value on the
-  record. RESET puts each shown row back at its default. Read a value with `ModLooks.Int(look, modId, key, fallback)`, `ModLooks.Hsb` or
-  `ModLooks.Rgb` (null when the look has none) from a look record, e.g. `cold.Appearance?.Loadout?.Appearance.Record`. A source that throws, or
-  answers a row without a caption, with a key that is empty, repeated or not letters, digits, spaces, `-`, `_` and `.`, a slider whose `min`
-  is above its `max`, a list without choices or a default outside its range, is logged once and asked no more for the session.
-  `AddLookRoll(context => ...)` writes a mod's values on a look: every generated character's, after the game's rolls (`LookRollContext`:
-  `Look`, `Race`, `Female`, the `Character` record, `Faction`, `FromBodyFile` for a unique character's own body file), and the editor's
-  RANDOMISE (`Tab`, the tab rolled, null for RANDOMISE ALL; `InEditor`). It writes only through `Set(key, value)` and `SetColour(key, hsb)`
-  (its own keys) and draws only from its `Random`, a sequence of its own made from the look's seed and the mod's id, so the game's rolls and
-  every other mod's stay as they are. Generation runs in the tick and on worker threads, so a roll must be quick, read no world state and write
-  the same values for the same arguments; a throw keeps what it wrote and is logged once. A character generated before the mod was added has
-  no value: read it with a fallback. Without a source or roll the editor and the generator are as before. Engine API, not in the original.
-- **Look extras:** `AddLookExtras(context => extras)` (`ModLooks`, `src/Meitou.Data/Characters`) adds to how people are drawn. The source is
-  asked each time a person's look is built (`CharacterAppearance.Build`: in the world, the editor's previews, a loaded save; not animals), with
-  `LookExtrasContext`: the `Look` record (read only, so a value from the mod's editor rows is at hand), `Race`, `Female` and the `Head` drawn. It
-  answers null, or `LookExtras` with `PoseWeights` (shape keys by pose name, set over the look's own; 0 takes one off) and `Tints`. A `LookTint`
-  lays a colour over a disk of the skin: on `LookArea.Body` or `LookArea.Head` (the HEAD's `texture map`), centred at `Centre` (0..1 across and
-  down the texture image), `Radius` a fraction of its width; the texel keeps its brightness (its largest channel) and takes the `Colour`'s hue and
-  saturation by `Strength`, fading over the outer `Softness` of the radius and above `MaxLightness`; `Side` (`Both`, `Left`, `Right`: the
-  character's own, by the side of the mesh) limits it to one half, as both eyes share one patch of the head texture. Every mod's extras are merged
-  in registration order (pose weights set over one another), at most `ModLooks.MaxTints` (4) tints a look. The renderer reads them when it builds
-  the look, so they cost nothing per frame: the body's material gets a companion record in the material table with the tints
-  (`CharacterLookTints`), and the shaders get the tints' code only when a source is registered, so without one they are as before. A look is
-  built again whenever it changes (an editor change, equipment, a load), so a source answers from the look alone. It may run on any thread: quick,
-  no world state, the same answer for the same arguments; a throw, a pose weight that is not a number or a tint out of its ranges adds nothing to
-  that look and is logged once. Engine API, not in the original.
 - **Medical meters:** `AddMedicalMeter(label)` returns a `ModMeter` (`ModMeters`, `src/Meitou.Simulation/Bodies`): a bar on the medical panel after
   Hunger, in registration order. The mod's system sets a character's `MeterReading(Green, Value) { Yellow, Red, Arrows, Tooltip }` in the tick with
   `meter.Set(cold, reading)` (the character's own partition in a parallel phase) and hides it with `Clear`; layers are width fractions clamped to
@@ -536,9 +500,7 @@ holds refuses the second mod.
   elsewhere the first that can run. `CanRun` and `Desire` are pure reads of the world; `Start` starts the task (`TaskStart.Walk`, a row of
   the mod's own from 1000 up). To run before a character idles, register at step 6 with a key below Idleness (`2000 + TaskType.Idle`).
   Every player character is asked, so a source checks that the character is one of its own squads'. Several mods can each add sources.
-  `RegisterJob(type, source)` is the other kind: one contributor per job type, for the types a mod claimed with `AddJobType`. A mod's source or
-  contributor whose call throws is dropped for that world: it cannot run and starts nothing from then on, what the call did stands, the first
-  fault is logged with the mod id and the player gets a notice, and the fault enters the state hash. NPCs do not
+  `RegisterJob(type, source)` is the other kind: one contributor per job type, for the types a mod claimed with `AddJobType`. NPCs do not
   go through this step; their AI packages run them (a mod's goals for them: NPC goals, below).
 - **Task handlers** (`Meitou.Simulation.Ai`, [task starts](simulation.md#task-starts)): a registered system implementing `ITaskOwner` gets
   `RegisterTasks(TaskHandlers)` once when the world is made, in system order, and registers an `ITaskHandler` (`Start`, `End`, `Done`) per
@@ -694,28 +656,6 @@ holds refuses the second mod.
   and still qualifies before acting. A source that throws, or returns a
   button without a caption or press, is logged once and dropped for the session; a press that throws is logged. Without a source the panel
   is as before. Engine API, not in the original.
-- **Town panel lines:** in `Register`, `registration.AddTownPanelLines(context => lines)` adds lines to the HUD's town panel (the outpost the
-  camera is in: name, Open to public, Research, Power, Battery charge; [town panel](game/ui-screens.md#town-panel)) under the game's own, in
-  registration order (mods in load order), so several mods share it. A `UiTownLine` has a `Label` (in the labels' column, drawn as the game's
-  labels), an optional `Value` (in the bars' column, centred, in the labels' look; blank is none) and `Tooltip`, and an optional `Press`: with a
-  value the value is a button's caption, without one the whole line is one button captioned with the label (the game's neutral button, its
-  caption in the panel's main colour). At most four lines show, of all mods together, so keep to one; the lines past them are left out, logged
-  once per interface extension. The panel grows upward by one of its rows per line: its lower edge stays, and its own rows keep their distance
-  from its top, so they move up with it. Return the same lines for an outpost every time, changing only their text (a line with nothing to say can
-  show a dash), so the panel keeps its shape while the player looks at it. Each line is placed and sized as a copy of the Battery charge row; a
-  layout the lines cannot be placed in (a UI mod's without the Power and Battery rows and bar as direct children of the panel, or with a child of
-  the panel aligned other than to its top) shows none. A label or value is cut to 64 characters and put on one line (line breaks, `\n` and
-  control characters become spaces), a tooltip is cut to 1,000; the panel shortens what does not fit its column, and colour tags work as in the
-  game's texts. Labels, values and tooltips go through the translation catalog, as the game's own. The source runs on the host thread whenever the
-  panel is arranged (each tick, each mouse move, at least 20 times a second while it shows), so it must be cheap and read only its context; a
-  tick may be in flight, so it must not touch the world. It gets `UiTownContext`: `Town` (the `OutpostSnapshot`: `Number`, the
-  `PlayerTown.Number` commands name it by, numbered again in load order when a save loads; `Name`, `Owner`, `Public`, `Power`), `Owned` (whether
-  the player's faction owns it; the panel shows only the player's outposts today), the `Snapshot` on screen, `Tick` read when asked, and
-  `Enqueue`, to be called only from a press. A press plays the panel's click and runs only while the panel still shows the outpost it was shown
-  for; it changes the world only by queueing commands, which the mod's system applies in its serial `Inputs` step, checking that the outpost still
-  exists (`world.Buildings.FindTown`) and, for a change only its owner may make, that its `Owner` is still the player's faction. A source that
-  throws, or returns a line without a label, is logged once and dropped for the session; a press that throws is logged. The hook keeps no state:
-  nothing of it enters the state hash or a save. Without a source the panel is as before. Engine API, not in the original.
 - **Settings:** `AddSettings(object)`, once per mod: the object's public get/set properties marked
   `[Setting(label, Hint, Min, Max, Step, Options, SubGroup, VisibleWhen)]` (`ModSettings.cs`) become one group, in declaration order (a
   sub-group's settings together at its first one's place), under the mod's row on the Settings screen's Mods page
@@ -822,9 +762,7 @@ holds refuses the second mod.
   `change AI` / `AI contract` give an NPC squad's (both are ignored for a player squad that is not autonomous), and
   `SetSquadHome(squadId, building)` its home: a town building's key (`TownBuilding.Key`, `x.y:instance`) or a player-built building's id
   (`BuildSite.Id`); null clears it. A player-built home in one of the faction's outposts makes the outpost the squad's town:
-  going home, town work on the outpost's own machines, wandering between its public buildings, the gate guard's gate (guarded from
-  inside) and sitting and reigning on its chairs and thrones use it; on its own walks the squad never unlocks a door or gate the player
-  locked, and gives a chair up to the player's characters ([rules](simulation.md#autonomous-player-squads)). The player's orders and
+  going home and town work on the outpost's own machines use it ([rules](simulation.md#autonomous-player-squads)). The player's orders and
   jobs come first. `SetSquadAutonomy(squadId, true, Independent: true)` makes it a squad the player does not lead: not selectable, no squad
   tab, no squad commands, not counted against `max squads` (for staff, caravans or companions with a will of their own; orders that name its
   characters still apply; refused for the last squad the player leads; `SetSquadAutonomy(squadId, true)` leads it again). Its menu has no
@@ -905,14 +843,13 @@ holds refuses the second mod.
 - **Town overrides** (engine API, not in the original; serial phases; [simulation](simulation.md) "Town overrides"): `PopulationSystem.CheckOverrides(world,
   site)` runs a town's `override town` list now, as its zone's load would; `ApplyTownVersion(world, site, townId)` puts a TOWN of the mod's choice
   in its place (null or the town's own id: back to its own record, residents made afresh; also for a held town or one of the player's faction); both
-  refuse a town that is loaded or loading, or whose zone is active, and return false, changing nothing. `HoldTown(site, held)` keeps the zone load and the off-screen look from
+  refuse a town that is loaded or loading and return false, changing nothing. `HoldTown(site, held)` keeps the zone load and the off-screen look from
   choosing a new version for a town the mod drives (not saved: hold it again in `IWorldReady`). A registered system implementing
   `ITownSwitchObserver` (`Meitou.Simulation.Population`) hears of every change as a `TownSwitch` (site, old and new TOWN, null the town's own, the
   unloaded platoons of the old version left homeless, off screen or at load); during that call it may move each with `RehomePlatoon(world, platoon,
   site)`, which puts an unloaded town platoon at another unloaded town at once as a guest (no travel; it keeps its characters, uniques and purse,
-  leaves its shop and home, is not in the host's pools, does not stop the host making its own residents, is left alone by the host's later changes; saved, its members come
-  back round the host's centre), and those still homeless when every observer has heard are despawned (with Towns change far away off, as in the
-  game, they are refused when they would come back instead). `OffscreenSwitches` counts changes made off
+  leaves its shop and home, does not stop the host making its own residents, is left alone by the host's later changes; saved, its members come
+  back round the host's centre), and those still homeless when every observer has heard are despawned. `OffscreenSwitches` counts changes made off
   screen.
 - **Mod jobs** (engine API, not in the original; untested in play): `AddJob(new ModJobKind(id, building, caption, text, takers))`. The context
   menu of a finished player building whose record is `building` offers `caption` to a selection holding a character `takers` allows (people,
@@ -993,48 +930,6 @@ holds refuses the second mod.
   sets `Replan`) and lets the chooser start the goal again; an act-out it resumes itself has no record (no HUD name, no take-over by a fight, no
   release if its system stops). Without the code mod the goal is inert again. With no goal type claimed nothing is built. Engine API, not in the
   original.
-- **Seats** (`Meitou.Simulation.Production`; the system from `SystemBuildContext.Find<ProductionSystem>()` or `world.Systems`):
-  `SitOn(world, slot, seat, row, source)` puts a character, the player's or an NPC, on a chair or throne through the player's Use order's
-  act-out (the original's sitting is its operate task, [chairs](game/ai-tasks.md#town-goals)): it starts `CharacterTask.Operate` through
-  `TaskStart.Start` with `row` (the mod's own, 1000 up; a lower one throws) and `source` (`TaskSource.Goal` for a goal or decision source), so
-  the character walks there, sits on the seat's origin facing its way (the Bench facing switch applies), plays its sitting clip, gets hungry at
-  the seat's `hunger rate` and trains its `stat used`. `seat` is a town seat's id (`world.Fixtures.SeatSpots`: the chairs and thrones of the
-  loaded towns' buildings, with record, position and owning faction) or a complete building's in `world.Buildings.All` whose functionality is a
-  chair or throne, of any faction. `CanSit(world, slot, seat)` gives the same answer without starting anything; it changes nothing in the world
-  and logs nothing, so a mod picks a free seat with it. `SeatAnswer`: `Seated`; `NotASeat` (also a destroyed seat, a null or empty id);
-  `Taken` (someone rests on it, the AI's sitters included but not a member of an AI-run squad living in an outpost, who gives the seat up, or another
-  character is on an operate task for it, walking there included: one sitter per seat, whatever its `max operators`); `Unable` (dead, down, carried,
-  carrying someone, fleeing, in a bed or cage, or not of the human repertoire: animals, crawlers, one staying low); `ShutOut` (at the call, its
-  building is shut to the character as to a player character's walk:
-  no lock is picked or cut for it, though one whose faction bashes doors may bash its way in; or the character stands in a shut building with no
-  way out; a door locked during the walk is the walk's business). Any answer but `Seated` changes nothing and logs a line naming the row, once
-  per row, seat and answer; a character already on that seat on that row is left as it is. Both run in the serial phases only and throw in a
-  parallel one: a mod's serial step or `Inputs`, a decision source's or an NPC goal's `Start`, `IWorldReady`; never an NPC goal's `Desire`, so
-  work free seats out in the mod's serial step and keep them in its state. A character in a fight leaves it, as for any start (it may be drawn
-  back in at once).
-  Who may be seated: a player character, an NPC the AI holds now (`AiSystem.Holds(table.Next[slot], cold)`) or one the mod engaged itself (an
-  NPC goal's `Start`). A character another system holds (a conversation, a trade, an arrest, a duty, another mod's goal) is taken from it and
-  may be left engaged with no owner, so do not seat one. The AI holds no character on the operate task, so a seated NPC stays seated without
-  `Engaged`, only Self preservation takes it over, and the AI takes it back once the seat ends. A squad the population moves walks its leader
-  on (its seat ends `Replaced`) while its other members stay seated, so hold the platoon first (`HoldPlatoon`). A player character is decided
-  again at its next decision (an order, a job) unless a decision source of the mod answers `Runs` for its row.
-  How it ends: the walk reserves nothing from the AI's own sitters, and they always win: whenever one rests on the seat's origin (one that got
-  there first, or one arriving later on a sitting-around or throne claim it already held) the task ends `Done` and the mod's character stands
-  where it sat. Once it sits, a relaxing or staying-home member passes over that chair of its bar or home; another claim may still send a
-  townsperson there, with that result. The task also ends `Done` when the seat
-  or its building is gone (destroyed, dismantled, its town unloaded); `Replaced` by any start (an order, a fight, a job, another mod's seat; do
-  not seat again a character another start took); `Stopped` by `TaskStart.End(world, slot, TaskEnd.Stopped)`, which is how the mod stands it
-  up. Seating a character already on that row's operate task again (another seat) starts it anew with no `End`: the handler sees a second
-  `Start`. A knock-out, a death or a lift stands it with no handler, and an unreachable seat is tried again and again as the Use order's, so the mod
-  also checks its sitters in its own serial step (alive, not down or carried, `Running` still its row, running `Operate`) and gives up by its
-  own clock. With a handler of its row (`Register(row, handler)`) that handler takes the operate act-out's place: call
-  `tasks.Of(CharacterTask.Operate)`'s `Start` and `End` from it, or the character never walks or sits (its task is left as the one the start
-  ended). Tasks are not saved: after a load the character stands where it sat and the townspeople may take the chair. At `IWorldReady` a
-  town's seats and an NPC are often not in the world yet (a town's seats come as it loads, NPCs a few hundred ticks later), so a mod that
-  keeps its sitters (by `LastingId`) seats them again from its serial step once `LastingIds.Find` finds the character and `CanSit` no longer
-  answers `NotASeat` (one still at its seat sits at once). Without a call nothing changes; a seat that had no machine gets the one the Use order
-  makes (`World.Machines`, hashed; a town seat's is not saved, a built chair's is saved with its building, as the Use order's). Engine API, not
-  in the original.
 
 ## Data mods
 

@@ -159,9 +159,8 @@ public sealed record DecisionTrace(long Tick, string Winner, IReadOnlyList<strin
 /// every <see cref="Production.ProductionSystem.JobCheckTicks"/> while it is idle or on a job's task. The sources are asked in the original's order
 /// and the first that can run starts (step 4: the best score); a source already running ends the step. Steps 3 and 5 walk the character's job list
 /// through the systems' job contributors (<see cref="RegisterJob"/>); step 6 ends in 14 Idleness, which always answers. NPCs keep
-/// <see cref="Ai.AiSystem"/> for every source but the first: one that holds an order is asked its order queue here (source 1 alone), and while
-/// its front runs the AI leaves it alone (<see cref="CharacterCold.OrderWins"/>). Run in the slow world after retaliation, aggro and flight
-/// (<see cref="World.RunTick"/>), and for orders only between ticks (<see cref="World.ApplyPausedInterfaceCommands"/>).
+/// <see cref="Ai.AiSystem"/>. Run in the slow world after retaliation, aggro and flight (<see cref="World.RunTick"/>), and for orders only between
+/// ticks (<see cref="World.ApplyPausedInterfaceCommands"/>).
 /// </summary>
 public sealed class DecisionSystem
 {
@@ -181,14 +180,6 @@ public sealed class DecisionSystem
     /// The trace lines of the decision being made (kept only while <see cref="Tracing"/> is on).
     /// </summary>
     readonly List<string> _lines = [];
-    /// <summary>
-    /// The code mods' sources and contributors, caught (<see cref="RegisterFrom"/>).
-    /// </summary>
-    readonly ModDecisionFaults _modFaults = new();
-    /// <summary>
-    /// The mod whose system registers now (<see cref="RegisterFrom"/>); null for a standard system.
-    /// </summary>
-    string? _registering;
 
     /// <summary>
     /// Makes the step with its own sources: the order queue, the urgent jobs, the jobs and 14 Idleness.
@@ -202,40 +193,16 @@ public sealed class DecisionSystem
     }
 
     /// <summary>
-    /// The characters the step decides: the player's (<see cref="CharacterCold.IsPlayer"/>); the others are the AI's and the engine's, but for
-    /// their order queue, which the step asks while <see cref="TakesOrders"/> holds (docs/simulation.md "Decision step").
+    /// The characters the step decides: the player's (<see cref="CharacterCold.IsPlayer"/>); the others are the AI's and the engine's
+    /// (docs/simulation.md "Decision step").
     /// </summary>
     public static bool Decides(CharacterCold cold) => cold.IsPlayer;
-
-    /// <summary>
-    /// Whether the chooser runs for an NPC, so its order queue is asked (the AI update runs the task system only while the character has a platoon,
-    /// <c>FUN_1405112b0</c>, and not while it is carried or down, <c>FUN_1405d00b0</c>; it does in a bed or a cage, docs/game/ai-tasks.md
-    /// "Precedence"): it has a squad, is not carried and is neither out cold nor dead; one playing dead (posture 3) is awake to its AI and takes them.
-    /// Its mind plays no part. A pure read.
-    /// </summary>
-    internal static bool TakesOrders(CharacterCold cold) => cold.SquadId >= 0 && !Down(cold);
-
-    /// <summary>
-    /// Whether the chooser is off for the character (<c>FUN_1405d00b0</c>): it is carried, or out cold (not playing dead) or dead. A pure read.
-    /// </summary>
-    internal static bool Down(CharacterCold cold) =>
-        !cold.CarriedBy.IsNone || cold.Medical is { Dead: true } or { Unconscious: true, PlayingDead: false };
-
-    /// <summary>
-    /// Whether an NPC's order holds it now (<see cref="CharacterCold.OrderWins"/>, its queue not emptied since, and the step does not decide it):
-    /// its AI, the engine's reactions and the duties' sweeps leave it alone. Any phase: it reads only the character's own state.
-    /// </summary>
-    public static bool Ordered(CharacterCold cold) => cold.OrderWins && !Decides(cold) && cold.OrderQueue.Count > 0;
 
     /// <summary>
     /// Registers (or replaces) the contributor of the jobs of <paramref name="type"/> (an open list: a job type without one is kept in the list but
     /// never run).
     /// </summary>
-    public void RegisterJob(TaskType type, IJobSource source)
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        _jobs[type] = _registering is { } mod ? _modFaults.Wrap(source, mod, type) : source;
-    }
+    public void RegisterJob(TaskType type, IJobSource source) => _jobs[type] = source ?? throw new ArgumentNullException(nameof(source));
 
     /// <summary>
     /// The contributor of the jobs of <paramref name="type"/>; null when none is registered.
@@ -258,41 +225,17 @@ public sealed class DecisionSystem
     public void Register(IDecisionSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (_registering is { } mod) source = _modFaults.Wrap(source, mod);
-
         int at = _sources.FindLastIndex(s => s.Step < source.Step || s.Step == source.Step && s.Key <= source.Key);
         _sources.Insert(at + 1, source);
     }
 
     /// <summary>
-    /// Has <paramref name="owner"/> register its sources and contributors; those of a code mod's system (<paramref name="mod"/>, its id) are caught,
-    /// a throwing one dropped for this world (<see cref="ModDecisionFaults"/>).
-    /// </summary>
-    internal void RegisterFrom(IDecisionOwner owner, string? mod)
-    {
-        _registering = mod;
-        try
-        {
-            owner.RegisterSources(this);
-        }
-        finally
-        {
-            _registering = null;
-        }
-    }
-
-    /// <summary>
-    /// Adds the code mods' dropped sources and contributors to the state hash; nothing while none has dropped.
-    /// </summary>
-    internal void HashFaults(ref StateHasher hasher) => _modFaults.Hash(ref hasher);
-
-    /// <summary>
-    /// Asks for the character to be decided again (a replan trigger): any phase, its own slot or a serial one. The player's characters keep the
-    /// bit, and an NPC while it holds an order (its order queue is asked again; the AI has replan triggers of its own).
+    /// Asks for the character to be decided again (a replan trigger): any phase, its own slot or a serial one. Only the player's characters keep the
+    /// bit.
     /// </summary>
     public static void Request(CharacterCold cold)
     {
-        if (Decides(cold) || cold.OrderQueue.Count > 0) cold.Replan = true;
+        if (Decides(cold)) cold.Replan = true;
     }
 
     /// <summary>
@@ -344,8 +287,8 @@ public sealed class DecisionSystem
     }
 
     /// <summary>
-    /// Decides every player character that is due, and asks the order queue of every NPC that holds an order, in slot order (serial).
-    /// <paramref name="paused"/>: between ticks, orders only; the bit stays for the next tick's full step.
+    /// Decides every player character that is due, in slot order (serial). <paramref name="paused"/>: between ticks, orders only; the bit stays for
+    /// the next tick's full step.
     /// </summary>
     internal void Run(World world, bool paused)
     {
@@ -353,160 +296,38 @@ public sealed class DecisionSystem
         for (int i = 0; i < table.HighWater; i++)
         {
             // a far character decides at its step (the far cadence)
-            if (!table.Next[i].Alive || !world.Steps(i) || table.Cold(i) is not { } cold) continue;
-            if (Decides(cold) && cold.OrderWins) Hold(world, i);   // made a player character while its order held it
-            if (Decides(cold)) RunPlayer(world, i, cold, paused);
-            else if (cold.OrderQueue.Count > 0 || cold.OrderWins) RunOrders(world, i, cold, paused);
-            else if (cold.OrderRoutine != CharacterTask.Idle) Hold(world, i);   // its routine waits for the order's last walk
+            if (!table.Next[i].Alive || !world.Steps(i) || table.Cold(i) is not { } cold || !Decides(cold)) continue;
+            if (cold.SavedOrders is not null) Saving.OrderSave.Restore(world, i, cold);
+            bool front = cold.OrderQueue.Front is { } f && (!f.Tried || f.Started && !PlayerOrders.Runs(world, i, f));
+            bool due = !paused && (world.Tick + i) % Production.ProductionSystem.JobCheckTicks == 0 && ReAsked(world, i, cold);
+
+            // The order step runs on every AI update: a front that leaves now is decided now.
+            if (!cold.Replan && !front && !due && (paused || !PlayerOrders.PopsNow(world, i))) continue;
+            if (!paused && Claimed(world, i))
+            {
+                cold.Replan = false;
+                continue;
+            }
+
+            Decide(world, i, paused);
         }
     }
-
-    /// <summary>
-    /// A player character's turn of <see cref="Run"/>: its saved queue is restored once, and it is decided when due; not while it is carried, out
-    /// cold or dead (<see cref="Down"/>: the character tick runs no chooser then, <c>FUN_1405d00b0</c>), its replan bit kept for when it is up.
-    /// </summary>
-    void RunPlayer(World world, int slot, CharacterCold cold, bool paused)
-    {
-        if (cold.SavedOrders is not null) Saving.OrderSave.Restore(world, slot, cold);
-        if (Down(cold)) return;
-        bool due = !paused && (world.Tick + slot) % Production.ProductionSystem.JobCheckTicks == 0 && ReAsked(world, slot, cold);
-        if (!Due(world, slot, cold, paused, due) || DropsClaimed(world, slot, cold, paused)) return;
-
-        Decide(world, slot, paused);
-    }
-
-    /// <summary>
-    /// An NPC's turn of <see cref="Run"/> (one with an order, or whose order held it until now): while the chooser runs for it
-    /// (<see cref="TakesOrders"/>) its order queue is asked when due, the steps' source 1 alone (its AI keeps every other source); a blocked front
-    /// is tried again at the re-ask, as the original's order step tries it on every update. Then <see cref="CharacterCold.OrderWins"/> is set anew.
-    /// </summary>
-    void RunOrders(World world, int slot, CharacterCold cold, bool paused)
-    {
-        bool blocked = cold.OrderQueue.Front is { Started: false };
-        bool due = !paused && (world.Tick + slot) % Production.ProductionSystem.JobCheckTicks == 0 && (blocked || ReAsked(world, slot, cold));
-        if (TakesOrders(cold) && Due(world, slot, cold, paused, due) && !DropsClaimed(world, slot, cold, paused))
-            DecideSteps(world, slot, paused, ordersOnly: true);
-
-        Hold(world, slot);
-    }
-
-    /// <summary>
-    /// Whether the character is decided now: asked (its replan bit), its front not tried yet or its task ended, re-asked (<paramref name="due"/>),
-    /// or (the order step runs on every AI update) a front that leaves now.
-    /// </summary>
-    static bool Due(World world, int slot, CharacterCold cold, bool paused, bool due)
-    {
-        bool front = cold.OrderQueue.Front is { } f && (!f.Tried || f.Started && !PlayerOrders.Runs(world, slot, f));
-        return cold.Replan || front || due || !paused && PlayerOrders.PopsNow(world, slot);
-    }
-
-    /// <summary>
-    /// An engine start claimed the character this tick (<see cref="Claim"/>): it is not decided, and its replan bit is dropped. False while paused.
-    /// </summary>
-    bool DropsClaimed(World world, int slot, CharacterCold cold, bool paused)
-    {
-        if (paused || !Claimed(world, slot)) return false;
-
-        cold.Replan = false;
-        return true;
-    }
-
-    /// <summary>
-    /// Sets an NPC's <see cref="CharacterCold.OrderWins"/> from its queue (serial phases): its front runs (<see cref="PlayerOrders.Wins"/>; a front
-    /// that could start has started by now) while the chooser runs for it. When it turns on, the AI's plan, goal and commitment go (the order's
-    /// plan replaces them); when it turns off, the AI chooses again at once. While it is off a routine kept at the order's start is taken up again
-    /// (<see cref="BackToRoutine"/>). An NPC with no order left keeps no replan bit (only its queue reads it). A character the step decides holds no
-    /// such flag.
-    /// </summary>
-    internal static void Hold(World world, int slot)
-    {
-        var cold = world.Characters.Cold(slot)!;
-        if (Decides(cold))
-        {
-            cold.OrderWins = false;
-            return;
-        }
-
-        if (cold.OrderQueue.Count == 0) cold.Replan = false;
-        bool wins = TakesOrders(cold) && cold.OrderQueue.Front is { Started: true } && PlayerOrders.Wins(world, slot);
-        if (!wins) BackToRoutine(world, slot, cold);
-        if (wins == cold.OrderWins) return;
-
-        cold.OrderWins = wins;
-        if (cold.Ai is not { } mind) return;
-        if (wins)
-        {
-            mind.ResetPlan();
-            mind.Goal = null;
-        }
-        else
-        {
-            mind.Replan = true;
-        }
-    }
-
-    /// <summary>
-    /// An order is about to take an NPC its AI does not fully run (an engine mind or none, serial): the routine it is on, wandering or following
-    /// its leader, is kept for <see cref="BackToRoutine"/>; a routine kept by an earlier order of the queue stays. A roaming leader's trip needs
-    /// none: the population walks it on once its order no longer holds it.
-    /// </summary>
-    internal static void KeepRoutine(CharacterTable table, int slot, CharacterCold cold)
-    {
-        if (cold.Ai is { Engine: false }) return;
-
-        var task = (CharacterTask)table.Next[slot].Task;
-        if (task is CharacterTask.Wander or CharacterTask.Follow) cold.OrderRoutine = task;
-    }
-
-    /// <summary>
-    /// The order no longer holds the NPC: the kept routine waits while the order's task goes on (a move leaves the queue near its point and its walk
-    /// goes on); then one standing idle, awake and held by nothing takes it up again (a follow only while its leader is there); it goes either way.
-    /// </summary>
-    static void BackToRoutine(World world, int slot, CharacterCold cold)
-    {
-        var routine = cold.OrderRoutine;
-        if (routine == CharacterTask.Idle) return;
-        if (world.Characters.Next[slot].Task != (byte)CharacterTask.Idle && cold.Running is { Source: TaskSource.Order }) return;
-
-        cold.OrderRoutine = CharacterTask.Idle;
-        if (!Free(world.Characters, slot, cold)) return;
-
-        if (routine == CharacterTask.Wander)
-            TaskStart.Become(world, slot, CharacterTask.Wander, TaskType.Wanderer, TaskSource.Goal);
-        else if (world.Squads.Find(cold.SquadId) is { } squad && squad.Leader != world.Characters.IdOf(slot)
-                && world.Characters.TryResolveNext(squad.Leader, out _))
-            TaskStart.Become(world, slot, CharacterTask.Follow, TaskType.FollowSquadleader, TaskSource.Goal);
-    }
-
-    /// <summary>
-    /// Whether the NPC stands idle, awake and held by nothing (no fight, duty, flight, carry, bed or cage), so its routine may start.
-    /// </summary>
-    static bool Free(CharacterTable table, int slot, CharacterCold cold) =>
-        table.Next[slot].Alive && table.Next[slot].Task == (byte)CharacterTask.Idle
-        && cold is { InCombat: false, Engaged: false, Fleeing: false, IsImprisoned: false, CarriedBy.IsNone: true, Carrying.IsNone: true }
-        && cold.Medical is not { Incapacitated: true } && cold.InSomething == Locks.HeldState.None;
 
     /// <summary>
     /// Decides one character now (serial phases): the order queue's own pops first (<see cref="PlayerOrders.Prepare"/>), then the sources in order.
     /// </summary>
-    public void Decide(World world, int slot, bool paused = false) => DecideSteps(world, slot, paused, ordersOnly: false);
-
-    /// <summary>
-    /// <see cref="Decide"/>; <paramref name="ordersOnly"/> asks source 1 alone (an NPC's order queue), and its replan bit is consumed as a full
-    /// decision's is.
-    /// </summary>
-    void DecideSteps(World world, int slot, bool paused, bool ordersOnly)
+    public void Decide(World world, int slot, bool paused = false)
     {
         var cold = world.Characters.Cold(slot)!;
         _lines.Clear();
         PlayerOrders.Prepare(world, slot);
-        string winner = paused ? "(paused: orders only)" : ordersOnly ? "(orders only: the AI decides the rest)" : "(none)";
+        string winner = paused ? "(paused: orders only)" : "(none)";
         for (int k = 0; k < _sources.Count;)
         {
             var step = _sources[k].Step;
             int end = k;
             while (end < _sources.Count && _sources[end].Step == step) end++;
-            if ((paused || ordersOnly) && step != DecisionStep.Orders) break;
+            if (paused && step != DecisionStep.Orders) break;
             if (step == DecisionStep.Goals ? PickGoal(world, slot, k, end, ref winner) : PickFirst(world, slot, k, end, ref winner)) break;
             k = end;
         }
@@ -563,7 +384,7 @@ public sealed class DecisionSystem
 
             float score = source.Desire(world, slot) * source.Weight * (check.Running ? 1.25f : 1);
             if (check.Running && score < 1 && Unfinished(world, slot)) score *= 1.25f;
-            if (Tracing) Note(source, score > 0 ? $"score {score:0.###}{(check.Running ? " (running)" : "")}" : "desire 0");
+            Note(source, score > 0 ? $"score {score:0.###}{(check.Running ? " (running)" : "")}" : "desire 0");
             if (score > 0 && score >= bestScore) (best, bestScore, bestRuns) = (k, score, check.Running);
         }
 

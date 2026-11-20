@@ -442,19 +442,16 @@ public sealed partial class CrimeSystem(FactionRelations relations, CrimeSetting
             // Its squad tags the culprit short-term CRIMINAL (7).
             if (wc.SquadId >= 0) world.SystemOf<Dialogue.DialogueSystem>()?.Memory.Flag(world, wc.SquadId, culpritId, Dialogue.MemoryTag.Criminal);
             // A witness that is the crime's own victim (a trespass's is the witness that called it) goes for the culprit (Character::attackTarget:
-            // its squad tags the culprit TEMP_ENEMY); the attack is no order, so one its order holds keeps to the order.
+            // its squad tags the culprit TEMP_ENEMY).
             if (p.Victim == witness && wc.Fighter?.CanAttack == true
                 && !(world.SystemOf<Combat.CombatSystem>()?.StateOf(witness) is { } fight && fight.TargetSlot == culprit
                     && fight.TargetGeneration == culpritId.Generation))
             {
                 world.SystemOf<Dialogue.DialogueSystem>()?.TagEnemy(world, w, culprit);
-                if (!Ai.DecisionSystem.Ordered(wc))
+                world.Defer(new Combat.AttackOrder([witness], culpritId)
                 {
-                    world.Defer(new Combat.AttackOrder([witness], culpritId)
-                    {
-                        Tick = world.Tick + 1, Source = TaskSource.Npc, Cause = $"the victim saw the crime ({p.Code})",
-                    });
-                }
+                    Tick = world.Tick + 1, Source = TaskSource.Npc, Cause = $"the victim saw the crime ({p.Code})",
+                });
             }
             bool first = !p.Witnessed;
             if (first)

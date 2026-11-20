@@ -66,8 +66,7 @@ public static class MachineSave
                 continue;
 
             var file = zone.File;
-            string stateId = site.Id + StateSuffix;
-            var state = file.Records.FirstOrDefault(r => r.StringId == stateId && r.RecordType == FcsRecordType.GamestateBuilding);
+            var state = file.Records.FirstOrDefault(r => r.StringId == site.Id + StateSuffix && r.RecordType == FcsRecordType.GamestateBuilding);
             var instance = list.Instances.FirstOrDefault(i => i.Id == site.Id);
             if (state is null || instance is null) continue;
 

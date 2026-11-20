@@ -255,11 +255,9 @@ public static class SaveInventory
     /// </summary>
     internal static HashSet<string> Reachable(SaveFile file, FcsRecord inventory)
     {
-        var found = new HashSet<string>(StringComparer.Ordinal);
-        if (inventory.Instances.Count == 0) return found;
-
-        var byId = new Dictionary<string, FcsRecord>(file.Records.Count, StringComparer.Ordinal);
+        var byId = new Dictionary<string, FcsRecord>(StringComparer.Ordinal);
         foreach (var r in file.Records) byId.TryAdd(r.StringId, r);
+        var found = new HashSet<string>(StringComparer.Ordinal);
         void Walk(FcsRecord r)
         {
             foreach (var i in r.Instances)
@@ -392,30 +390,24 @@ public static class SaveInventory
     /// </summary>
     public static void Replace(SaveFile file, FcsRecord inventory, IReadOnlyList<SaveItem> items, Func<int, string> idOf)
     {
-        if (inventory.Instances.Count == 0 && items.Count == 0) return;
-
         var old = Reachable(file, inventory);
-        var oldRecords = old.Count == 0 ? null : file.Records
-            .Where(r => old.Contains(r.StringId))
-            .ToDictionary(r => r.StringId, StringComparer.Ordinal);
+        var oldRecords = file.Records.Where(r => old.Contains(r.StringId)).ToDictionary(r => r.StringId, StringComparer.Ordinal);
         var reused = new Dictionary<string, FcsRecord>(StringComparer.Ordinal);
         var added = new List<FcsRecord>();
-        int? next = null;
+        int next = SaveBuilder.NextNumber(file);
 
         FcsRecord Take(FcsRecord fresh, string? oldId)
         {
-            if (oldId is not null && oldRecords is not null && oldRecords.TryGetValue(oldId, out var was) && !reused.ContainsKey(oldId))
+            if (oldId is not null && oldRecords.TryGetValue(oldId, out var was) && !reused.ContainsKey(oldId))
             {
                 (fresh.Id, fresh.StringId, fresh.Name, fresh.Flags) = (was.Id, was.StringId, was.Name, was.Flags);
                 reused[oldId] = fresh;
             }
             else
             {
-                int id = next ?? SaveBuilder.NextNumber(file);
-                fresh.Id = id;
-                fresh.StringId = idOf(id);
-                file.Data.NextId = Math.Max(file.Data.NextId, id);
-                next = id + 1;
+                fresh.Id = next;
+                fresh.StringId = idOf(next);
+                file.Data.NextId = Math.Max(file.Data.NextId, next++);
                 added.Add(fresh);
             }
             return fresh;
@@ -440,15 +432,7 @@ public static class SaveInventory
         }
 
         Fill(inventory, items, 0);
-        if (old.Count > 0) ReplaceOldRecords(file, old, reused);
-        file.Records.AddRange(added);
-    }
-
-    /// <summary>
-    /// Gives reused records their original positions and removes the rest of the old inventory.
-    /// </summary>
-    static void ReplaceOldRecords(SaveFile file, HashSet<string> old, Dictionary<string, FcsRecord> reused)
-    {
+        // Reused records take the place of the ones they replace; the rest of the old ones leave; new ones go at the end.
         for (int i = file.Records.Count - 1; i >= 0; i--)
         {
             string id = file.Records[i].StringId;
@@ -456,5 +440,6 @@ public static class SaveInventory
             if (reused.TryGetValue(id, out var replacement)) file.Records[i] = replacement;
             else file.Records.RemoveAt(i);
         }
+        file.Records.AddRange(added);
     }
 }
