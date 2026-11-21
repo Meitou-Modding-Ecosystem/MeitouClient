@@ -287,6 +287,45 @@ public sealed class ModContext
     }
 
     /// <summary>
+    /// Rows in the character editor (docs/modding.md "Character editor rows"): <paramref name="source"/> is asked, on the interface's thread, for the
+    /// rows of each character the editor shows (its race, sex, look and whether it is a new game's creation) and answers sliders, lists and colours
+    /// for any tab, shown after the game's own. Their values are kept on the look record under this mod's id, so the editor's CONFIRM, the save and
+    /// EXPORT carry them; read them with <see cref="Data.Characters.ModLooks"/>. Return none for a character the mod has nothing for.
+    /// </summary>
+    public void AddEditorRows(Data.Characters.LookRowSource source)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(source);
+        Pending.LookRows.Add(source);
+    }
+
+    /// <summary>
+    /// This mod's values for a look (docs/modding.md "Character editor rows"): <paramref name="roll"/> writes them on every generated character's
+    /// look, after the game's own rolls, and on the editor's RANDOMISE (<see cref="Data.Characters.LookRollContext.Tab"/>, the tab rolled, null for
+    /// RANDOMISE ALL), with a random sequence of its own. It may run on any thread, so it must be quick, read no world state and write the same
+    /// values for the same arguments. A throw keeps what it wrote and is logged once.
+    /// </summary>
+    public void AddLookRoll(Data.Characters.LookRoll roll)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(roll);
+        Pending.LookRolls.Add(roll);
+    }
+
+    /// <summary>
+    /// Additions to how people are drawn (docs/modding.md "Look extras"): <paramref name="source"/> is asked each time a person's look is built
+    /// (its look record, race, sex and head) and answers pose weights set over the look's own and colour tints on disks of the skin, or null. It may
+    /// run on any thread, so it must be quick, read no world state and answer the same for the same arguments. A throw, or a tint that is not
+    /// valid, adds nothing to that look and is logged once.
+    /// </summary>
+    public void AddLookExtras(Data.Characters.LookExtrasSource source)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(source);
+        Pending.LookExtras.Add(source);
+    }
+
+    /// <summary>
     /// A bar on the medical panel after Hunger (docs/modding.md "Medical meters") labelled <paramref name="label"/>: the mod's systems set each
     /// character's reading in the tick with <see cref="Simulation.Bodies.ModMeter.Set"/>, and the panel shows it for the selected or inspected
     /// character. A label another meter has, or a fifth meter of all mods together, refuses it.
@@ -372,7 +411,7 @@ public sealed class ModContext
     /// A job type of the mod's own (docs/modding.md "Mod jobs"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up, so
     /// never a game task), which the mod puts in characters' job lists and runs itself. The jobs panel names it <paramref name="name"/>; a save keeps
     /// it in its place in the list under Meitou keys (the original's list never holds it), and a load puts it back while the type is registered.
-    /// One mod per number, whether claimed as a job or an NPC goal type (a mod may claim one number as both).
+    /// One mod per number, whether claimed as a job or a goal type (a mod may claim one number as both).
     /// </summary>
     public void AddJobType(Data.Gameplay.Ai.TaskType type, string name)
     {
@@ -384,11 +423,11 @@ public sealed class ModContext
     }
 
     /// <summary>
-    /// An NPC goal type of the mod's own (docs/modding.md "NPC goals"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up,
-    /// so never a game task) that AI_TASK records of a data mod name in AI packages; NPCs whose running package lists it weigh it in the AI's chooser
-    /// by the desire of the goal one of the mod's systems registers (<see cref="Meitou.Simulation.Ai.INpcGoalOwner"/>), and the mod acts it out. Log
-    /// lines and notices name it <paramref name="name"/>. One mod per number, whether claimed as a goal or a job type (a mod may claim one number as
-    /// both); without the mod the goal stays inert.
+    /// A goal type of the mod's own (docs/modding.md "Chooser goals and jobs"): a task type number (<see cref="SimulationExtensions.FirstModCode"/>
+    /// and up, so never a game task) that AI_TASK records of a data mod name in AI packages and goal lists; characters whose lists hold it weigh it in
+    /// the AI's chooser by the desire of the goal one of the mod's systems registers (<see cref="Meitou.Simulation.Ai.IChooserOwner"/>), and the
+    /// mod acts it out. Log lines and notices name it <paramref name="name"/>. One mod per number, whether claimed as a goal or a job type (a mod may
+    /// claim one number as both); without the mod the goal stays inert.
     /// </summary>
     public void AddGoalType(Data.Gameplay.Ai.TaskType type, string name)
     {

@@ -665,7 +665,7 @@ public sealed partial class PopulationSystem
             return;
         }
 
-        StepTrip(world, p, squad, dt);
+        StepTrip(world, p, squad);
     }
 
     /// <summary>
@@ -734,98 +734,20 @@ public sealed partial class PopulationSystem
     }
 
     /// <summary>
-    /// A loaded platoon's trip: its campaign's step, else the roaming squad's waits, its next town, its arrival and its orders on the way.
+    /// A loaded platoon's step beside its squad's own AI: its campaign's step. Every other loaded platoon acts out its package's goals itself, one
+    /// without packages stands idle (docs/game/factions-squads-towns.md "Squads without packages"), a held one's too, so the population orders no
+    /// leader; the stand-in chooses afresh once it unloads (a held one's travel stays the mod's, <see cref="ModTravel"/>).
     /// </summary>
-    void StepTrip(World world, Platoon p, Squad squad, float dt)
+    void StepTrip(World world, Platoon p, Squad squad)
     {
-        var table = world.Characters;
         if (p.Campaign is not null)
         {
-            StepCampaignLoaded(world, p, squad, dt);
+            StepCampaignLoaded(world, p, squad);
             return;
         }
 
-        if (p.Pinned || p.Wild || p.Dead) return;   // a town's own or a wild one: its AI runs it, it has no trips (nor has a dead one)
-        if (p.Held) return;   // a code mod runs it (HoldPlatoon)
-
-        // A squad with a blackboard acts out its package's goals itself (every loaded platoon does in the original): no trip order, so the two
-        // never order the leader against each other, and the stand-in chooses afresh once it unloads. So does a leader obeying its master, which
-        // follows it (its Slave list, job 187). The trip is left for a squad the AI does not run (a template without packages).
-        if (squad.Ai is not null || LeaderObeys(world, squad))
-        {
-            (p.Target, p.WaitLeft, p.Point) = (-1, 0, null);
-            return;
-        }
-
-        // A leader in a fight or a loot is left to it: an order now would replace that task (the trip goes on when it is over).
-        if (table.Next[squad.Leader.Slot].Task is (byte)CharacterTask.Attack or (byte)CharacterTask.Loot) return;
-
-        if (p.WaitLeft > 0)
-        {
-            p.WaitLeft -= dt;
-            if (p.WaitLeft <= 0)
-            {
-                ChooseNext(world, p);
-                OrderLeader(world, p, squad);
-            }
-
-            return;
-        }
-
-        if (Goal(p) is not { } goal)
-        {
-            ChooseNext(world, p);
-            OrderLeader(world, p, squad);
-            return;
-        }
-
-        bool point = p.Point is not null;
-        if (Vector2.Distance(p.Position, goal) <= _settings.RoamArrivalRadius)
-        {
-            ArriveAtGoal(world, p, squad, goal, point);
-            return;
-        }
-
-        // On the way: the leader keeps a go-to; ask again when it has none (arrived short, blocked, or just loaded).
-        if (table.TryResolveNext(squad.Leader, out int leaderSlot))
-        {
-            ref var n = ref table.Next[leaderSlot];
-            bool busy = n.Task == (byte)CharacterTask.GoTo && (n.Flags & (ushort)MoveFlags.AnyPath) != 0;
-            p.OrderCooldown -= dt;
-            if (!busy && p.OrderCooldown <= 0)
-            {
-                OrderLeader(world, p, squad);
-                p.OrderCooldown = 4;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Whether the squad's leader obeys a master squad (<see cref="AiSystem.ObeyedRoles"/>): a captive split off into a squad of its own follows its
-    /// slaver, so a trip ordered on it walked it off until it escaped far from its owner (#904).
-    /// </summary>
-    static bool LeaderObeys(World world, Squad squad) =>
-        world.Characters.TryResolveNext(squad.Leader, out int s) && world.Characters.Cold(s) is { } leader
-        && AiSystem.ObeyedRoles(world, squad, leader) is not null;
-
-    /// <summary>
-    /// At the goal the squad mills about in the town (or round the point) it came to.
-    /// </summary>
-    void ArriveAtGoal(World world, Platoon p, Squad squad, Vector2 goal, bool point)
-    {
-        var table = world.Characters;
-        Arrive(world, p);
-
-        // At the town the squad mills about in it.
-        if (table.TryResolveNext(squad.Leader, out int slot))
-        {
-            TaskStart.Become(world, slot, CharacterTask.Wander, Meitou.Data.Gameplay.Ai.TaskType.Wanderer, TaskSource.Goal);
-            table.Next[slot].Mode = SpeedMode.Walk;
-            table.Next[slot].TaskTime = 0.5f;
-        }
-
-        squad.HomeCentre = goal;
-        squad.HomeRadius = point ? 60 : Math.Max(_data.Sites[p.Target].Town.SizeRadius * _data.Sites[p.Target].Town.TownRadiusMult * 0.5f, 40);
+        if (p.Pinned || p.Wild || p.Dead || p.Held) return;
+        (p.Target, p.WaitLeft, p.Point) = (-1, 0, null);
     }
 
     /// <summary>
@@ -841,7 +763,7 @@ public sealed partial class PopulationSystem
     void FollowPackage(World world, Platoon p, Meitou.Data.Gameplay.Ai.AiPackage running)
     {
         p.Package = running.Id;
-        var job = PlatoonJobs.JobOf(running.Unloaded);
+        var job = PlatoonJobs.WarJob(p, running) ?? PlatoonJobs.JobOf(running.Unloaded);
         if (job == p.Job) return;
         p.Job = job;
         if (job is not (PlatoonJob.GoHome or PlatoonJob.PatrolShortRange) || p.Campaign is not null || p.Pinned || p.Wild) return;
@@ -895,7 +817,7 @@ public sealed partial class PopulationSystem
 
     /// <summary>
     /// A loaded platoon's place (<c>FUN_1404fed50</c>, <b>Verified</b>): its effective leader's while that one is not down, else the mean of the
-    /// members that are not dead (a knocked-out one counts), else where it was.
+    /// members that are not dead (a knocked-out one counts; divided by the number summed), else where it was.
     /// </summary>
     Vector2 PlatoonPosition(World world, Squad squad, Vector2 last)
     {
@@ -989,19 +911,6 @@ public sealed partial class PopulationSystem
         return true;
     }
 
-    /// <summary>
-    /// Sends a loaded platoon's leader to its goal: walking on a short-range patrol or going home, else running.
-    /// </summary>
-    void OrderLeader(World world, Platoon p, Squad squad)
-    {
-        if (Goal(p) is not { } goal || !world.Characters.TryResolveNext(squad.Leader, out int slot)) return;
-
-        // A short-range patrol and going home walk; travel runs (as before the packages).
-        TaskStart.Walk(world, slot, goal, p.Job is PlatoonJob.PatrolShortRange or PlatoonJob.GoHome ? SpeedMode.Walk : SpeedMode.Run,
-            Meitou.Data.Gameplay.Ai.TaskType.TravelToTargetTown,
-            TaskSource.Goal);
-    }
-
     #endregion
 
     #region Unloaded to loaded
@@ -1012,15 +921,19 @@ public sealed partial class PopulationSystem
     readonly List<BuiltRoamer> _readyRoamers = [];
 
     /// <summary>
-    /// Spawn mode 3 (<c>FUN_1404ffad0</c>, <b>Verified</b>): a saved platoon whose <c>basetown</c> no longer fits its home town's replacement
-    /// (<see cref="HomeFits"/>) is not activated. Its template's leader being unique, the template's uniques it holds are released and the flag stays
-    /// (the keep test refuses it unless persistent); otherwise the persistent flag is cleared as well. Either way the keep test then fails
-    /// (<see cref="Kept"/>) and the platoon goes with the orphan timer. A mod's guest (<see cref="Platoon.Guest"/>) is never refused. Whether it was
-    /// refused.
+    /// Spawn mode 3 (<c>FUN_1404ffad0</c>, <b>Verified</b>): a platoon whose home no longer fits its home town's version (<see cref="HomeRefused"/>)
+    /// is not activated. Its template's leader being unique, the template's uniques it holds are released and the flag stays (the keep test refuses
+    /// it unless persistent); otherwise the persistent flag is cleared as well. Either way the keep test then fails (<see cref="Kept"/>) and the
+    /// platoon goes with the orphan timer. Whether it was refused.
     /// </summary>
     bool RefuseReplacedHome(World world, Platoon p)
     {
-        if (p.Saved is null || p.Guest || p.Origin < 0 || p.Origin >= _data.Sites.Count || HomeFits(p)) { p.ReplacedHome = false; return false; }
+        if (!HomeRefused(p))
+        {
+            p.ReplacedHome = false;
+            return false;
+        }
+
         p.ReplacedHome = true;
         p.State = PlatoonState.Unloaded;
         if (_data.Db.Find(p.TemplateId) is { } template
@@ -1031,13 +944,28 @@ public sealed partial class PopulationSystem
     }
 
     /// <summary>
-    /// A town platoon stored this session from an older version of its town (one still in the world when the town changed: a squad chasing the
-    /// player, say) goes at its activation as the others went at the change (<see cref="DropHomeless"/>), so it does not come back beside the new
-    /// residents. Whether it went.
+    /// Whether spawn mode 3 refuses a platoon (<see cref="RefuseReplacedHome"/>): a saved one whose <c>basetown</c> no longer fits its home town's
+    /// replacement (<see cref="HomeFits(Platoon)"/>), or one stored this session from an older version of its town (<see cref="Outdated"/>). A
+    /// mod's guest (<see cref="Platoon.Guest"/>) never.
+    /// </summary>
+    bool HomeRefused(Platoon p)
+    {
+        if (p.Guest || (uint)p.Origin >= (uint)_data.Sites.Count) return false;
+        if (p.Saved is not null) return !HomeFits(p);
+
+        return Outdated(p, _data.Sites[p.Origin]);
+    }
+
+    /// <summary>
+    /// In Meitou mode (<see cref="OffscreenOverrides"/>), a town platoon stored this session from an older version of its town (one still in the
+    /// world when the town changed: a squad chasing the player, say) goes at its activation as the others went at the change
+    /// (<see cref="DropHomeless"/>), so it does not come back beside the new residents; Faithful refuses it (<see cref="RefuseReplacedHome"/>).
+    /// Whether it went.
     /// </summary>
     bool DropOutdated(World world, Platoon p)
     {
-        if (p.Saved is not null || (uint)p.Origin >= (uint)_data.Sites.Count || !Outdated(p, _data.Sites[p.Origin])) return false;
+        if (!OffscreenOverrides || p.Saved is not null || (uint)p.Origin >= (uint)_data.Sites.Count) return false;
+        if (!Outdated(p, _data.Sites[p.Origin])) return false;
 
         Despawn(world, p);
         return true;
@@ -1064,7 +992,7 @@ public sealed partial class PopulationSystem
     /// </summary>
     void Activate(World world, Platoon p)
     {
-        if (RefuseReplacedHome(world, p) || DropOutdated(world, p)) return;
+        if (DropOutdated(world, p) || RefuseReplacedHome(world, p)) return;
         p.State = PlatoonState.Activating;
 
         // A stand-in that travelled comes back on walkable ground (it went in straight lines, over water and through buildings); one that did not
@@ -1184,7 +1112,7 @@ public sealed partial class PopulationSystem
             // A save's wild platoon wanders round its nest, or (homeless) round where it stands.
             var (centre, homeRadius, nest) = WildHome(wild, p.Position);
             squad = b.Saved is { } wildMembers ? Saving.SavedCharacters.Spawn(world, p, wild, wildMembers, _data, _assembly, centre, homeRadius) : null;
-            BindNest(squad, nest);
+            BindNest(squad, nest, wild.WildSite);
         }
         else
         {
@@ -1215,7 +1143,6 @@ public sealed partial class PopulationSystem
         p.State = PlatoonState.Loaded;
         p.SquadId = squad.Id;
         p.UnloadAtTick = -1;
-        if (Goal(p) is not null && p.WaitLeft <= 0) OrderLeader(world, p, squad);
     }
 
     /// <summary>
@@ -1280,9 +1207,12 @@ public sealed partial class PopulationSystem
     /// Binds a save's nest squad to its nest (<see cref="NestOf"/>), as the nest's own squads are: its town hand is the nest, so
     /// it patrols round it (<c>FUN_1409f9100</c> takes a nest's type 85 hand as a town, #771) and its territory is the nest's.
     /// </summary>
-    void BindNest(Squad? squad, TownData? nest)
+    void BindNest(Squad? squad, TownData? nest, int site)
     {
-        if (squad is not null && nest is not null) _nestSquads[squad.Id] = nest;
+        if (squad is null || nest is null) return;
+
+        _nestSquads[squad.Id] = nest;
+        _nestSites[squad.Id] = site;
     }
 
     #endregion
@@ -1403,7 +1333,7 @@ public sealed partial class PopulationSystem
         Vector2 position)
     {
         int squadFaction = template.Faction is { } tf && _data.FactionIndex(tf) is var ti and >= 0 ? ti : factionIndex;
-        var (package, job) = PlatoonJobs.For(_data.Ai, template);
+        var (package, job) = PlatoonJobs.For(_data.Ai, template, _data.FactionId(squadFaction));
         var platoon = new Platoon
         {
             Id = id,
@@ -1453,7 +1383,7 @@ public sealed partial class PopulationSystem
         var plan = SquadFactory.Plan(_data.Db, template, _settings.SquadSizeMultiplier, world.Seed, key, States);
         if (plan.TotalMembers == 0 || ModSpot(world, key, around, minRadius, maxRadius) is not { } spot) return -1;
 
-        var (package, job) = PlatoonJobs.For(_data.Ai, template);
+        var (package, job) = PlatoonJobs.For(_data.Ai, template, _data.FactionId(faction));
         world.Platoons.NextId();
         world.Platoons.Add(new Platoon
         {
@@ -1556,9 +1486,10 @@ public sealed partial class PopulationSystem
     }
 
     /// <summary>
-    /// A code mod takes over a platoon's movement, or gives it back (engine API, <see cref="Platoon.Held"/>): held, it gets no trip orders and its
-    /// stand-in stays where it is, so the mod can walk its members itself (<see cref="CharacterCold.Engaged"/> keeps the AI off a member; its
-    /// self-preservation still answers an attack). False for an unknown platoon, a town's own or a campaign's. Serial phases only.
+    /// A code mod takes over a platoon's off-screen movement, or gives it back (engine API, <see cref="Platoon.Held"/>): held, it gets no trip
+    /// orders and its stand-in stays where it is until <see cref="SendPlatoon(World, int, Vector2?)"/> moves it. Loaded, its members run their
+    /// package's full minds as any platoon's: the mod steers them with orders (<c>World.GiveOrder</c>), a chooser goal or a package change. False
+    /// for an unknown platoon, a town's own or a campaign's. Serial phases only.
     /// </summary>
     public static bool HoldPlatoon(World world, int platoon, bool held)
     {
@@ -1576,7 +1507,7 @@ public sealed partial class PopulationSystem
     /// <summary>
     /// Sends a held platoon's stand-in toward a point off screen, or stops it (null) (engine API, <see cref="Platoon.ModGoal"/>): it travels as a
     /// roaming stand-in does (by the roads, at the engine's travel speed), stops within <see cref="PopulationSettings.RoamArrivalRadius"/> of the
-    /// point, and waits to be made at a loaded zone like any stand-in; once loaded, the mod walks its members. False for a platoon not held
+    /// point, and waits to be made at a loaded zone like any stand-in; once loaded, its members run their package. False for a platoon not held
     /// (<see cref="HoldPlatoon"/>) or a point that is not finite. Serial phases only.
     /// </summary>
     public static bool SendPlatoon(World world, int platoon, Vector2? point)

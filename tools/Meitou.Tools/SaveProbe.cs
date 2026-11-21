@@ -53,6 +53,12 @@ static class SaveProbe
             return 0;
         }
 
+        if (rest[1] == "pick" && rest.Count >= 5 && probe.Nav is not null)
+        {
+            PickProbe.Run(probe, install, Point(rest, 2), rest.Count > 5 ? float.Parse(rest[5]) : 300);
+            return 0;
+        }
+
         return Mode(probe, rest[1], rest[2..]) ? 0 : Usage();
     }
 
@@ -73,6 +79,9 @@ static class SaveProbe
         switch (mode, a.Count)
         {
             case ("near", >= 1): Near(probe, float.Parse(a[0])); return true;
+            case ("cost", _):
+                TickCostProbe.Run(probe, a.Count > 0 ? int.Parse(a[0]) : 10, a.Count > 1 ? int.Parse(a[1]) : 300, a.Count > 2 ? double.Parse(a[2]) : 20);
+                return true;
             case ("crowd", >= 1): Crowd(probe, float.Parse(a[0]), a.Count > 1 ? int.Parse(a[1]) : 10, a.Count > 2 ? int.Parse(a[2]) : 40); return true;
             case ("fight", >= 1): Fight(probe, int.Parse(a[0]), a.Count > 1 ? int.Parse(a[1]) : 10, a.Count > 2 ? int.Parse(a[2]) : 40); return true;
             case ("crime", >= 1): Crime(probe, a[0], a.Count > 1 ? int.Parse(a[1]) : 10, a.Count > 2 ? int.Parse(a[2]) : 10); return true;
@@ -104,7 +113,10 @@ static class SaveProbe
                 if (a.Count > 5) Move(probe, a[3], float.Parse(a[4]), float.Parse(a[5]), 0);
                 Doors(probe, float.Parse(a[0]), a.Count > 1 ? int.Parse(a[1]) : 10, a.Count > 2 ? int.Parse(a[2]) : 40);
                 return true;
-            case ("slaves", >= 1): Slaves(probe, float.Parse(a[0])); return true;
+            case ("slaves", >= 1):
+                Slaves(probe, float.Parse(a[0]));
+                if (a.Count > 1) SlaveWork(probe, float.Parse(a[0]), int.Parse(a[1]), a.Count > 2 ? int.Parse(a[2]) : 200);
+                return true;
             case ("captors", _): Captors(probe, a.Count > 0 ? int.Parse(a[0]) : 15, a.Count > 1 && a[1] == "walk"); return true;
             case ("obey", >= 2):
                 Vector2? point = a.Count > 4 ? new(float.Parse(a[3]), float.Parse(a[4])) : null;
@@ -113,10 +125,12 @@ static class SaveProbe
             case ("ko", >= 1): Knockout(probe, int.Parse(a[0]), a.Count > 1 ? int.Parse(a[1]) : 15); return true;
             case ("cages", >= 1): Cages(probe, a[0], a.Count > 1 ? a[1] : null); return true;
             case ("owners", _): OwnerProbe.Run(probe); return true;
+            case ("interiors", _): InteriorProbe.Run(probe, a.Count > 0 ? a[0] : null); return true;
             case ("sleeper", >= 1): Sleeper(probe, a[0]); return true;
             case ("force", >= 2):
                 Force(probe, a[0], a[1] == "tools" ? LockForce.Tools : LockForce.Strength, a.Count > 2 ? a[2] : null);
                 return true;
+            case ("free", >= 1): Free(probe, a[0], a.Count > 1 ? int.Parse(a[1]) : 10, a.Count > 2 && a[2] == "unlocked"); return true;
             case ("kit", >= 1): Kit(probe, a[0]); return true;
             case ("uniques", _): Uniques(probe, a.Count > 0 ? a[0] : null); return true;
             case ("recruit", >= 1): Recruit(probe, a[0]); return true;
@@ -464,7 +478,7 @@ static class SaveProbe
 
     /// <summary>
     /// A character's pending crime, bounties with the booking faction's relation to its faction, the flags the police read and how many characters
-    /// its own squad holds TEMP_ENEMY on.
+    /// its own squad holds TEMP_ENEMY on, its disguise with the faction it is seen as, its standing orders and the squad mates whose finder would take it.
     /// </summary>
     static string CrimeLine(ProbeWorld probe, SquadMemory? memory, int slot)
     {
@@ -478,7 +492,55 @@ static class SaveProbe
             + (relations.Contains(e.Faction) && relations.Contains(c.Faction) ? $" relation={relations.Get(e.Faction, c.Faction):F0}" : "")) ?? [];
         return $"pending=[{pending}] bounties=[{string.Join(", ", bounties)}] recentlyWanted={c.RecentlyWanted:F0} freed={c.Freed} "
             + $"escaped={c.Escaped} ordered={c.Ordered} row={c.Running?.Row} imprisoned={c.IsImprisoned} squadEnemies={enemies} "
-            + $"door=[{DoorWork(probe, slot, c)}]";
+            + $"door=[{DoorWork(probe, slot, c)}] disguise={c.DisguiseLevel:F2}/{probe.Faction(c.DisguiseFaction)} "
+            + $"seenAs={SeenAs(probe, c)} orders={c.Orders} body={c.Medical is not null} takenBy=[{string.Join(", ", MatesTaking(probe, slot, c))}]"
+            + Jail(probe, c);
+    }
+
+    /// <summary>
+    /// A prisoner's sentence (start and length in game hours, the hours left, whether it is served) and its cage's owner with whether that
+    /// faction regards the prisoner's as an enemy, which a jailer's release refuses (#1064); empty for a character in no cage.
+    /// </summary>
+    static string Jail(ProbeWorld probe, CharacterCold c)
+    {
+        if (!c.IsImprisoned || c.InWhat is not { } where || probe.World.Fixtures.Find(where) is not { } cage) return "";
+
+        double now = probe.World.GameHours;
+        bool enemy = Meitou.Simulation.Bodies.CharacterFacts.RegardsEnemy(probe.Data.Relations, cage.Owner, c.Faction);
+        bool served = Meitou.Simulation.Locks.FixtureRegistry.SentenceServed(c, now);
+        double left = c.SentenceStart + c.SentenceLength - now;
+
+        return $" jail=[{probe.Faction(cage.Owner)} sentence={c.SentenceStart:F1}+{c.SentenceLength:F1} left={left:F1} served={served} "
+            + $"enemy={enemy} kidnapped={c.Kidnapped} slave={c.SlaveState}]";
+    }
+
+    /// <summary>
+    /// The faction the character is seen as (a working disguise's) with its own faction's relation to it and whether that is attacked on sight.
+    /// </summary>
+    static string SeenAs(ProbeWorld probe, CharacterCold c)
+    {
+        var relations = probe.Data.Relations;
+        int seen = Meitou.Simulation.Crime.ArrestSystem.SeenFaction(c);
+        if (seen == c.Faction || !relations.Contains(seen) || !relations.Contains(c.Faction)) return probe.Faction(seen);
+
+        bool onSight = Meitou.Simulation.Aggro.AggroSystem.AttacksOnSight(relations, c.Faction, seen);
+        return $"{probe.Faction(seen)}(relation={relations.Get(c.Faction, seen):F0} onSight={onSight})";
+    }
+
+    /// <summary>
+    /// The character's squad mates whose attack-on-sight finder would take it as a target had they sensed it (#1057: none, whatever it wears).
+    /// </summary>
+    static IEnumerable<string> MatesTaking(ProbeWorld probe, int slot, CharacterCold c)
+    {
+        var table = probe.Characters;
+        var aggro = probe.World.Systems.OfType<Meitou.Simulation.Aggro.AggroSystem>().FirstOrDefault();
+        if (aggro is null || probe.World.Squads.Find(c.SquadId) is not { } squad) yield break;
+
+        foreach (var m in squad.Members)
+        {
+            if (m.Slot == slot || table.Cold(m.Slot) is not { } mate) continue;
+            if (aggro.Takes(probe.World, m.Slot, mate, slot, c)) yield return mate.Name;
+        }
     }
 
     /// <summary>
@@ -546,7 +608,9 @@ static class SaveProbe
                 Console.WriteLine($"tick {probe.World.Tick} {probe.Who(i)} in={c.InSomething} carrying={c.Carrying} behaviour={c.Ai?.Behaviour} "
                     + $"package={c.Ai?.Squad.Ai?.Current?.Name} goal={c.Ai?.Goal?.Task} fight={c.Ai?.FightGoal} "
                     + $"orders=[{string.Join(", ", c.OrderQueue.Select(o => o.Row))}] saved={c.SavedOrders?.Count} target={Target(probe, i)} "
-                    + $"hunger={c.Medical?.Hunger:F2} fed={c.Medical?.Fed:F2}");
+                    + $"hunger={c.Medical?.Hunger:F2} fed={c.Medical?.Fed:F2} mode={probe.Characters.Next[i].Mode} own mode={c.RunSpeed} "
+                    + $"speed={probe.Characters.Next[i].Velocity.Length():F1} running={Running(c)} follows={Followed(probe, i)} "
+                    + $"race={c.Race?.StringId ?? "none"}");
                 if (c.Decision is { } d) Console.WriteLine($"  decision {d.Tick} {d.Winner}: {string.Join("; ", d.Lines)}");
             }
 
@@ -672,7 +736,7 @@ static class SaveProbe
             .Select(m => $"{(CharacterTask)t.Next[m.Slot].Task}{Down(t.Cold(m.Slot)!)}:{t.Cold(m.Slot)!.Ai?.Goal?.Task.Type}"
                 + $"@{Vector3.Distance(t.Next[m.Slot].Position, at):F0}");
         return $"sq {squad.Id} '{squad.Name}' {probe.Faction(squad.Faction)} platoon={squad.PlatoonId} leader={(CharacterTask)t.Next[lead].Task} "
-            + $"engine={c.Ai?.Engine} behaviour={c.Ai?.Behaviour} goal={c.Ai?.Goal?.Task.Type} fight={c.Ai?.FightGoal} "
+            + $"behaviour={c.Ai?.Behaviour} goal={c.Ai?.Goal?.Task.Type} fight={c.Ai?.FightGoal} "
             + $"target={Target(probe, lead)} package={squad.Ai?.Current?.Name} town={TownLabel(squad.Ai?.InTown)} "
             + $"home={squad.HomeCentre:F0}/{squad.HomeRadius:F0} building={HomeName(probe, squad.Ai?.OwnHome ?? squad.HomeBuilding)} "
             + $"ai-home={HomeName(probe, squad.Ai?.Home)} table={squad.Ai?.BarTable} pinned={squad.Pinned} pos={at:F0} "
@@ -703,6 +767,23 @@ static class SaveProbe
         if (!state.Fighting || probe.Characters.Cold(state.TargetSlot) is not { } c) return "-";
 
         return $"{state.TargetSlot} '{c.Name}' {probe.Faction(c.Faction)}";
+    }
+
+    /// <summary>
+    /// The task, row, source and list job the character's plan runs, or "-".
+    /// </summary>
+    static string Running(CharacterCold c) =>
+        c.Running is { } run ? $"{run.Task}/{(int)run.Row}/{run.Source}{(run.Job >= 0 ? $"[{run.Job}]" : "")}" : "-";
+
+    /// <summary>
+    /// The name of the character <paramref name="i"/> follows by order or job and how far it is, or "-".
+    /// </summary>
+    static string Followed(ProbeWorld probe, int i)
+    {
+        var t = probe.Characters;
+        if (!t.TryResolveNext(t.Cold(i)!.FollowOrder, out int f)) return "-";
+
+        return $"'{t.Cold(f)?.Name}' gap {Vector3.Distance(t.Next[i].Position, t.Next[f].Position):F0}";
     }
 
     /// <summary>
@@ -832,6 +913,47 @@ static class SaveProbe
                 + $"town={squad?.Town} platoon={squad?.PlatoonId} home={squad?.HomeBuilding?.Position} template={squad?.TemplateId}");
         }
     }
+
+    /// <summary>
+    /// The slaves within <paramref name="radius"/> of the leader every <paramref name="interval"/> ticks: task, goal, plan step, the workplace
+    /// each works at (an AI slave's, or an obedient player slave's) with the gap to its marker from where the slave stands and its work range,
+    /// speed, clip and carried items; then how many work, how many walk on their path, and how many of those within twice the range (#1059).
+    /// </summary>
+    static void SlaveWork(ProbeWorld probe, float radius, int rounds, int interval)
+    {
+        var slaves = probe.Near(probe.LeaderPosition, radius).Where(i => probe.Characters.Cold(i) is { SlaveState: not 0 }).ToList();
+        var ai = probe.World.SystemOf<Meitou.Simulation.Ai.AiSystem>();
+
+        for (int round = 0; round < rounds; round++)
+        {
+            int walking = 0, near = 0, working = 0;
+            foreach (int i in slaves)
+            {
+                if (probe.Characters.Cold(i) is not { } c) continue;
+
+                var n = probe.Characters.Next[i];
+                var place = c.Ai?.WorkBuilding;
+                float range = place is null || ai is null ? 0 : ai.WorkRangeOf(place);
+                float gap = place is null || ai is null ? -1 : Flat(ai.WorkMarker(probe.World, place, n.Position), n.Position);
+                bool walks = n.Task == (byte)CharacterTask.GoTo;
+                if (walks) walking++;
+                if (walks && gap >= 0 && gap <= 2 * range) near++;
+                if (!walks && c.ActionClip is not null) working++;
+
+                Console.WriteLine($"tick {probe.World.Tick} {i} '{c.Name}' task={(CharacterTask)n.Task} goal={c.Ai?.Goal?.Task.Type} step={c.Ai?.Step} "
+                    + $"workplace={place?.Position} gap={gap:F0} range={range:F0} speed={n.Velocity.Length():F1} clip={c.ActionClip} in={c.InSomething} "
+                    + $"items={c.Inventory?.Items.Sum(it => it.Quantity)} at={n.Position}");
+            }
+
+            Console.WriteLine($"tick {probe.World.Tick} working {working}, walking {walking} ({near} within twice the range) of {slaves.Count}");
+            probe.Tick(interval);
+        }
+    }
+
+    /// <summary>
+    /// The flat distance between two points.
+    /// </summary>
+    static float Flat(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.X, a.Z), new Vector2(b.X, b.Z));
 
     /// <summary>
     /// Recruits the first character named like <paramref name="name"/> into the player's squad, then unloads the save's platoon it was made from
@@ -1034,6 +1156,34 @@ static class SaveProbe
     }
 
     /// <summary>
+    /// Gives the player's squad Set Free (110) on the first caged character named like <paramref name="name"/> and follows it: the cage's owner and
+    /// lock, the prisoner's hold and whether the order's conscious test passes, and the player characters walking to free it.
+    /// <paramref name="unlocked"/> opens the cage's lock first.
+    /// </summary>
+    static void Free(ProbeWorld probe, string name, int rounds, bool unlocked)
+    {
+        var t = probe.Characters;
+        int who = probe.Named(name).First(i => t.Cold(i) is { IsImprisoned: true });
+        var c = t.Cold(who)!;
+        var cage = probe.World.Fixtures.Find(c.InWhat!)!;
+        var squad = Enumerable.Range(0, t.HighWater).Where(i => t.Next[i].Alive && t.Cold(i) is { IsPlayer: true }).Select(t.IdOf).ToArray();
+        if (unlocked && cage.Lock is { } cageLock) cageLock.Locked = false;
+        probe.World.Commands.Enqueue(new SetFreeOrder(squad, t.IdOf(who)) { Tick = probe.World.Tick });
+
+        for (int round = 0; round <= rounds; round++)
+        {
+            Console.WriteLine($"tick {probe.World.Tick} {probe.Who(who)} in={c.InSomething} "
+                + $"conscious={Meitou.Simulation.Bodies.CharacterFacts.Conscious(c)} animal={SquadRegistry.IsAnimal(c)} "
+                + $"cage {cage.Id} owner={FactionName(probe, cage.Owner)} locked={cage.Lock?.EffectivelyLocked}");
+            foreach (int p in Enumerable.Range(0, t.HighWater).Where(i => t.Next[i].Alive && t.Cold(i) is { IsPlayer: true }))
+                Console.WriteLine($"  {probe.Who(p)} row={t.Cold(p)!.Running?.Row} freeing={!t.Cold(p)!.Freeing.IsNone}");
+
+            probe.PrintMessages();
+            probe.Tick(5);
+        }
+    }
+
+    /// <summary>
     /// A fixture's occupant's name and position, or "-".
     /// </summary>
     static string Occupant(ProbeWorld probe, Fixture f) =>
@@ -1193,7 +1343,22 @@ static class SaveProbe
 
         Console.WriteLine($"open={dialogue.PublishConversation() is not null} gap={Vector3.Distance(t.Next[talker].Position, t.Next[npc].Position):F0} "
             + $"{probe.Who(npc)} player={t.Cold(npc)!.IsPlayer}");
+        PrintRequest(probe, dialogue.PublishRequest());
         probe.PrintMessages();
+    }
+
+    /// <summary>
+    /// The host request a conversation left (the editor it opens) with the look of the character it edits: the records the editor drafts from.
+    /// </summary>
+    static void PrintRequest(ProbeWorld probe, DialogueRequest? request)
+    {
+        if (request is null) return;
+
+        var t = probe.Characters;
+        var look = t.TryResolveNext(request.Player, out int slot) ? t.Cold(slot)?.Appearance : null;
+        Console.WriteLine($"request #{request.Id} {request.Kind} player={request.Player} npc={request.Npc} look={look is not null} "
+            + $"loadoutRecord={look?.Loadout?.Appearance.Record?.StringId ?? "-"} bodyRecord={look?.Body?.Record?.StringId ?? "-"} "
+            + $"character={look?.Character?.StringId ?? "-"}");
     }
 
     /// <summary>
@@ -1508,20 +1673,25 @@ static class SaveProbe
 
     /// <summary>
     /// Every nest of the wild layout with the terrain height at each candidate spot; flags a first spot or all spots the original's spot finder
-    /// refuses: under its floor (95) or on a black pixel of the areas map (docs/game/factions-squads-towns.md "Spot finder").
+    /// refuses: under its floor (95) or on a black pixel of the areas map (docs/game/factions-squads-towns.md "Spot finder"); and how many
+    /// rolled ones (not a save's, not at a marker) stand in a zone a town stands in, where the original makes a nest only by its fallback (#1041).
     /// </summary>
     static void Nests(ProbeWorld probe)
     {
         var population = probe.World.Systems.OfType<PopulationSystem>().First();
         var walk = probe.World.Walkability;
         var biomes = probe.Data.Biomes!;
-        int nests = 0, firstWet = 0, allWet = 0;
+        var townZones = PopulationSystem.TownZones(probe.Data);
+        int nests = 0, firstWet = 0, allWet = 0, inTownZone = 0;
+        bool AtMarkers(WildSite site) => site.Group >= 0 && biomes.Groups[site.Group].NestsAtFixedMarkersOnly;
+
         foreach (var site in population.WildSites.Where(s => s.Kind == WildKind.Nest && s.Spots.Count > 0))
         {
             var heights = site.Spots.Select(s => walk.TerrainHeight(s.X, s.Y)).ToArray();
             var refused = site.Spots.Select((s, i) => heights[i] < 95 || !biomes.IsPainted(s.X, s.Y)).ToArray();
             bool first = refused[0], all = refused.All(r => r);
             nests++;
+            if (townZones.Contains(site.Zone) && site.SaveInstance is null && !AtMarkers(site)) inTownZone++;
             if (first) firstWet++;
             if (all) allWet++;
             if (!first) continue;
@@ -1531,18 +1701,22 @@ static class SaveProbe
             Console.WriteLine($"{flag} nest {site.Index} '{site.Nest?.Name}' at {site.Spots[0]:F0} spots [{spots}]");
         }
 
-        Console.WriteLine($"{nests} nests, first spot refused: {firstWet}, every spot refused: {allWet}");
+        Console.WriteLine($"{nests} nests, first spot refused: {firstWet}, every spot refused: {allWet}, rolled in a town's zone: {inTownZone}");
     }
 
     /// <summary>
     /// <c>nests radius</c>: the nests within the radius of the leader: wild site, TOWN, faction, first spot, the centre it stands at as a
-    /// town (none before it first loads) and its distance.
+    /// town (none before it first loads), its distance, its zone with whether a town stands in that zone (where the original makes no nest), the
+    /// gate code at its place (above 0: inside town walls; with <c>--nav</c>) and whether the save holds it.
     /// </summary>
     static void NestsNear(ProbeWorld probe, float radius)
     {
         var population = probe.World.Systems.OfType<PopulationSystem>().First();
         var at = new Vector2(probe.LeaderPosition.X, probe.LeaderPosition.Z);
         var placed = population.PlacedNests.ToDictionary(n => n.Site, n => n.Centre);
+        var townZones = PopulationSystem.TownZones(probe.Data);
+        var regions = probe.World.SystemOf<LockSystem>()?.Regions;
+        var walk = probe.World.Walkability;
         foreach (var site in population.WildSites.Where(s => s.Kind == WildKind.Nest && s.Spots.Count > 0))
         {
             var spot = placed.TryGetValue(site.Index, out var centre) ? centre : site.Spots[0];
@@ -1550,9 +1724,22 @@ static class SaveProbe
             if (d > radius) continue;
 
             string stands = placed.ContainsKey(site.Index) ? $"{centre:F0}" : "-";
+            var zone = Meitou.Data.World.WorldLayout.ZoneOf(spot.X, spot.Y);
+            string gate = regions is null ? "-" : $"{regions.CodeAt(new Vector3(spot.X, walk.TerrainHeight(spot.X, spot.Y), spot.Y))}";
             Console.WriteLine($"nest {site.Index} '{site.Nest?.Name}' {probe.Faction(site.Faction)} spot {site.Spots[0]:F0} stands {stands} "
-                + $"distance {d:F0}");
+                + $"distance {d:F0} zone {zone.X},{zone.Y}{(townZones.Contains(zone) ? " town zone" : "")} gate {gate}"
+                + $"{(site.SaveInstance is null ? "" : " saved")}{NestPoolText(population, site)}");
         }
+    }
+
+    /// <summary>
+    /// A nest's roaming pool for a probe line: its current max of its desired one, and whether it is wiped out; empty before the nest has pools.
+    /// </summary>
+    static string NestPoolText(PopulationSystem population, WildSite site)
+    {
+        if (population.NestPoolsOf(site.Index) is not { } pools) return "";
+
+        return $" pool {pools.Roaming.Current:F2} of {pools.Roaming.Desired}{(pools.Ded ? " wiped out" : "")}";
     }
 
     /// <summary>
@@ -1883,7 +2070,8 @@ static class SaveProbe
         }
 
         probe.Tick(2);
-        var game = SaveCapture.Capture(probe.World, probe.Data, new SaveClock(1, 12, 0), probe.Loaded);
+        var options = new SaveCaptureOptions { Placements = [.. probe.Levels.Towns()], Levels = probe.Levels };
+        var game = SaveCapture.Capture(probe.World, probe.Data, new SaveClock(1, 12, 0), probe.Loaded, options);
         game.Write(folder);
         Console.WriteLine($"saved with {key} rebuilt to {folder}");
     }
@@ -2001,6 +2189,8 @@ static class SaveProbe
         Console.Error.WriteLine("""
             meitou-tools probe <save folder> <mode> [args] [--ticks n (default 300)] [--nav] [--stream] [--speed s (default 1)] [--at x,z] [--seed n (default 1)] [--load-order <file>] [--mod-dir <folder>]...
               near <radius>            characters near the player's squad leader
+              cost [rounds] [interval] [slow ms]  what a tick costs every interval (300) ticks: characters, mean and slowest tick, ms by phase,
+                                       system and part; each tick over slow ms (20) with the paths it asked for
               crowd <radius> [rounds] [interval]  characters near the leader every interval (40) ticks: down, water state, goal, load, fight target
               fight <slot> [rounds] [interval]  a character's combat state and body, and everyone targeting it: gap, blows thrown and landed
               crime <name> [rounds] [interval]  a character's saved squad memory, then its pending crime, bounties and who targets it with which tags
@@ -2010,7 +2200,7 @@ static class SaveProbe
                                        nests within it of the leader and where each stands as a town
               bait <radius> [rounds]   send the player's squad after the nearest other squad each round, listing squads as squads does
               squads <radius> [rounds]  the other squads near the leader: leader state, goal, members' spread every 40 ticks
-              watch <name> [rounds]    a character's task, AI, fight target, hunger and decision trace every 40 ticks (default 10 rounds)
+              watch <name> [rounds]    a character's task, AI, fight target, hunger, walk mode, speed, running plan, follow, race and decision trace every 40 ticks (default 10 rounds)
               medic <name> [rounds] [interval]  a medic's treatment and decision every interval (20) ticks; each downed character in sight: need, senses, sight test, ray (#843)
               treat <medic> [patient|-] [rounds] [interval]  order a treatment (- or none: itself); task, posture and each leg every interval (20) ticks (#898)
               turrets <character> <count> <x> <z> [rounds] [interval]  spawn hostiles there; the turret squads near: goals, claims, enemies, gunners
@@ -2020,7 +2210,8 @@ static class SaveProbe
               move <name> <x> <z> [rounds]  order a character to walk to a point, then watch it
               premises [rounds] [interval]  the building the leader stands in (needs --nav): public flags, house lock, doors, residents, who is inside, lines said
               ko <slot> [rounds]       the sneaking leader's stealth KO order on a slot: the chance, the target's spot meter and the task every 20 ticks
-              slaves <radius>          slave state, owner faction, master squad and squad town near the leader
+              slaves <radius> [rounds] [interval]  slave state, owner faction, master squad and squad town near the leader; with rounds, each
+                                         slave's task, goal, workplace and gap to its marker every interval (200) ticks, and how many work
               captors [rounds] [walk]  captive jobs on the leader: worker, phase, gap, its senses of the leader; walk clears sneak (#759)
               obey <name> <stand|sneak|walk> [rounds] [x z]  an enslaved player character stands, sneaks or walks to x z: state, owner, order, who sees it (#813)
               cages <name> [carrier]   fixtures within 300 of a character, with owners, occupants and building designation; a container's lock, grid
@@ -2028,6 +2219,7 @@ static class SaveProbe
               owners                   town buildings whose saved owner is not the housing rule's (the residents' faction, else the town's), and the counts
               sleeper <name>           the bed a character lies in: record, yaw, use node yaws, lie spot and the sleeper's own yaw
               force <name> <tools|strength> [fixture id]  a character cuts or breaks a fixture's lock (a prisoner its own cage's); 120 ticks of it
+              free <name> [rounds] [unlocked]  the squad's Set Free (110) on a caged character, its lock opened first or not: its hold and who frees it
               cage [cage id]           the carrying player character puts its load in a cage; 600 ticks of it
               escape <cage id> [rounds] [interval] [x z]  the leader is caged, sneaks out and walks to x z: who sees, has spotted or fights it (#776)
               wars [start <campaign> | arrive | resave <folder>]...  campaigns and Upcoming Events after each step: start one against the
@@ -2039,6 +2231,8 @@ static class SaveProbe
               places <radius> [step]   the place test over the walkable surface round the leader (needs --nav): outdoor-mesh points it puts indoors, and the reverse
               path [x y z] <x y z>     the path a walker gets from the leader (or a point) to a point (needs --nav): points, end, provisional part; short of it, the polygon chain
               walk <name> [x y z] [rounds]  a character walks (to a point, at its height): position, goal, goal height, walk end (needs --nav)
+              pick <eye x y z> [radius]  the mouse ray from a camera eye to each player site near it (needs --nav): the site's and the terrain's
+                                       distance, and its house's mask cut, box exit, shown floors' first hit and the site's floor (#1049)
               ray <x y z> <x y z>      the sight ray between two points (needs --nav): where it first hits the terrain or a building
               sightlines <x y z> <radius> [step] [spread]  walkable points whose spot-meter ray reaches the spot (or each spot within spread), with places
               sees <radius>            NPCs near the leader: place, sight range, the plain sight test and with the sight ray (needs --nav)

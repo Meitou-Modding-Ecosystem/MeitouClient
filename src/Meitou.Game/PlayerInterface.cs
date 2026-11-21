@@ -647,6 +647,7 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
                 ("label", lines[i].Label, lines[i].LabelColour, "Left Top", labelProperties),
                 ("value", lines[i].Action is null ? lines[i].Value : "", lines[i].ValueColour, "Right Top", valueProperties),
             };
+            var (labelBox, valueBox) = LineColumns(row, lines[i], labelProperties["FontName"], valueProperties["FontName"]);
             foreach (var (part, text, colour, align, properties) in columns)
                 if (text.Length > 0)
                 {
@@ -656,11 +657,10 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
                     // A line with a tooltip is a mouse target (the HUD's own tooltip, anchored on its panel).
                     if (tipProperties is not null) foreach (var pair in tipProperties) textProperties[pair.Key] = pair.Value;
 
-                    // A value beside a label keeps out of the label's column: a long one (a French weather notice) is cut short instead of running
-                    // over the label. A label beside a button keeps to its left: added after the button, a full-row label with a tooltip would take
-                    // its clicks.
-                    var box = part == "value" && lines[i].Label.Length > 0 ? row with { X = row.X + row.Width * 0.35f, Width = row.Width * 0.65f }
-                        : lines[i].Action is not null ? row with { Width = row.Width * (1 - Math.Clamp(lines[i].ButtonWidth, 0.1f, 1)) } : row;
+                    // A label beside a button keeps to its left: added after the button, a full-row label with a tooltip would take its clicks.
+                    var box = part == "value" ? valueBox
+                        : lines[i].Action is not null ? row with { Width = row.Width * (1 - Math.Clamp(lines[i].ButtonWidth, 0.1f, 1)) }
+                        : labelBox;
                     controls.Add(new($"{panel}-{part}-{i}", "TextBox", box, Loc.Tr(text), "", "Kenshi_TextboxStandardText", true,
                         textProperties, Vector4.Zero, Pickable: tipProperties is not null, Clip: host.Clip));
                 }
@@ -673,6 +673,31 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
                 properties["FontPixels"] = Math.Max(8, (int)MathF.Round(p)).ToString(CultureInfo.InvariantCulture);
             return properties;
         }
+    }
+
+    /// <summary>
+    /// A text line's label and value boxes in <paramref name="row"/>. The value sits right of the label's column (35 % of the row), so a long one
+    /// (a French weather notice) is cut short instead of running over the label. When the label is wider than that column, as "Total Weight:" in
+    /// the inventory's narrow data panel at a small interface scale (#1038), the value starts after the label as measured; when both do not fit,
+    /// the value stays whole and the label is cut.
+    /// </summary>
+    (UiRect Label, UiRect Value) LineColumns(UiRect row, HudLine line, string labelFont, string valueFont)
+    {
+        var value = row with { X = row.X + row.Width * 0.35f, Width = row.Width * 0.65f };
+        if (line.Label.Length == 0) return (row, row);
+        if (line.Value.Length == 0 || line.Action is not null || UiPainter is not { } painter) return (row, value);
+
+        float minimum = TitleOpen ? 0 : StandardPixels;
+        float labelWidth = painter.MeasureText(labelFont, Loc.Tr(line.Label), Height, 0, minimum).Width;
+        float valueWidth = painter.MeasureText(valueFont, Loc.Tr(line.Value), Height, 0, minimum).Width;
+        float gap = 4 * UiScale;
+        float right = row.X + row.Width;
+        float start = Math.Max(value.X, row.X + labelWidth + gap);
+        start = Math.Max(row.X, Math.Min(start, right - valueWidth));
+        if (start == value.X) return (row, value);
+
+        var label = row with { Width = Math.Max(0, start - gap - row.X) };
+        return (labelWidth + gap + valueWidth > row.Width ? label : row, row with { X = start, Width = right - start });
     }
 
     /// <summary>
@@ -922,7 +947,8 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
         var kind = Picking.PickAt(p).Kind;
         if (kind == WorldPicking.Picked.Character)
         {
-            var quick = QuickOrder(p)?.Do;
+            // A click that gives the character nothing goes on to its cage when it is one of the player's caged by another faction (FUN_1407fc6e0).
+            var quick = QuickOrder(p) is { } order ? order.Do : CageClick(p, alt);
             if (!ContextMenuWindow.ContextPress(p, quick)) quick?.Invoke();
             return;
         }
@@ -960,7 +986,21 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     }
 
     /// <summary>
-    /// The talk pointer: <c>s_talk</c> while the character holds a line for the player (Dialogue <c>playerInterruptionDialog</c> +0xc8,
+    /// The quick click's cage order on the character under the cursor with a selection (<see cref="Simulation.Locks.CageClickOrder"/>: Alt picks a
+    /// locked cage or escapes an unlocked one, else the hint) for a caged character of the player's; the simulation tests whose cage it is. Null with
+    /// nobody selected or on any other character.
+    /// </summary>
+    Action? CageClick(Vector2 p, bool alt)
+    {
+        if (SelectedIds().Count == 0 || Picking.PickWhereAt(p, _ => true) is not { } hit) return null;
+        if (Session.CurrentSnapshot.Characters.FirstOrDefault(c => c.Id == hit.Id) is not { IsPlayer: true, Prison: not null }) return null;
+
+        var occupant = hit.Id;
+        return () => Say(new Simulation.Locks.CageClickOrder([], occupant, alt) { Tick = Session.World.Tick, Clicked = true });
+    }
+
+    /// <summary>
+    /// The talk pointer:<c>s_talk</c> while the character holds a line for the player (Dialogue <c>playerInterruptionDialog</c> +0xc8,
     /// <c>FUN_1407fb410</c>), else <c>talk</c>.
     /// </summary>
     string TalkPointer(CharacterSnapshot c) => Session.World.WantsToTalk(c.Id) ? "s_talk" : "talk";

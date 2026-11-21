@@ -22,6 +22,35 @@ instanced ITEM_PLACEMENT_GROUP, quick.save INSTANCE_COLLECTION and zone1-itemlis
 platoon collections, zone0-buildinglist, BIOMES, town/list and decals. Editor-written type17
 uses actual byte sizes. Preserve trailers and unknown records/fields/instances losslessly.
 
+**Rejected files.** A save's files go through the game-data loader, which fails only on a file that does not open or whose type is
+outside 8..17 ([fcs-mod](fcs-mod.md#files-that-fail-to-load)); the load goes on (**Verified**, decompile 1.0.68):
+- Platoon file: activation's slot 9 (`FUN_140795b30`) calls slot 6 (`FUN_14036d7e0`), which loads the file (slot 1 `FUN_14036b660` →
+  `FUN_14036b5d0` → `FUN_1406c29a0`) and on a failure makes nothing from it: the squad is loaded with no characters, its loaded flag (+8) left clear.
+- Zone file: `FUN_1409ffad0` stores the failure in ZoneMapContent +0xA8, as for a zone with no file, and makes the zone with that flag.
+
+Both are read only when the platoon or zone is made in the session, and a save rewrites neither file otherwise (**Verified**, decompile 1.0.68):
+an unloaded platoon's file is written only with its loaded flag set (`FUN_14036bad0`), an active one's only when it has members or +0xe8
+(`FUN_1404ff410` → `FUN_14036bc90`); the PLATOON record is rewritten from the kept state either way (`FUN_140372ef0`). The save's copy step
+(`FUN_140473720` queues, `FUN_140472ac0` → `FUN_1404726a0` → `CopyFileW`): into the loaded save's own folder, the working folder over it; into
+another folder, the working folder, then the loaded save's folder without overwriting (fail-if-exists). So a file the session did not rewrite
+reaches the new save byte for byte. An NPC platoon made with no members is declared dead on its next step, unless its template `regenerates`
+and its town is not `ded` (then remade at its next activation, [declareDead](../game/factions-squads-towns.md)); a zone made fresh is written
+from its state.
+
+Meitou: `SaveGame.Load` keeps a platoon or zone file whose type is outside 8..17 or that is under 4 bytes in `RejectedFiles`, adds the
+`Problems` entry "File rejected, loaded as none (...): <name>" and loads the platoon or zone as having no file: a zone as fresh, a platoon by
+the no-file rules of [NPC platoons](#npc-platoons-meitou-mapping) (not made as an empty squad; a player one is not loaded). A file of type 8..17 that does
+not parse (types 8..14, or damage further in) still throws `FcsFormatException`, its message prefixed with the file name. A write carries each
+rejected file on unchanged (`SaveGame.CarriedRejects`) while a PLATOON record without a file still names it, or while its zone has no file
+(a visited zone gets a fresh one, [Zone files](#zone-files)); a carried zone the CAMERA `zones` list named stays in it. The game logs the
+`Problems` entries as `load      save: ...`.
+
+**Observed** (one user save, "the great adventure 240"): 703 of 1362 `.platoon` and 287 of 407 `.zone` files are zero bytes for their whole
+length (type 0) at an ordinary size; `quick.save` is whole, and 62 of them have a twin of the same size and write time, whole, in an
+earlier save of the playthrough. **Verified** (headless `probe <save> wars resave <folder>`, then the folders compared): 942 files rejected
+(655 platoon files named by a record, 287 zone files; the other 48 zero-filled platoon files no record names), all 942 written back byte for
+byte, the 222 rejected zones the CAMERA list named still in it, the 655 PLATOON records with the same `content file` and `char count`.
+
 ## Folder and state mapping
 
 User location `%LOCALAPPDATA%/kenshi/save/<name>` when User-save-location1, otherwise install/save.
@@ -109,7 +138,7 @@ set) and it has no `homebuilding`. While unloaded its position is at the host an
 characters' saved places belong to (at the old town), read back as the anchor so they come to the host with it. Read back as `Platoon.Guest`: never
 refused as a replaced town's platoon and not counted as the host's own squads. **Town override pending** (Meitou bool `meitou override pending` on a
 town's state, absent: none): the town changed version but its new residents are not made yet (`SiteState.Repopulate`, [simulation](../simulation.md)
-"Town overrides"). The original ignores these keys.
+"Town overrides"); written with Towns change far away on, or for a change made away from a zone's load, and read back as such a change. The original ignores these keys.
 
 **Building record** (Meitou keys on a registered town building's GAMESTATE_BUILDING, [locks](../game/locks.md#building-record)): int `meitou designation`, string `meitou template` (the last assigned SQUAD_TEMPLATE id, absent: none) and the stored public byte as `is public day`; a state without them is a building with no record yet.
 
@@ -452,7 +481,8 @@ saved look.
 
 Every saved NPC platoon with a `basetown` naming a placed town is restored (a characterless town-bound one is skipped). Its town is the one its `hometown` handle
 names when that town is the `basetown` (or was replaced by it), else the first placed town of that TOWN: several placements share one TOWN (the four Waystations of
-`44854-rebirth.mod`; issue #630, where the first-match rule homed another Waystation's residents 36 km away and they walked off). Town-bound ones (an `sqt` 1 platoon, or a template that does not travel) are pinned to their town, and a town holding any
+`44854-rebirth.mod`; issue #630, where the first-match rule homed another Waystation's residents 36 km away and they walked off). A `basetown` that is a TOWN
+no placed town is now (an older version of a town that changed since) leaves the platoon its `hometown` town's, whose activation then refuses it. Town-bound ones (an `sqt` 1 platoon, or a template that does not travel) are pinned to their town, and a town holding any
 is made of them alone: it makes no residents, default residents, housemates or bar squads (**engine rule**, after the original's: a zone with a save file makes no town
 population, [Zone files](#zone-files) Load; Meitou keys it on the saved platoons). A town Meitou made and unloaded before saving keeps its squads as stored
 platoons, which the save writes like the town's squads in the world, so a Meitou save holds the residents of every town it made a zone file for
@@ -465,7 +495,8 @@ only once loaded (its characters from the world), otherwise only its position/pa
 platoon's record, its old characters removed, [regeneration](../game/factions-squads-towns.md#off-screen-world)) with the `SaveBuilder` key set plus `basetown` (town id), `hometown` (the town state's `hand`), `homebuilding` (below), `is resident`, `sqt`, `map area sid` / `map area name`
 (the BIOME_GROUP of its cell) and `currentPackage` (the package its blackboard runs while its squad is in the world, else the one it unloaded with; the original writes the active platoon's, `FUN_140372ef0`). Dialogue-given AI (`AiSave`, every written or rewritten platoon but a wild one): `contractjob` (the contract
 AI_PACKAGE id, "" none), `jobhr` (float, the game hours it ends at: the start time + its hours, 10 min under 1 h; `FUN_140272240`), `replacementAI` (the `change AI` package,
-"" the template's), read and written by `FUN_140272c20` / `FUN_14026c2d0` (**Observed**). The running package writes and reads its own handles on the same record: `mission target` (whom the contract is aimed at, a bodyguard's employer), `mission town`, `mission employer` (`FUN_140269640` / `FUN_140269790`, package vfuncs +0x20 / +0x28, **Verified**); Meitou writes them for a running contract (`AiSave`): `mission target` a character, or for a base defence the mission town's handle
+"" the template's), read and written by `FUN_140272c20` / `FUN_14026c2d0` (**Observed**). The running package writes and reads its own handles on the same record: `mission target` (whom the contract is aimed at, a bodyguard's employer), `mission town`, `mission employer` (`FUN_140269640` / `FUN_140269790`, package vfuncs +0x20 / +0x28, **Verified**); Meitou writes them for a running contract (`AiSave`; a record that held none keeps the other package's own as read, **Observed**: METARU's 117
+non-contract `mission target`s survive a headless load and save): `mission target` a character, or for a base defence the mission town's handle
 (a headless capture of a bodyguard contract reads back to the employer, **Observed**); `mission town` the contract's mission town (`Blackboard.ContractTown`:
 the player town nearest the squad when hired, both contracts' starts, `FUN_140289490` / `FUN_14028a170`, **Verified**; written while the contract runs,
 cleared once a contract the record held has ended, else left as read); `mission employer` the hirer, once known. The blackboard's `target town`
@@ -595,6 +626,33 @@ has an override world state (its lists are then replaced) or `0-buildinglist` ho
   name no level building); `town` the town the building belongs to (3726 of 6743 name another town than the level state; the town states keep the level `hand`, 304 of 304 in
   saves 1 and 2). Record flags 0, name "0".
 - `serialised interior` = 1 stops the building factory (`FUN_14057cc70`) from generating the interior (**Verified** by code); absent or another value, it is generated.
+- A serialised interior's entries (**Verified**, `meitou-tools probe METARU interiors`: Meitou's written states against the save's, 14660 furniture
+  entries and 5627 item groups of 283 houses, every key of each; only live state differs: lock rolls, `batterycharge`, a lit campfire, a farm's keys).
+  One entry per object the house's interior and exterior layouts place, a record with `is node` excepted (none of 4485 saved); id
+  `<n>-zone<X>.<Y>-INGAME`, world position and rotation, state `<id>-S23`. Every state: `is inside building` true, `isInsideBuilding` the house's
+  handle (the factory skips an entry whose parent it cannot find, `FUN_14057cc70`), its own `handle` (slot in the zone's list), `floornum`,
+  `flags`, `version`, `serialised interior` 1, null `residents`, `foliage` / `pause` / `destroyed` false, `is complete` and `is public day` true
+  (whatever the house's), `world Y pos`, `player furniture Y offset` (its height less the house's `world Y pos`), `construction progress` (the
+  build target) and `<i>construction mats` (each material in full), `name` (the record's), `owner faction ID` (the house's), empty
+  `squad template` / `residents template`. By the record's `functionality`: any has `broken`, `power on`, `gets battery`, `batterycharge`;
+  function 15 (light) a null `mounted` handle; function 8 (cage) or `has lock` has `locked`, `lock lvl`, `hardness`; functions 1, 4, 5, 10, 23
+  have `resource mult` 1, `production amount` and one `consumption amount-<k>` per input section, a bench (10) also `num crafts`, `repeat`,
+  `craft partial item size`; `usagenode_<k>` only while used. The house's state names each furniture entry by `internalbuildings-<k>`
+  (`FUN_1405547f0`). An item slot's entry targets its ITEM_PLACEMENT_GROUP, with a state of that type under its own `<n>-zone<X>.<Y>-INGAME`
+  id (`is inside building`, `isInsideBuilding`, `floornum`, `respawn time`, `base data sid`) and no handle; its height is above the ground
+  (**Observed**, the 5627 groups against their layout slots), and a group made with no parent building adds its zone's ground height to its
+  own (`FUN_1405534f0`, `FUN_1409b3710`, **Verified** by code).
+  The original keeps a loaded entry as it is saved (**Observed**, harness: a Meitou-written interior of 242 objects and 36 groups loaded and saved
+  again came back with the same ids, handles and values, `usagenode_<k>` added).
+- Meitou (`Saving/InteriorSave`) writes a house's interior this way when one of its layout's cages holds a prisoner and its state has no
+  `serialised interior` 1 (a zone file Meitou made): a standing house that was neither bought nor furnished anew by an override. The locks are
+  the fixtures' (else the house's `meitou lock <i>`), an empty slot's `respawn time` its due hour, new handles take the slots after the
+  zone's last, and the machine and furniture-inventory writers then fill the entries as they do the original's. A group's height is taken
+  above Meitou's terrain height, at least the water level (**Observed**, METARU: within 0.5 of the saved height for 4370 of 5627 groups,
+  within 2 for 5276; under water the original's reference is 100.0). **Observed** (headless, feedback save of #1026): the slave shop's
+  49 objects and 19 groups and the police station's are written, a reload registers the same fixtures, occupants and container items, and
+  a second save writes the same file; (harness) the original loads it with the prisoner "Locked (lvl: 22)", still held an hour later, and
+  the shop's chest holding the 3 stacks Meitou saved.
 - A ruin (`destroyed` true) has no entry inside it: no state names it as `isInsideBuilding` (**Observed**, METARU, autosaves 1 and 2, redev, Beep Fan
   Club 1); its `internalbuildings-<k>` handles may name objects that are gone, their slots kept in the slot list
   ([ruins](../game/buildings-production.md#ruined-by-residents)). Meitou (`Saving/RuinSave`): a capture removes each entry inside a town building the
@@ -661,12 +719,19 @@ has an override world state (its lists are then replaced) or `0-buildinglist` ho
   ints, a `scale` vector and a `timeout` float (131.7).
 
 **Meitou** (`Saving/ZoneSave`, `Data/Save/SaveZoneBuilder`): every zone the population had active, and every zone of a town it made but another town's centre zone (engine choice:
-a town is made and saved whole; three such zones, e.g. Black Desert City's buildings in Scraphouse's 34.28), is visited (`World.VisitedZones`, not hashed). A save keeps the loaded save's zone files (locks, doors and player buildings are written into them) and makes
+a town is made and saved whole; three such zones, e.g. Black Desert City's buildings in Scraphouse's 34.28), is visited (`World.VisitedZones`, not hashed). A save keeps the loaded save's zone files (locks, doors and player buildings are written into them), adds to a visited zone's file the level buildings its building list
+does not name that have a level state and stand inside no building (`SaveZoneBuilder.Complete`: each with its level state; an entry the list names, a removal too, stays as it is; a building
+inside another is not added, since a save takes those out of a ruin, a bought house and a home furnished anew; a level state whose handle slot a state of the file holds is written without its
+handle) and makes
 the missing ones from the level data as above, with `town` set to the save's town state `hand` and a new save's town states taking their level `hand`; it writes no
-`serialised interior` but on a ruin's state ([above](#zone-files)), no furniture and no inventories but its town machines' (Town machines, above) and the furniture inventories of a loaded save's entries (above), so the original makes each interior as for a fresh zone from its `interior layout name` (only the residents differ: the
+`serialised interior` but on a ruin's state and on a house that holds a prisoner in one of its layout's cages, whose interior it writes whole ([above](#zone-files)), no other furniture and no inventories but its town machines' (Town machines, above) and the furniture inventories of a save's entries (above), so the original makes every other interior as for a fresh zone from its `interior layout name` (only the residents differ: the
 saved platoons). A load lays each town building whose saved state names an interior layout out with the saved interior and exterior names (the original generated
 the saved furniture from them; **Observed** headless, METARU: 972 such buildings, 117 named otherwise than Meitou's housing, all laid out with the saved names), and a
-save writes them back. **Observed** (headless new game, the player moved to Squin and Stack): 8 visited zones, 8 files, every handle in its slot list, 300 of 300 `town` handles
+save writes them back. A file that lacks level buildings comes from an import (it keeps the removals and the player's buildings only, [Importing a game](#importing-a-game-savemanagerimportgame-fun_140378a30)), from a save made
+before a mod placed them, or from a zone first written for loose items or the player's buildings alone; the town writers (owner, ruin and rebuild state, locks, residents) write only into a state
+the file holds. **Observed** (#1046, headless, a save after an import: Blister Hill's 23.22 and 24.22 held 15 building states each, 266 and 141 after): a ruined shack bought and rebuilt there
+had no state, so its reload stood it as the town's ruin for sale again; with the entries added the reload has it standing, the player's and not for sale, and two more saves with no time passed
+write the same zone files. **Observed** (headless new game, the player moved to Squin and Stack): 8 visited zones, 8 files, every handle in its slot list, 300 of 300 `town` handles
 name a town state; key set = the real saves' minus the runtime-only keys (`serialised interior`, `internalbuildings`, farm, craft and lock keys of buildings that have none
 here) plus `meitou lock <i>`; doors and an interior chest locked before the save are locked after reload, and a second save made with no time passed writes the same zone
 files. Once time passes a live farm's `save time` is the clock then, as the original's farm save (`FUN_1400e3b80`) writes it (**Observed** headless, METARU with
@@ -721,7 +786,9 @@ Shop prisoner's cage (`1783-gamedata.base`, an `<n>-zoneX.Y-INGAME` entry of the
 the shop's `interior layout name`, the next cage 27.8 away. A sleeper's generated interior bed is matched the same way
 (**Observed**: the 24 saved sleepers of the Rebirth garrison, record `3460-otto.mod`, at distance 0 from Meitou's beds, the next bed
 of the record 33 away). Meitou-only keys `meitou in something` (int) /
-`meitou in what` (fixture id) carry the rest and win on load. The held characters are bound (`FixtureRegistry.Bind`) when a town registers
+`meitou in what` (fixture id) carry the rest and win on load. A prisoner in a layout cage is written with `in what` naming the cage's
+entry when the save holds it (the house's saved interior, else the one `InteriorSave` writes, [Zone files](#zone-files)), the entry's
+`locked` and `lock lvl` as the cage's lock is now; a prisoner of a platoon the save leaves as read gets it too. The held characters are bound (`FixtureRegistry.Bind`) when a town registers
 and again when a saved or stored platoon comes in, since a town's saved platoons are made after it registers. Unchanged held state keeps
 the original keys as read; a changed one without a building handle writes `in something` 0 and the null handle. `sentence`/`psts` are written while a sentence is set or the save had them; Meitou's start equals `World.GameHours` (day x 24 + hour).
 
@@ -729,7 +796,8 @@ Job lists (`Saving/PermaJobSave`): the original's GAMESTATE_AI (`ai`) keys `jobs
 ([perma-jobs](../game/ai-tasks.md#perma-jobs)), plus Meitou's string `meitou pjob<i>` (the job's building id, which wins on load over the handle).
 A mod's own job type ([mod jobs](../modding.md#registration-surface)) is not in that list: int `meitou mjob<k>` (task type), int `meitou mjobAt<k>`
 (its place: how many game jobs come before it) and string `meitou mjob<k>` (its building id) keep it, and the `pjob` numbers skip it. A job on a
-character writes that character's handle once every character has one, as `pjobT<i>`, so one new to the save is named too. The squad AI
+character writes that character's handle once every character has one, as `pjobT<i>`, so one new to the save is named too. Every character's list
+is read, an NPC's too (the original's records hold NPCs' 57 and 187); an NPC's is written while it has one. The squad AI
 options are CAMERA bools (**Verified**, writer `FUN_1403eb710`; the key of each option and new-game values in
 [squad AI options](../game/ai-tasks.md#squad-ai-options)); Meitou reads and writes nine (not `stay`, `eject`), an absent one keeps its default.
 
@@ -741,12 +809,17 @@ A player character's order queue (the deque at `AITaskSytem` +0x40, [order queue
   entry is saved: not whether it started, not its failure text. The writer and the loader act only for a character whose faction has the player-faction field (+0x250) set.
 - **Observed** (60 of the owner's 511 saves, 191 characters, all original writes): queues of 1 order (186) or 2 (5), so the running front is saved; rows 29 move (163; null handle, point set),
   258 `USE_BED_ORDER` (11; a BUILDING handle, point set), 16 `ATTACK_ENEMIES` (11) and 5 (5) with a CHARACTER handle and a zero point (a queue of two is 5 then 16 on one target), 60 / 201 / 26 / 65 / 87
-  once each. Meitou's Sleep order is the row 98 it starts, so it is written and read as 258.
-- **Load** (**Verified**): the loader reads `tjob<i>` until one is missing and adds each through the add function `FUN_1405086d0` as a one-shot order (it lands in the second list +0x70,
-  [precedence](../game/ai-tasks.md#precedence), not in the deque; a row with a job form is replaced by it), then the planner is re-run. Meitou instead restores the queue as saved: a load reads the
-  orders into `CharacterCold.SavedOrders`; the decision step makes them the queue (nothing started) once every character and building exists, and the front starts through source 1.
-  An order is dropped when no system owns its row (so 16, 60 and the other rows Meitou has no order for), its target character or building is not in the world, or its handle names nothing the
-  save holds. A building handle is the building's instance (a build site, or a fixture whose id is the building's own, a bed too); a CHARACTER handle finds the character by its saved handle.
+  once each. The rest order is 258 (a bed's default order, **Verified**, `FUN_140299230`); Meitou's Sleep order is the row 98 it starts, so it is written and read as 258.
+- **Load** (**Verified**): the loader reads `tjob<i>` until one is missing and adds each through the add function `FUN_1405086d0` without the permanent flag (it lands in the second list +0x70,
+  [precedence](../game/ai-tasks.md#precedence), not in the deque; a row with a job form is replaced by it; priority 3, weight 1.0; one the repertoire lacks is not made), then a replan
+  is asked. The writer saves the deque alone, so orders loaded into the second list are not written by a later save. Meitou: a load reads the orders into `CharacterCold.SavedOrders`;
+  the look puts them in the second list once every character and building exists (the job-form remap: 2 and 95 as 125, 4, 5 and 61 as 16, 25 as 58, 60 as 57, 249 as
+  250, 26 as 238; 146 and 136 are not remapped; 258 has none and stays a rest order on its bed, [second list](../game/ai-tasks.md#precedence)); a save writes the queue alone.
+  The add makes the entry whatever its hand names (**Verified**: the maker `FUN_14032ebd0` copies the hand into the entry and tests only its type, after the repertoire
+  test). Meitou: an order on a character of one of the save's NPC platoons not made yet, or on a fixture of a town whose fixtures are not registered yet (both come in on later
+  ticks), stays loaded, with every order after it, and is put in the second list on the first look that finds it. An order is dropped when no system owns its row, its target
+  character or site is neither in the world nor still to come, or its handle names nothing the save holds; an entry of a finder row
+  (125, 16, 58, 57, 250, 238) is kept whatever its hand names, as its finder picks the target. A building handle is the building's instance (a build site, or a fixture whose id is the building's own, a bed too); a CHARACTER handle finds the character by its saved handle.
 - **Meitou keys**: string `meitou tjob<i>` (the order's site id: a build site, fixture or rock, which wins on load over a building handle, as `meitou pjob<i>`), int `meitou tjobK<i>` (the owner's
   detail code, `IOrderOwner.SaveKind`: a loot that opens the window, a bed named by a put-in order, a lock order done in place), each written only when set. Ground-item
   pick-ups (a runtime item id) and the Medic / Rescue buttons' looks are not saved. A container order is 26 on its site and a walk only to it a 29; a row 3 on a
@@ -759,10 +832,85 @@ Meitou-only crime keys (`Saving/CrimeSave`, `LockSystem`, `FixtureRegistry`), ea
   `floor` (`FUN_140626f50`). Meitou writes the building's save handle for `SightMap.LocationOf`, null when the save holds none.
 - GAMESTATE_CHARACTER float `age`: the character's age (1 for people, an animal's growth, [animals](../game/animals.md#ageing)); **Verified** in vanilla saves.
 - GAMESTATE_CHARACTER `meitou kidnapped` (bool, held by a kidnapper: no sentence, no bail; not the original's `kidn`), `meitou recognition` (float 0..1, bounty recognition meter). The escaped and [kidnap victim](../game/carry-loot.md#the-kidnap-victim-flag) flags are the original's `escap` and `kidn` (above; `CrimeSave` writes them always). Older Meitou saves wrote `meitou escaped` and the recently-wanted seconds as `meitou recently wanted`; each is read when the original's key (`escap`, `disguiseblown`) is missing and dropped on save.
-- GAMESTATE_BUILDING `meitou house locked` (bool, a lock-up round locked this home and nothing unlocked it since).
+- GAMESTATE_BUILDING `meitou house locked` (bool, a lock-up round locked this home and nothing unlocked it since; the residents' platoons also carry it
+  as the original's `homelok`, [platoon blackboard](#platoon-blackboard)).
 - GAMESTATE_BUILDING `meitou lock <layout index>` (int level x 4 + broken x 2 + locked) for each interior cage or container whose lock is locked or broken (their ids are not mapped, see above).
 
 Meitou-only loose-item key (`Items/ItemSlots.WriteDue`, [ground items](../simulation.md#items-and-eating); the original keeps the same fact as each placement group's own `respawn time`, [loose items](../game/factions-squads-towns.md#loose-items-in-buildings), which Meitou does not write): GAMESTATE_BUILDING `meitou slot due item<n>` (float, the absolute game hour the empty slot n of the building's interior is next due), written for each empty slot of a building whose slots are registered and that has a state record in the save, removed when the slot holds an item again; a building whose slots were not registered keeps the loaded save's keys. A loaded hour is capped at now plus the group's longest respawn time.
+
+### NPC goals across a load
+
+**Verified** by decompile (the writers and readers named). What of a character's goal choice a save keeps:
+- **AI object**: the character save writes of its AI only the `+0x2b0` object's `TI town` / `TI day` / `TI dat` entries (`FUN_1409a1280`, read back by
+  `FUN_1409a1080`) and `squad mem type`; the order queue (`AITaskSytem`, [order queue](#order-queue)) only for a player-faction character. Not saved: the
+  current goal and its plan (the task queue), the commitment, the chooser's path-failure map (`+0x218`, 20 s entries, `FUN_140796ed0`) and every task
+  object, with a travel task's detour (`Task_TravelToTargetTown` `+0x90`) and a goal's act-out progress. A loaded NPC chooses with no current goal.
+- **Platoon blackboard**: its keys are in [platoon blackboard](#platoon-blackboard). The running package's own keys (vfunc `+0x20`) are the base class's
+  `mission target` / `mission town` / `mission employer` (`FUN_140269640`), plus `persist` for OccupyTown and `done`, `started`, `enemy` for
+  PassingByTownAssault; the war classes add none. `persist` (bool, `FUN_140295f90` / `FUN_140296070`): the occupation's start (`FUN_140288fe0`) found
+  the platoon not persistent and made it so, and its end (`FUN_140296150`) makes it not persistent again. `done` (bool): the assault is spent (its
+  finished test `FUN_14028eca0` sets it while it is the current package; its start test `FUN_140290450` then refuses it); `started` (float, the game
+  hour its start `FUN_1402900c0` stamped); `enemy` (string, the id of the town owner's faction it attacks, `FUN_1402963a0` / `FUN_1402965a0`, written
+  only with one). Meitou (`Saving/PackageSave`) writes them for a squad in the world; the keys read wait on the squad (`Squad.SavedPackage`, hashed) until the AI applies them; a load resumes a saved running passing-by assault in the player
+  town the squad stands in and puts the three over its start, else keeps only `done`. It writes `persist` true for a roaming platoon not persistent on its
+  own, and a saved `persistent` beside a true `persist` is the occupation's, so it does not keep the platoon once the occupation ends; Meitou keeps
+  an occupier while it occupies. The load activates the package (`FUN_1402721a0`, which calls its start, vfunc `+0x30`, at once) and then
+  its load (vfunc `+0x28`) puts the saved hands over the start's. So the war start (`FUN_14028fc80`, [ai](../game/ai.md#package-classes)) runs again and
+  its copies of the lead platoon, pace and point are made from the loaded state.
+- **Announcement**: state 76 `isMessageDelivered` (`FUN_140792190`) reads the speaker's Dialogue per-event map (`+0xf8`, `FUN_140673830`); the character's
+  dialogue save (`FUN_140679900`) writes only its `lok<i>` list, so after a load the announcement counts as not delivered until it is said again.
+- Meitou saves no goal, plan, commitment, path failure, task, act-out, war-start copy or delivered announcement either: a load builds new minds and
+  blackboards, starts each running package (`Blackboard.Start`) and puts the saved hands back (`AiSave`); a campaign platoon linked once the war states
+  load (`PopulationSystem.EnsureWars`, after the squad's start) takes the war start's copies then (`AiSystem.WarLinked`).
+
+### Platoon blackboard
+
+The squad AI's Blackboard (constructor `FUN_14026bcf0`) is written on its PLATOON record by `FUN_14026c2d0` and read by `FUN_140272c20` (**Verified**,
+decompile). Writer order: `runningAwayMode`, `currentPackage`, `target town`, `towntime`, the package's own keys (the contract's while one runs, else
+the current package's; [NPC goals across a load](#npc-goals-across-a-load)), `mission data`, `currenttown`, `jobhr`, `contractjob`, `replacementAI`,
+`homelok`, then `target <i>` / `target key <i>`. Reader order: `runningAwayMode`, `currentPackage`, `homelok`, `contractjob` (a contract found starts
+at once, `FUN_140272240`), `jobhr`, `towntime`, `currenttown`, `target town` (only a non-null one), `mission data`, the targets, `replacementAI`;
+then the current package is activated and started (`FUN_1402721a0`; with a `replacementAI`, `FUN_140272430`) and the package's load (vfunc `+0x28`)
+reads its own keys. Keys are looked up by name: **Observed**, METARU and i949 hold each type's keys in the reverse of autosave0's and autosave2's order.
+
+| Key | Type | Blackboard | Meaning | Meitou |
+|---|---|---|---|---|
+| `runningAwayMode` | bool | `+0x14c` | set by `FUN_140269320`; while set the update `FUN_1402732b0` makes no package choice or package update; the constructor clears it | not modelled; kept as read |
+| `currentPackage` | string | `+0x48` | the running package's AI_PACKAGE id, "" none | written ([NPC platoons](#npc-platoons-meitou-mapping)) |
+| `target town` | handle | `+0xf0` | the null handle for none | `AiSave`, with a contract |
+| `towntime` | float | `+0x140` | the game hour (day x 24 + hour) the squad came into `currenttown` (`FUN_1402688d0`) | `CurrentTownSave`, below |
+| `mission data` | string | `+0x100` | a record id (looked up as type 71), "" none | kept as read |
+| `currenttown` | handle | `+0x138` | the town the squad is in (`FUN_1402688d0`, [ai](../game/ai.md#package-classes)), the null handle for none | `CurrentTownSave`, below |
+| `jobhr` | float | `+0x218` | the contract's end hour | `AiSave` |
+| `contractjob` | string | `+0x210` | the contract's AI_PACKAGE id, "" none | `AiSave` |
+| `replacementAI` | string | `+0x58` | the `change AI` package id, "" none | `AiSave` |
+| `homelok` | bool | `+0xe8` | the squad's "house locked" flag ([locks](../game/locks.md#doors)) | `HomeLockSave`, below |
+| `target <i>`, `target key <i>` | handle, int | `+0xa8` | one pair per entry of a TaskType-to-handle map, i from 0 in the map's order | not modelled; kept as read |
+
+- **Targets** (**Verified**): the map at `+0xa8` is a `boost::unordered_map<TaskType, hand>` (its allocator's type in `FUN_14026bcf0`). Its only insert,
+  `FUN_140282240`, is called by the load alone; besides the writer only the debug panel `FUN_14026a520` reads it (its "TARGETS" list names each key by
+  the task table `DAT_141ce90f0`). So nothing at run time fills or uses it, and a save holds the keys only when the save it was loaded from did. The
+  load reads pairs until a `target <i>` is missing; the writer numbers them from 0 again. **Observed**: none in the 1933 platoons of seven original saves
+  (METARU, autosave0, autosave2, i949 and three archived games). Meitou writes the loaded record back, so the keys keep their values (**Observed**:
+  METARU given a pair or two on each of its 538 platoons, loaded headless and saved: every platoon written back keeps them).
+- **Current town**: the update `FUN_1402688d0` stamps `towntime` and says ENTER_TOWN only when `currenttown` was none, so a loaded squad still in its
+  saved town keeps its saved hour. Meitou (`Saving/CurrentTownSave`, `Blackboard.InTown` / `InTownSince`) writes both for a squad in the world (a
+  nest, which has no town handle here, keeps the record's handle). The faction's platoon load (`FUN_1407f88c0`) passes every saved PLATOON record,
+  never activated or not, through `FUN_1407f85f0` and `FUN_14057c6f0` to the platoon constructor `FUN_1407ee2d0`, which reads the blackboard from
+  it (`FUN_140272c20`; **Verified**, decompile), so a squad built from its template into the platoon (`FUN_1404ffad0`) has the saved town too. Meitou: every loaded platoon holds them (`Platoon.SavedTown`, hashed) until the first squad in it since the load gets its
+  blackboard, made from the save's characters or from its template (never made, regenerated, a characterless stand-in): the null handle as no town,
+  so its next in-town step stamps the hour and says ENTER_TOWN as the original's does; a handle naming no town of the world (a nest) leaves the town
+  it starts in. Other squads start in the town they stand in at the current hour (engine choice). **Observed** (METARU loaded headless, 300 ticks,
+  saved, `QuickSaveTests`): every platoon written back has the `currenttown`, `towntime` and `mission target` it was read with. **Observed**
+  (METARU loaded headless, 1500 ticks, saved): with every `currenttown` made null first, the 38 loaded squads in a town are written with that town
+  and the hour of the load.
+- **House locked**: Meitou keeps the flag on the squad's home (`LockSystem.IsHouseLocked`, the building's `meitou house locked`). `Saving/HomeLockSave`
+  writes `homelok` as the flag of the home the platoon's `homebuilding` names (`Squad.HomeBuilding`; a save's platoon out of the world, from the same
+  building), and a save's platoon made for the first time since the load with `homelok` set sets its home's flag; a platoon without a home keeps the
+  record's. **Observed** (METARU loaded headless, 1500 ticks from 5:38, saved): of 32 platoons with it set, 28 keep it and 4 are written false (their
+  homes' flags cleared since); one more is written true.
+- **Observed** (METARU, autosave0, autosave2, i949): `runningAwayMode` and `mission data` are false and "" on every platoon; `towntime` is 0 or
+  between 34 (day 1, 10:00) and the save's clock.
 
 ### Player outposts
 
@@ -836,8 +984,14 @@ world writes its war managers over the loaded state (unknown keys kept, numbered
 faction the save has none for (an imported save has none: the import drops them). **Observed** (headless `probe wars`, #952's imported save):
 without that, a running Bandit Demands raid was gone after a save and load and its squad came back as a plain roaming one. Meitou also writes floats
 `meitou phase start c<i>`, `meitou fight start c<i>`, `meitou arrived c<i>`, `meitou announced c<i>` (absolute game hours; absent:
-not started) and, per campaign platoon, `meitou carry start p<i>` (beside `p<i>`; a cannibal assault's carrier stamp), and reads them back (a missing phase start is the load's hour, as the original; the
-older campaign-wide `meitou carry start c<i>` is read onto each platoon and dropped on the next write). **Observed** (headless, real data): the four campaign floats come back equal.
+not started) and, per campaign platoon, `meitou carry start p<i>` (beside `p<i>`; a cannibal assault's carrier stamp), always, and reads them back
+while the Fixes option **Raids keep their progress** (`PopulationSettings.KeepCampaignClocks`, on by default, read at load) is on (the older
+campaign-wide `meitou carry start c<i>` is read onto each platoon and dropped on the next write). A missing key, or every key with the option off, is
+the original's clock after a load: the phase starts at the load's hour, the fight clock is not started (**Verified**, decompile: the campaign load
+`FUN_1409c5b80` sets both the phase start `+0x18` and the fight clock `+0x20` to the current time, and `FUN_1409c70f0` reads the two equal as no
+fight yet); the arrival and announcement hours (Meitou's own, read by nothing but the state hash) and the carry stamps are not started, as a
+new campaign's (**Observed**, decompile: the load reads no other clock, and the original's carry stamp lives in the assault package, which it
+saves nothing of). **Observed** (headless, real data): the four campaign floats come back equal.
 
 Campaign platoons the game has not made yet: the original's saver (`FUN_140372ef0`) writes a platoon that was never active with no file (content
 file `platoon/`), `never been activated` and its size as `char count`, and every platoon its faction's war manager holds with bool `campaign` true; its

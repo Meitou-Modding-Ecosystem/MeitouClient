@@ -23,8 +23,9 @@ public sealed record SavedOrder(TaskType Row, Vector3 Point, Hand Hand, string? 
 /// handle <c>tjobT&lt;i&gt;</c> (target: a character or a building). The queue is written front first, started or not; nothing is saved of it
 /// running. Meitou's own keys carry what the keys above cannot: the string <c>meitou tjob&lt;i&gt;</c> (the <see cref="OrderEntry.Site"/> id, which
 /// wins on load) and the int <c>meitou tjobK&lt;i&gt;</c> (the owner's detail code, <see cref="IOrderOwner.SaveKind"/>; absent: 0). A load reads the
-/// orders into <see cref="CharacterCold.SavedOrders"/>; the decision step makes them the queue (<see cref="Restore"/>) once the world they name
-/// exists, and starts the front as any other.
+/// orders into <see cref="CharacterCold.SavedOrders"/>; the decision step puts them in the second list (<see cref="Restore"/>, as the loader adds
+/// each through <c>FUN_1405086d0</c> without the permanent flag) once the world they name exists, where the chooser scores them. Only the queue is
+/// written, so a save after the load writes the loaded orders no more.
 /// </summary>
 public static class OrderSave
 {
@@ -34,8 +35,9 @@ public static class OrderSave
     const string Type = "tjob", Point = "tjobP", Target = "tjobT", MeitouSite = "meitou tjob", MeitouKind = "meitou tjobK";
 
     /// <summary>
-    /// Writes the queue (or, for a character loaded and not decided yet, the orders it was loaded with) over the old keys. A target character's
-    /// handle is given to <paramref name="target"/> to write once every character has one (the null handle is written first).
+    /// Writes the queue over the old keys (<c>FUN_1405090b0</c> writes the deque alone: neither the second list nor orders loaded and not restored
+    /// yet, which the original's load put in the second list). A target character's handle is given to <paramref name="target"/> to write once
+    /// every character has one (the null handle is written first).
     /// </summary>
     public static void Write(
         FcsRecord ai, CharacterCold cold, World world, IReadOnlyDictionary<string, FcsRecord> buildings, Action<FcsRecord, string, CharacterId> target)
@@ -52,17 +54,6 @@ public static class OrderSave
             ai.Vector3S.Remove(key);
 
         int i = 0;
-        if (cold.SavedOrders is { } pending)
-        {
-            foreach (var o in pending)
-            {
-                Put(ai, i, o.Row, o.Point, o.Hand, o.Site, o.Kind);
-                i++;
-            }
-
-            return;
-        }
-
         foreach (var e in cold.OrderQueue)
         {
             int kind = e.Row == TaskType.None ? -1 : e.Owner.SaveKind(e);
@@ -147,56 +138,138 @@ public static class OrderSave
     }
 
     /// <summary>
-    /// Makes the orders a load read the character's queue (serial phases, from the decision step or a queued order, <see cref="PlayerOrders.Give"/>):
-    /// nothing is started, its owner readies it (<see cref="IOrderOwner.Restored"/>), and the front is tried like any new order. An order whose row no
-    /// system owns, whose target character or site is not in the world, or whose handle named nothing is left out, as the queue pops an order that is
-    /// <see cref="OrderVerdict.Gone"/>.
+    /// What <see cref="Restore"/> did with one loaded order.
+    /// </summary>
+    enum Restored
+    {
+        /// <summary>
+        /// Put in the second list.
+        /// </summary>
+        Added,
+        /// <summary>
+        /// Kept loaded: its target character or fixture is still to come into the world.
+        /// </summary>
+        Waits,
+        /// <summary>
+        /// Left out.
+        /// </summary>
+        Dropped,
+    }
+
+    /// <summary>
+    /// Puts the orders a load read in the character's second list (serial phases, from the decision step or a queued order,
+    /// <see cref="PlayerOrders.Give"/>): nothing is started, its owner readies it (<see cref="IOrderOwner.Restored"/>), and the chooser scores it
+    /// from its next look. The loader's add makes an entry whatever its hand names (<c>FUN_1405086d0</c> → <c>FUN_14032ebd0</c> copies the hand
+    /// and tests only its type), so an order whose target character is in one of the save's NPC platoons not made yet, or whose fixture is a town's
+    /// not registered yet, stays loaded with every order after it (the second list keeps the saved order) and is put in once it is there (a later
+    /// look). An order whose row no system owns, whose target character or site is neither in the world nor still to come, or whose handle named
+    /// nothing is left out.
     /// </summary>
     internal static void Restore(World world, int slot, CharacterCold cold)
     {
         var saved = cold.SavedOrders;
         cold.SavedOrders = null;
-        if (saved is null || cold.OrderQueue.Count > 0) return;
+        if (saved is null) return;
 
-        var table = world.Characters;
-        var self = table.IdOf(slot);
-        foreach (var o in saved)
+        bool added = false;
+        for (int i = 0; i < saved.Count; i++)
         {
-            bool onSite = (o.Site ?? o.InstanceKey) is not null;
-            var row = LoadedRow(o, onSite);
-            if (o.Lost || row == TaskType.None || world.OrderOwnerOf(row, onSite) is not { } owner) continue;
+            var step = RestoreOne(world, slot, cold, saved[i]);
+            added |= step == Restored.Added;
+            if (step != Restored.Waits) continue;
 
-            var target = CharacterId.None;
-            if (o is { Hand: { IsNull: false, Type: (int)FcsRecordType.Character } } && (target = Find(table, o.Hand)).IsNone) continue;
-
-            string? site = null;
-            if ((o.Site ?? o.InstanceKey) is not null && (site = SiteOf(world, o)) is null) continue;
-
-            var entry = new OrderEntry(row, owner)
-            {
-                Target = target,
-                Site = site,
-                Point = o.Point,
-                TaskPoint = ObjectRow(row) ? default : o.Point,
-                Detail = owner.LoadDetail(world, self, row, o.Kind, target),
-            };
-            owner.Restored(world, entry);
-            cold.OrderQueue.Add(entry);
+            // It and those after it wait, so the second list keeps the saved order.
+            cold.SavedOrders = saved.Skip(i).ToList();
+            break;
         }
 
-        DecisionSystem.Request(cold);
+        if (added) DecisionSystem.Replan(cold);   // each second-list add replans (FUN_1405086d0)
     }
 
     /// <summary>
-    /// The queue row of a saved order: the original's sleep order 258 is Meitou's 98; a container order an older Meitou wrote as row 3 on a site is 26
-    /// (kind 0, opening it), and one that only walked there (kind 1) is left out (<see cref="TaskType.None"/>).
+    /// Puts one loaded order in the second list when its row has an owner and what it names is there; says what became of it.
     /// </summary>
-    static TaskType LoadedRow(SavedOrder o, bool onSite) => o.Row switch
+    static Restored RestoreOne(World world, int slot, CharacterCold cold, SavedOrder o)
     {
-        TaskType.UseBedOrder => TaskType.UseBed,
-        TaskType.Pickup when onSite => o.Kind == 0 ? TaskType.LootTarget : TaskType.None,
-        _ => o.Row,
-    };
+        bool onSite = (o.Site ?? o.InstanceKey) is not null;
+        var row = LoadedRow(o, onSite);
+        if (row == TaskType.None || world.OrderOwnerOf(row, onSite) is not { } owner) return Restored.Dropped;
+
+        // A finder row's saved hand only feeds its finder (the plan treats the finder's pick): its entry stays when the hand names nothing.
+        var target = CharacterId.None;
+        bool finder = TaskDataTable.Of(row)?.Is(TaskDataFlags.Finder) == true;
+        if (o.Lost && !finder) return Restored.Dropped;
+        if (o is { Hand: { IsNull: false, Type: (int)FcsRecordType.Character } } && (target = Find(world.Characters, o.Hand)).IsNone && !finder)
+            return Awaited(world, o.Hand) ? Restored.Waits : Restored.Dropped;
+
+        string? site = null;
+        if (onSite && (site = SiteOf(world, o)) is null && !finder) return SiteAwaited(world, o) ? Restored.Waits : Restored.Dropped;
+
+        var entry = Entry(world, slot, o, row, owner, target, site);
+        owner.Restored(world, entry);
+        cold.SecondList.Add(entry);
+        return Restored.Added;
+    }
+
+    /// <summary>
+    /// The second-list entry of a loaded order. A body order is built as the body gives it (<see cref="Combat.BodyOrders"/>): it lets no duty go,
+    /// and its stumble is forced.
+    /// </summary>
+    static OrderEntry Entry(World world, int slot, SavedOrder o, TaskType row, IOrderOwner owner, CharacterId target, string? site)
+    {
+        bool body = Combat.BodyOrders.Rows.Contains(row);
+        return new OrderEntry(row, owner)
+        {
+            Interrupts = body,
+            Forced = body && row == TaskType.StumbleTaskForced,
+            Target = target,
+            Site = site,
+            Point = o.Point,
+            TaskPoint = ObjectRow(row) ? default : o.Point,
+            Detail = owner.LoadDetail(world, world.Characters.IdOf(slot), row, o.Kind, target),
+        };
+    }
+
+    /// <summary>
+    /// Whether a character the save holds with <paramref name="hand"/> is still to come into the world: a living member of one of its NPC platoons
+    /// (<see cref="SavedPopulation.Platoons"/>) that is not wiped out, not despawned and not made yet, or out of the world since.
+    /// </summary>
+    static bool Awaited(World world, Hand hand) =>
+        world.Saved is { } saved
+        && saved.Platoons.Exists(sp => sp.PlatoonId >= 0 && !sp.Despawned && sp.Members.Exists(m => !m.Gone && !m.Dead && m.Source.Handle == hand));
+
+    /// <summary>
+    /// Whether the fixture an order names (its site id, else the instance a building handle named) is one of a town's whose fixtures are registered
+    /// only when the town comes into the world (<see cref="Locks.FixtureRegistry.Unregistered"/>).
+    /// </summary>
+    static bool SiteAwaited(World world, SavedOrder o) =>
+        world.SystemOf<Population.PopulationSystem>()?.Data is { } data && (o.Site ?? o.InstanceKey) is { } id && world.Fixtures.Unregistered(data, id);
+
+    /// <summary>
+    /// The queue row of a saved order. A container order an older Meitou wrote as row 3 on a site is 26 (kind 0, opening it), and one that only
+    /// walked there (kind 1) is left out (<see cref="TaskType.None"/>). Then the loader's add takes the row's job remap whatever the hand names
+    /// (<c>FUN_1405086d0</c>, TaskData <c>+4</c> and <c>+0xc</c>, <b>Verified</b>; <see cref="PermaJobs.Remapped"/>), the saved hand kept: 2 and 95
+    /// load as 125 Engineer, 4, 5 and 61 as 16 Attacking enemies, 25 as 58 Medic, 60 as 57 Robotics, 249 as 250 Splint Rigging, 26 as 238
+    /// Foraging animals; Meitou leaves 146 and 136 as they are (<see cref="Unremapped"/>). Last, the original's sleep order 258 (no job form, so it
+    /// loads as itself) is Meitou's 98.
+    /// </summary>
+    static TaskType LoadedRow(SavedOrder o, bool onSite)
+    {
+        var row = o.Row == TaskType.Pickup && onSite
+            ? o.Kind == 0 ? TaskType.LootTarget : TaskType.None
+            : o.Row;
+        if (!Unremapped(row)) row = PermaJobs.Remapped(row);
+
+        return row == TaskType.UseBedOrder ? TaskType.UseBed : row;
+    }
+
+    /// <summary>
+    /// The remaps Meitou does not take: 146 Turret gunner to 234 Turret guard (234's player-faction desire and its unused-turret finder,
+    /// <c>BuildingFinderTurrets_Unused</c> in <c>FUN_1408ccfa0</c>, are not built) and 136 Disposing of corpse to 137 Corpse disposal (137's plan
+    /// runs the corpse chain, 138's find and lift before 136 at the machine, which Meitou has only as a list job and its companion). They load as
+    /// the order of their own row.
+    /// </summary>
+    static bool Unremapped(TaskType row) => row is TaskType.UseTurret or TaskType.FeedCorpseIntoMachine;
 
     /// <summary>
     /// The world character whose saved handle is <paramref name="hand"/>; <see cref="CharacterId.None"/> when none is.

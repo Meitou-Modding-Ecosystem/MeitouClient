@@ -77,6 +77,11 @@ public sealed class Squad
     /// </summary>
     public float HomeRadius { get; set; }
     /// <summary>
+    /// The point the squad's patrol walks to now (<c>Task_Patrol</c>'s move, drawn by the population's patrol step, docs/game/factions-squads-towns.md
+    /// "Patrol task"), apart from its home; null while it does not patrol. Hashed, not saved: a load draws afresh, as the original's task start does.
+    /// </summary>
+    public Vector2? PatrolPoint { get; set; }
+    /// <summary>
     /// The building the town gave it as its home (docs/game/factions-squads-towns.md "Town residents"), or the one a save names; the AI takes it as
     /// the squad's own home. Null: none (the AI picks one).
     /// </summary>
@@ -163,9 +168,17 @@ public sealed class Squad
     /// </summary>
     public Ai.Blackboard? Ai { get; set; }
     /// <summary>
+    /// The requests filed on the squad's platoon blackboard for its members to weigh (<see cref="Ai.BoardRequests"/>); null until the first one.
+    /// </summary>
+    internal Ai.BoardRequests? Requests { get; set; }
+    /// <summary>
     /// The dialogue-given AI a save or its stored state held, until the AI attaches a blackboard and applies it (then null).
     /// </summary>
     public Saving.AiSave? SavedAi { get; set; }
+    /// <summary>
+    /// The running package's own keys a save held (<see cref="Saving.PackageSave"/>), until the AI attaches a blackboard and applies them (then null).
+    /// </summary>
+    public Saving.PackageSave? SavedPackage { get; set; }
     /// <summary>
     /// A player's squad the AI may run (<see cref="Ai.SetSquadAutonomy"/>, docs/simulation.md "Autonomous player squads"): it takes AI packages
     /// as an NPC squad does, and its members act them out while no order or job holds them. Meitou only; saved, hashed while set.
@@ -413,6 +426,12 @@ public sealed class SquadRegistry
             hasher.Add(s.Money);
             hasher.Add(s.HomeCentre);
             hasher.Add(s.HomeRadius);
+            if (s.PatrolPoint is { } patrol)
+            {
+                hasher.Add(0x50747250);   // "PtrP": nothing for a squad not patrolling, so the pinned hashes stay
+                hasher.Add(patrol);
+            }
+
             hasher.Add(s.Position);
             hasher.Add(s.Leader);
             if (!s.Backup.IsNone) hasher.Add(s.Backup);   // nothing for a squad that never needed one, so the pinned hashes stay
@@ -420,6 +439,8 @@ public sealed class SquadRegistry
             if (s.Resume) hasher.Add(0x52657375);
             if (s.Dead) hasher.Add(0x44656164);
             if (s.Autonomous) hasher.Add(0x4175746F);
+            if (s.SavedPackage is { } saved) HashSavedPackage(ref hasher, saved);
+            if (s.LeftPackage is { } left) hasher.Add(0x4C667450 ^ Rng.StableHash(left));   // "LftP": only until the AI attaches a blackboard
             if (s.Independent) hasher.Add(0x496E6470);
             if (s.HomeInteriorShown) hasher.Add(0x496E7472);
             if (s.AssignedHome is { } assigned) hasher.Add(Rng.StableHash(assigned));
@@ -448,6 +469,7 @@ public sealed class SquadRegistry
             }
             s.Shop?.Hash(ref hasher);   // nothing for squads that do not trade, so the pinned hashes of worlds without shops stay
             s.Ai?.Hash(ref hasher);     // nor for squads without AI packages
+            s.Requests?.Hash(ref hasher);   // nor for squads with no request filed
             if (s.War.IsSet)
             {
                 hasher.Add(s.War.Faction);
@@ -456,5 +478,17 @@ public sealed class SquadRegistry
                 hasher.Add(s.War.Town.PlayerTown);
             }   // nor for squads not assaulting
         }
+    }
+
+    /// <summary>
+    /// Hashes the running package's keys a save held, while the AI has not applied them yet.
+    /// </summary>
+    static void HashSavedPackage(ref StateHasher hasher, Saving.PackageSave saved)
+    {
+        hasher.Add(0x506B5376);   // "PkSv"
+        hasher.Add(saved.Persist);
+        hasher.Add(saved.Done);
+        hasher.Add(saved.Started);
+        if (saved.Enemy is { } enemy) hasher.Add(Rng.StableHash(enemy));
     }
 }

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Meitou.Content;
 using Meitou.Game.Ui;
 using Meitou.Simulation;
 using Meitou.Simulation.Bodies;
@@ -75,6 +76,18 @@ sealed class ModRegistrations
     /// The wear rules, in registration order.
     /// </summary>
     public List<Data.Gameplay.WearRule> WearRules { get; } = [];
+    /// <summary>
+    /// The character editor row sources, in registration order.
+    /// </summary>
+    public List<Data.Characters.LookRowSource> LookRows { get; } = [];
+    /// <summary>
+    /// The look rolls, in registration order.
+    /// </summary>
+    public List<Data.Characters.LookRoll> LookRolls { get; } = [];
+    /// <summary>
+    /// The look extras sources, in registration order.
+    /// </summary>
+    public List<Data.Characters.LookExtrasSource> LookExtras { get; } = [];
     /// <summary>
     /// The medical meters, in registration order.
     /// </summary>
@@ -207,6 +220,10 @@ sealed class ModRegistry
     /// </summary>
     public Dictionary<IUiExtension, string> UiFolders { get; } = new(ReferenceEqualityComparer.Instance);
     /// <summary>
+    /// The id of the mod each interface extension belongs to.
+    /// </summary>
+    public Dictionary<IUiExtension, string> UiOwners { get; } = new(ReferenceEqualityComparer.Instance);
+    /// <summary>
     /// Every mod's debug menu commands, in load order.
     /// </summary>
     public List<ModDebugCommand> DebugCommands { get; } = [];
@@ -258,9 +275,9 @@ sealed class ModRegistry
     {
         foreach (var factory in r.Systems) Simulation.Systems.Add(Tagged(mod, factory));
         foreach (var (code, handler) in r.Conditions)
-            Claim(ModCodeKind.DialogueCondition, code, mod, () => Simulation.DialogueConditions[code] = handler);
+            Claim(ModCodeKind.DialogueCondition, code, mod, () => Simulation.DialogueConditions[code] = Guarded(mod, code, handler));
         foreach (var (code, handler) in r.Effects)
-            Claim(ModCodeKind.DialogueEffect, code, mod, () => Simulation.DialogueEffects[code] = handler);
+            Claim(ModCodeKind.DialogueEffect, code, mod, () => Simulation.DialogueEffects[code] = Guarded(mod, code, handler));
         foreach (var (type, name) in r.RecordTypes) Claim(ModCodeKind.RecordType, type, mod, () => RecordTypes[type] = name);
         foreach (var source in r.CombatMoves) Simulation.CombatMoves.Add(new ModCombatMove(mod, source));
         foreach (var (record, handler) in r.ItemUses)
@@ -283,11 +300,15 @@ sealed class ModRegistry
         foreach (var slot in r.Slots) ModSlots.Add(slot);
         foreach (var job in r.Jobs) Meitou.Simulation.Production.ModJobs.Add(job);
         foreach (var rule in r.WearRules) Data.Gameplay.WearRules.Add(mod, rule);
+        foreach (var source in r.LookRows) Data.Characters.ModLooks.AddRows(mod, source);
+        foreach (var roll in r.LookRolls) Data.Characters.ModLooks.AddRoll(mod, roll);
+        foreach (var source in r.LookExtras) Data.Characters.ModLooks.AddExtras(mod, source);
         foreach (var meter in r.Meters) ModMeters.Add(meter);
         foreach (var skill in r.Skills) ModSkills.Add(skill);
         foreach (var (effect, modifiers) in r.StatusEffects) StatusEffects.Add(effect, modifiers);
         Ui.AddRange(r.Ui);
         foreach (var (extension, folder) in r.UiFolders) UiFolders[extension] = folder;
+        foreach (var extension in r.Ui) UiOwners[extension] = mod;
         DebugCommands.AddRange(r.DebugCommands);
         foreach (var state in r.WorldStates)
         {
@@ -395,13 +416,61 @@ sealed class ModRegistry
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod}: use of item '{record}' failed: {e}");
+            CodeModFaults.Tell(mod, e);
             return true;
         }
     };
 
     /// <summary>
+    /// The condition with its throws caught: a throw computes "no", as a code no mod handles, and is logged once. It is not dropped, since the
+    /// interface also asks conditions between ticks (who can be talked to), so a drop would make the world depend on what the interface asked.
+    /// </summary>
+    static DialogueConditionHandler Guarded(string mod, int code, DialogueConditionHandler handler)
+    {
+        int logged = 0;
+        return check =>
+        {
+            try
+            {
+                return handler(check);
+            }
+            catch (Exception e)
+            {
+                if (Interlocked.Exchange(ref logged, 1) == 0)
+                    Console.Error.WriteLine($"mod       {mod}: dialogue condition {code} failed, answered as unhandled: {e}");
+
+                CodeModFaults.Tell(mod, e);
+
+                return check.Matches(false);
+            }
+        };
+    }
+
+    /// <summary>
+    /// The effect with its throws caught: a throw does nothing more (what the handler did before it stands) and is logged once.
+    /// </summary>
+    static DialogueEffectHandler Guarded(string mod, int code, DialogueEffectHandler handler)
+    {
+        int logged = 0;
+        return act =>
+        {
+            try
+            {
+                handler(act);
+            }
+            catch (Exception e)
+            {
+                if (Interlocked.Exchange(ref logged, 1) == 0)
+                    Console.Error.WriteLine($"mod       {mod}: dialogue effect {code} failed: {e}");
+
+                CodeModFaults.Tell(mod, e);
+            }
+        };
+    }
+
+    /// <summary>
     /// The factory with its systems tagged with the mod (<see cref="TagOf"/>); a system whose factory throws is left out of the world, with a
-    /// log line.
+    /// log line, and the player's notice when the mod was built for another version of the game (<see cref="CodeModFaults.Tell"/>).
     /// </summary>
     SystemFactory Tagged(string mod, SystemFactory factory) => factory with
     {
@@ -416,6 +485,7 @@ sealed class ModRegistry
             {
                 // A mod's fault leaves its system out of this world; the world is still made.
                 Console.Error.WriteLine($"mod       {mod}: system '{factory.Name}' not made: {e}");
+                CodeModFaults.Tell(mod, e);
                 return null;
             }
             if (system is not null) _made.AddOrUpdate(system, new ModSystemTag(mod, factory.Name));

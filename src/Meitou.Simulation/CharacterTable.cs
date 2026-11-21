@@ -186,8 +186,8 @@ public sealed class CharacterCold
     public CharacterId FollowOrder { get; set; } = CharacterId.None;
 
     /// <summary>
-    /// The <see cref="FollowOrder"/> runs row 45 Bodyguard (order or job; <see cref="Running"/>): the follower also defends its target
-    /// (<see cref="RetaliationSystem"/>). Hashed with <see cref="FollowOrder"/>.
+    /// The <see cref="FollowOrder"/> runs row 45 Bodyguard (order or job; <see cref="Running"/>): its fights also score its target's attackers (the
+    /// protectee of the fight's target choice, the AI task's target of goal 45). Hashed with <see cref="FollowOrder"/>.
     /// </summary>
     public bool Guarding => Running is { Row: Data.Gameplay.Ai.TaskType.Bodyguard };
 
@@ -250,6 +250,23 @@ public sealed class CharacterCold
     /// held. Not hashed.
     /// </summary>
     public long BlockedRetryTick { get; set; }
+
+    /// <summary>
+    /// Where the walker stood at the first block <see cref="BlockedRepaths"/> counts: the count starts again only once it has left that spot. Not
+    /// hashed.
+    /// </summary>
+    public Vector2 BlockedAt { get; set; }
+
+    /// <summary>
+    /// The goal of the walk the movement system last gave up (no path, or blocked past the limits). Not hashed.
+    /// </summary>
+    public Vector2 GivenUpGoal { get; set; }
+
+    /// <summary>
+    /// The tick a walk sent to <see cref="GivenUpGoal"/> again asks for its path (<see cref="MovementSystem.BlockedRetrySeconds"/>); 0: no walk
+    /// given up. Not hashed.
+    /// </summary>
+    public long GivenUpRetryTick { get; set; }
 
     /// <summary>
     /// The path request in flight, so an answer to an older one is ignored.
@@ -732,9 +749,9 @@ public sealed class CharacterCold
     public bool Fleeing { get; set; }
 
     /// <summary>
-    /// The flight is Self preservation's (goal 32 through row 35, <see cref="Ai.SelfPreservation"/>), not a squad's: it ends when no threat attacks
-    /// the character within reach, not when no enemy is in sight. Meaningful while <see cref="Fleeing"/>; set and cleared with it by the
-    /// <see cref="FleeSystem"/>.
+    /// The flight is one the AI asked for (32 through row 35, <see cref="Ai.SelfPreservation"/>, or a goal 35), not a broken squad's: for a mind of
+    /// its own its goal's task, which ends with the goal; for one whose mind was dropped since it ends, from the threats, when no threat attacks
+    /// the character within reach. Meaningful while <see cref="Fleeing"/>; set and cleared with it by the <see cref="FleeSystem"/>.
     /// </summary>
     public bool FleesAlone { get; set; }
 
@@ -787,14 +804,6 @@ public sealed class CharacterCold
     /// same kit again by the fewest-charges rule.
     /// </summary>
     public (Items.ItemInstance Item, Items.Inventory Owner)? TreatKit { get; set; }
-
-    /// <summary>
-    /// The tick until which a medic treating this character asked it to stand still (the original's request of 62 Standing still on the patient's
-    /// blackboard, renewed by every update of the first aid task, docs/game/ai-tasks.md "Medic jobs"; <see cref="FirstAid.FirstAidSystem"/>).
-    /// <see cref="MovementSystem"/> holds an NPC still until then unless it fights or flees. Runtime only (not saved, not hashed): the running
-    /// treatment renews it every tick.
-    /// </summary>
-    public long StandStillUntil { get; set; }
 
     /// <summary>
     /// The treating medic kneels at its patient (the <c>medic</c> clip): in reach of a patient keeping still, or treating itself
@@ -970,7 +979,8 @@ public sealed class CharacterCold
     public bool BedExitDone { get; set; }
 
     /// <summary>
-    /// The AI's manoeuvre mode (standing orders 8 and 9; the original's save key is unknown, so it is not saved, like <see cref="HoldPoint"/>).
+    /// The AI's manoeuvre mode (standing orders 8 and 9), which also picks the default task's row (<see cref="DecisionSystem"/>'s default task). Not
+    /// saved, as the original's (<c>AI::AI</c> sets ROAM_FAR and no load path writes it, docs/game/ai-tasks.md "Precedence").
     /// </summary>
     public ManoeuvreMode Manoeuvre { get; set; } = ManoeuvreMode.RoamFar;
 
@@ -993,10 +1003,12 @@ public sealed class CharacterCold
     public long StaggeredUntil { get; set; }
 
     /// <summary>
-    /// Until when a stagger outside a fight reports the Stumbling task (147, <c>Character::_startStumble</c> queues it in front of the character's
-    /// own task, which replans afterwards): set with the stumble clip's stun, display only. Not saved.
+    /// What the combat system's body step (parallel, its own slot) saw happen to the body this tick, for <see cref="Combat.BodyOrders"/>' serial pass
+    /// the same tick: gone down, woken, or back to standing from staying low or crawling. A wake while carried waits here until it is put down, as the
+    /// original's WHOLE ragdoll does. Not saved (a load re-requests WHOLE only for a body out cold or dead, so the original loses it too); the owed
+    /// wake is hashed while set (<see cref="Combat.BodyEvents.Lying"/> follows the hashed medical state).
     /// </summary>
-    public long StumbleTaskUntil { get; set; }
+    internal Combat.BodyEvents BodyEvents { get; set; }
 
     /// <summary>
     /// The tick its get-up after a knockout ends (<see cref="Combat.CombatSystem.GetUpClipSeconds"/> from waking, after the clip; Character +0x278
@@ -1037,11 +1049,6 @@ public sealed class CharacterCold
     /// <see cref="Ai.AiSystem"/>.
     /// </summary>
     public AiMind? Ai { get; set; }
-
-    /// <summary>
-    /// Held still by an interaction (a trader in an open trade, <see cref="Trading.TradeSystem"/>): the AI leaves it alone. Serial phases only.
-    /// </summary>
-    public bool Engaged { get; set; }
 
     /// <summary>
     /// A hunger level a code mod keeps the character at for free (engine API; null: the game's rule alone, <c>BodySystem.HungerFloor</c>), so one
@@ -1255,6 +1262,12 @@ public sealed class CharacterCold
     public (System.Numerics.Vector2 Goal, byte Mode)? DoorWay { get; set; }
 
     /// <summary>
+    /// What holds the walker on its <see cref="DoorWay"/>, and the provenance of the walk it began on (<see cref="Running"/> then): the way is a step of
+    /// that plan and ends with it (<see cref="Locks.LockSystem.StartDoorWay"/>). Set with <see cref="DoorWay"/>; hashed with it.
+    /// </summary>
+    internal (Locks.DoorWayHolder By, RunningTask? Walk) DoorWayHold { get; set; }
+
+    /// <summary>
     /// The fixture whose lock this character cuts or breaks by order (Use Tools 285, Use Strength 286; <see cref="Locks.LockSystem"/>; null: none).
     /// Hashed only while set.
     /// </summary>
@@ -1269,6 +1282,12 @@ public sealed class CharacterCold
     /// The door this character locks or unlocks by order (Lock 77, Unlock 140; <see cref="Locks.LockSystem"/>; null: none). Hashed only while set.
     /// </summary>
     public Locks.DoorLockJob? DoorJob { get; set; }
+
+    /// <summary>
+    /// The door (<see cref="Locks.Fixture.Id"/>) this character walks to open or close (72 / 73, <see cref="Locks.DoorOrder"/>; null: none), each its
+    /// own as the original's door tasks are. Hashed only while set; not saved (the order is).
+    /// </summary>
+    public string? DoorWalk { get; set; }
 
     /// <summary>
     /// Game seconds since the last swing at <see cref="Bashing"/>' door (-1: walking there).
@@ -1342,6 +1361,13 @@ public sealed class CharacterCold
     /// Hashed only while set.
     /// </summary>
     public string? OperateSite { get; set; }
+
+    /// <summary>
+    /// The game hours (<see cref="World.GameHours"/>) until which the implicit "Sleep when injured" job (153) it is on holds against its job list
+    /// (<see cref="Production.ProductionSystem"/>, docs/game/ai-tasks.md "Perma-jobs"; 0: none). Serial phases only; not saved. Hashed
+    /// only while set.
+    /// </summary>
+    public double BedCommitUntil { get; set; }
 
     /// <summary>
     /// The progress (0 to 1) of the <see cref="CharacterTask.Prospect"/> task (null: not prospecting). Serial phases only; not saved. Hashed only
@@ -1442,21 +1468,37 @@ public sealed class CharacterCold
     public WorkEvents? ActionWork { get; set; }
 
     /// <summary>
-    /// The workplace an obedient player slave stands at, at its work clip, for goal 189 or 190 of its Obedient Slave job (Kidnap/ObedientSlave.cs; the
-    /// original runs <c>Task_OperateMachine</c> for both): the production system works its machine for 189, the body takes its <c>hunger rate</c>
-    /// for both. Null: none. Runtime only, not saved, not hashed.
-    /// </summary>
-    public ObedientWork? SlaveWork { get; set; }
-
-    /// <summary>
     /// The replan bit (<see cref="DecisionSystem.Request(CharacterCold)"/>): set by a replan trigger, consumed by the decision step. Player
-    /// characters only; not saved (a load sets it); hashed while set.
+    /// characters, and NPCs while they hold an order; not saved (a load sets it); hashed while set.
     /// </summary>
     public bool Replan { get; set; }
 
     /// <summary>
-    /// The queued orders a load read (<see cref="Saving.OrderSave"/>), until the decision step makes them the <see cref="OrderQueue"/> once the world
-    /// they name is there; null: none. Not hashed.
+    /// An NPC's front order runs (the decision step's source 1 won, docs/simulation.md "Order queue"): its AI and the engine's reactions and duties
+    /// leave it alone (<see cref="DecisionSystem.Ordered"/>). Set and cleared by the decision step and <see cref="PlayerOrders.Give"/> (serial
+    /// phases); never set for a character the step decides. Not saved; hashed while set.
+    /// </summary>
+    public bool OrderWins { get; internal set; }
+
+    /// <summary>
+    /// The routine (wander or follow its leader) an NPC its AI does not fully run had when an order took it, taken up again once its order no
+    /// longer holds it (<see cref="DecisionSystem.Hold"/>); <see cref="CharacterTask.Idle"/>: none. Serial phases; not saved; hashed while set.
+    /// </summary>
+    public CharacterTask OrderRoutine { get; internal set; }
+
+    /// <summary>
+    /// The receiver's second list (<c>+0x70</c>, count <c>+0x78</c>; docs/game/ai-tasks.md "Precedence" source 3): orders the chooser scores after
+    /// its committed stop and before the urgent job pass (<see cref="Ladder"/>; the serial look scores each, the serial pass starts the pick). The
+    /// queue loader <c>FUN_1405092d0</c> fills it from a saved order queue (<see cref="Saving.OrderSave.Restore"/>); entries are never popped by
+    /// completion (a done one is skipped) and leave only by the clears (<c>FUN_1405074a0</c>, <c>FUN_140507530</c>). Serial phases write it;
+    /// hashed while not empty; not saved (the original's writer saves the order queue only).
+    /// </summary>
+    public List<OrderEntry> SecondList { get; } = [];
+
+    /// <summary>
+    /// The queued orders a load read (<see cref="Saving.OrderSave"/>), until the decision step puts them in the <see cref="SecondList"/> once the
+    /// world they name is there (those from the first whose target is still to come wait, <see cref="Saving.OrderSave.Restore"/>); null: none.
+    /// Hashed by count while set.
     /// </summary>
     public IReadOnlyList<Saving.SavedOrder>? SavedOrders { get; set; }
 
@@ -1865,6 +1907,58 @@ public sealed class CharacterTable
     }
 
     /// <summary>
+    /// The second list (<see cref="CharacterCold.SecondList"/>): its count, then each order's row, start, try, row run, spent mark, target, site and
+    /// point in list order.
+    /// </summary>
+    static void HashSecondList(ref StateHasher hasher, List<OrderEntry> list)
+    {
+        hasher.Add(0x32644C73);   // "2dLs"
+        hasher.Add(list.Count);
+        foreach (var e in list)
+        {
+            hasher.Add((int)e.Row);
+            hasher.Add(e.Started);
+            hasher.Add(e.Tried);
+            hasher.Add(e.RowRuns);
+            hasher.Add(e.Spent);
+            hasher.Add(e.Target);
+            hasher.Add(e.Site is { } site ? Rng.StableHash(site) : 0UL);
+            hasher.Add(e.Point);
+        }
+    }
+
+    /// <summary>
+    /// Hashes the ignore map (<see cref="CharacterCold.Ignored"/>): its character entries, then its named ones (a door, cage, store or disposal a lost
+    /// walk put there, a site or item no path reached), each kind only while one is there.
+    /// </summary>
+    static void HashIgnored(ref StateHasher hasher, List<(IgnoreKey Key, long Until)> failures)
+    {
+        if (failures.Exists(e => e.Key.Name is null))
+        {
+            hasher.Add(0x50464C53);
+            foreach (var (key, until) in failures)
+            {
+                if (key.Name is not null) continue;
+
+                hasher.Add(key.Id.Slot);
+                hasher.Add(key.Id.Generation);
+                hasher.Add(until);
+            }
+        }
+
+        if (!failures.Exists(e => e.Key.Name is not null)) return;
+
+        hasher.Add(0x49676E4E);   // "IgnN"
+        foreach (var (key, until) in failures)
+        {
+            if (key.Name is null) continue;
+
+            hasher.Add(Rng.StableHash(key.Name));
+            hasher.Add(until);
+        }
+    }
+
+    /// <summary>
     /// The fight and steering part of <see cref="HashColdFields"/>: in combat, the chase run, the steer or path chase, the failed targets, the
     /// steer and agent speeds (each only while set).
     /// </summary>
@@ -1884,19 +1978,7 @@ public sealed class CharacterTable
             hasher.Add(chase.ChaseTarget);
             hasher.Add(chase.PathUntil);
         }   // a path chase, only while on one
-        if (k.Ignored is { Count: > 0 } failures && failures.Exists(e => e.Key.Name is null))
-        {
-            hasher.Add(0x50464C53);
-            foreach (var (key, until) in failures)
-            {
-                if (key.Name is null)
-                {
-                    hasher.Add(key.Id.Slot);
-                    hasher.Add(key.Id.Generation);
-                    hasher.Add(until);
-                }
-            }
-        }
+        if (k.Ignored is { Count: > 0 } failures) HashIgnored(ref hasher, failures);
 
         if (k.SteerSpeed != 0)
         {
@@ -2013,7 +2095,6 @@ public sealed class CharacterTable
             mind.Hash(ref hasher);
         }
 
-        if (k.Engaged) hasher.Add(0x456E6761);
         if (k.FedTo is { } fed) hasher.Add(fed);
         if (!k.FollowOrder.IsNone)
         {
@@ -2024,6 +2105,14 @@ public sealed class CharacterTable
 
         if (k.FollowResume) hasher.Add(0x46526573);
         if (k.Replan) hasher.Add(0x52706C6E);
+        if (k.OrderWins) hasher.Add(0x4F57696E);
+        if (k.OrderRoutine != CharacterTask.Idle) hasher.Add(0x4F527400 | (int)k.OrderRoutine);
+        if (k.SecondList.Count > 0) HashSecondList(ref hasher, k.SecondList);
+        if (k.SavedOrders is { } waiting) hasher.Add(0x53764F72 + waiting.Count);   // "SvOr": only while a load's orders wait
+
+        // a wake owed while carried; the rest is told from the medical state
+        if ((k.BodyEvents & Combat.BodyEvents.Woke) != 0) hasher.Add(0x576F6B65);
+
         if (!k.TurretTarget.IsNone)
         {
             hasher.Add(0x54725467);
@@ -2137,6 +2226,8 @@ public sealed class CharacterTable
                 hasher.Add(way.Goal.X);
                 hasher.Add(way.Goal.Y);
                 hasher.Add((int)way.Mode);
+                hasher.Add((int)k.DoorWayHold.By);
+                if (Locks.LockSystem.SameWalk(k.Running, k.DoorWayHold.Walk)) hasher.Add(0x57616C6B);
             }
         }
 
@@ -2145,6 +2236,12 @@ public sealed class CharacterTable
             hasher.Add(0x466F7263);
             hasher.Add(Rng.StableHash(force));
             hasher.Add((int)k.Force);
+        }
+
+        if (k.DoorWalk is { } doorWalk)
+        {
+            hasher.Add(0x446F6F57);
+            hasher.Add(Rng.StableHash(doorWalk));
         }
 
         if (k.DoorJob is { } doorJob)
@@ -2203,6 +2300,12 @@ public sealed class CharacterTable
         {
             hasher.Add(0x4F706572);
             hasher.Add(Rng.StableHash(machine));
+        }
+
+        if (k.BedCommitUntil != 0)
+        {
+            hasher.Add(0x42436F6D);
+            hasher.Add(k.BedCommitUntil);
         }
 
         if (k.Prospecting is { } prospected)

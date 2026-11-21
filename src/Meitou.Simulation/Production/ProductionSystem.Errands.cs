@@ -147,7 +147,7 @@ public sealed partial class ProductionSystem
         foreach (var gone in _errands.Keys.Where(k => !table.IsAlive(k)).ToList()) _errands.Remove(gone);
         for (int i = 0; i < table.HighWater; i++)
         {
-            if (table.Next[i].Alive && table.Cold(i) is { IsPlayer: true } cold && _errands.TryGetValue(table.IdOf(i), out var errand))
+            if (table.Next[i].Alive && table.Cold(i) is { } cold && _errands.TryGetValue(table.IdOf(i), out var errand))
                 StepErrand(world, i, cold, errand);
         }
     }
@@ -276,14 +276,14 @@ public sealed partial class ProductionSystem
     }
 
     /// <summary>
-    /// The Corpse Disposal order (<see cref="DisposeCorpseOrder"/>): a corpse errand for each player character that carries a dead body.
+    /// The Corpse Disposal order (<see cref="DisposeCorpseOrder"/>): a corpse errand for each of its characters that carries a dead body.
     /// </summary>
     void DisposeCarried(World world, DisposeCorpseOrder order)
     {
         var table = world.Characters;
         foreach (var id in order.Characters)
         {
-            if (!table.TryResolveNext(id, out int i) || table.Cold(i) is not { IsPlayer: true } cold || cold.Carrying.IsNone) continue;
+            if (!table.TryResolveNext(id, out int i) || table.Cold(i) is not { } cold || cold.Carrying.IsNone) continue;
             if (!table.TryResolveNext(cold.Carrying, out int b) || table.Cold(b)?.Medical is not { Dead: true }) continue;
             _errands[id] = new Errand { Kind = ErrandKind.Corpse, Body = cold.Carrying, Ordered = true, Delivering = true };
         }
@@ -331,7 +331,7 @@ public sealed partial class ProductionSystem
     #region Stepping a carrying job
 
     /// <summary>
-    /// One step of a character's errand: lifted, it walks the body to its goal and puts it down there (or feeds it to the corpse machine); the lift
+    /// One step of a character's errand: lifted, it walks the body to its goal and lets it go there (or feeds it to the corpse machine); the lift
     /// lost or the walk given up ends it.
     /// </summary>
     void StepErrand(World world, int i, CharacterCold cold, Errand e)
@@ -378,7 +378,7 @@ public sealed partial class ProductionSystem
         if (arrived)
         {
             if (machine is not null) Incinerate(world, i, machine);
-            else Carry!.BeginPutDown(world, i, TaskSource.Job);
+            else Carry!.LetGo(world, i);   // a carry-out at its goal: the task's own unlink, as below
             _errands.Remove(id);
             return;
         }
@@ -391,7 +391,7 @@ public sealed partial class ProductionSystem
 
         if (e.Kind != ErrandKind.Corpse && CarryOutOver(world, e, wasWalking))
         {
-            Carry!.BeginPutDown(world, i, TaskSource.Job);
+            Carry!.LetGo(world, i);   // the task's own unlink (FUN_1405ce1e0), not the put-down task
             _errands.Remove(id);
             return;
         }
@@ -463,7 +463,7 @@ public sealed partial class ProductionSystem
     /// Whether the carrier is at the disposal: a player machine's <see cref="AtSite"/>, else within the BUILDING's use range
     /// (<c>UseableStuff::getReachRange</c>, doubled once stopped, <see cref="SiteReach.Within"/>) on its storey.
     /// </summary>
-    bool AtDisposal(World world, in CharacterHot n, CorpseMachine machine)
+    internal bool AtDisposal(World world, in CharacterHot n, CorpseMachine machine)
     {
         if (world.Machines.Find(machine.Id) is { } m && Site(world, machine.Id) is { } site) return AtSite(world, n, site, m);
 
