@@ -147,7 +147,7 @@ public sealed partial class ProductionSystem
         foreach (var gone in _errands.Keys.Where(k => !table.IsAlive(k)).ToList()) _errands.Remove(gone);
         for (int i = 0; i < table.HighWater; i++)
         {
-            if (table.Next[i].Alive && table.Cold(i) is { IsPlayer: true } cold && _errands.TryGetValue(table.IdOf(i), out var errand))
+            if (table.Next[i].Alive && table.Cold(i) is { } cold && _errands.TryGetValue(table.IdOf(i), out var errand))
                 StepErrand(world, i, cold, errand);
         }
     }
@@ -276,14 +276,14 @@ public sealed partial class ProductionSystem
     }
 
     /// <summary>
-    /// The Corpse Disposal order (<see cref="DisposeCorpseOrder"/>): a corpse errand for each player character that carries a dead body.
+    /// The Corpse Disposal order (<see cref="DisposeCorpseOrder"/>): a corpse errand for each of its characters that carries a dead body.
     /// </summary>
     void DisposeCarried(World world, DisposeCorpseOrder order)
     {
         var table = world.Characters;
         foreach (var id in order.Characters)
         {
-            if (!table.TryResolveNext(id, out int i) || table.Cold(i) is not { IsPlayer: true } cold || cold.Carrying.IsNone) continue;
+            if (!table.TryResolveNext(id, out int i) || table.Cold(i) is not { } cold || cold.Carrying.IsNone) continue;
             if (!table.TryResolveNext(cold.Carrying, out int b) || table.Cold(b)?.Medical is not { Dead: true }) continue;
             _errands[id] = new Errand { Kind = ErrandKind.Corpse, Body = cold.Carrying, Ordered = true, Delivering = true };
         }
@@ -463,7 +463,7 @@ public sealed partial class ProductionSystem
     /// Whether the carrier is at the disposal: a player machine's <see cref="AtSite"/>, else within the BUILDING's use range
     /// (<c>UseableStuff::getReachRange</c>, doubled once stopped, <see cref="SiteReach.Within"/>) on its storey.
     /// </summary>
-    bool AtDisposal(World world, in CharacterHot n, CorpseMachine machine)
+    internal bool AtDisposal(World world, in CharacterHot n, CorpseMachine machine)
     {
         if (world.Machines.Find(machine.Id) is { } m && Site(world, machine.Id) is { } site) return AtSite(world, n, site, m);
 

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Meitou.Content;
 using Meitou.Game.Ui;
 using Meitou.Simulation;
 using Meitou.Simulation.Bodies;
@@ -219,6 +220,10 @@ sealed class ModRegistry
     /// </summary>
     public Dictionary<IUiExtension, string> UiFolders { get; } = new(ReferenceEqualityComparer.Instance);
     /// <summary>
+    /// The id of the mod each interface extension belongs to.
+    /// </summary>
+    public Dictionary<IUiExtension, string> UiOwners { get; } = new(ReferenceEqualityComparer.Instance);
+    /// <summary>
     /// Every mod's debug menu commands, in load order.
     /// </summary>
     public List<ModDebugCommand> DebugCommands { get; } = [];
@@ -303,6 +308,7 @@ sealed class ModRegistry
         foreach (var (effect, modifiers) in r.StatusEffects) StatusEffects.Add(effect, modifiers);
         Ui.AddRange(r.Ui);
         foreach (var (extension, folder) in r.UiFolders) UiFolders[extension] = folder;
+        foreach (var extension in r.Ui) UiOwners[extension] = mod;
         DebugCommands.AddRange(r.DebugCommands);
         foreach (var state in r.WorldStates)
         {
@@ -410,6 +416,7 @@ sealed class ModRegistry
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod}: use of item '{record}' failed: {e}");
+            CodeModFaults.Tell(mod, e);
             return true;
         }
     };
@@ -432,6 +439,8 @@ sealed class ModRegistry
                 if (Interlocked.Exchange(ref logged, 1) == 0)
                     Console.Error.WriteLine($"mod       {mod}: dialogue condition {code} failed, answered as unhandled: {e}");
 
+                CodeModFaults.Tell(mod, e);
+
                 return check.Matches(false);
             }
         };
@@ -453,13 +462,15 @@ sealed class ModRegistry
             {
                 if (Interlocked.Exchange(ref logged, 1) == 0)
                     Console.Error.WriteLine($"mod       {mod}: dialogue effect {code} failed: {e}");
+
+                CodeModFaults.Tell(mod, e);
             }
         };
     }
 
     /// <summary>
     /// The factory with its systems tagged with the mod (<see cref="TagOf"/>); a system whose factory throws is left out of the world, with a
-    /// log line.
+    /// log line, and the player's notice when the mod was built for another version of the game (<see cref="CodeModFaults.Tell"/>).
     /// </summary>
     SystemFactory Tagged(string mod, SystemFactory factory) => factory with
     {
@@ -474,6 +485,7 @@ sealed class ModRegistry
             {
                 // A mod's fault leaves its system out of this world; the world is still made.
                 Console.Error.WriteLine($"mod       {mod}: system '{factory.Name}' not made: {e}");
+                CodeModFaults.Tell(mod, e);
                 return null;
             }
             if (system is not null) _made.AddOrUpdate(system, new ModSystemTag(mod, factory.Name));

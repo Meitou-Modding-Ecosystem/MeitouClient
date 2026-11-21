@@ -1582,6 +1582,8 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.FixAnimalTarget = true;
         AnimalTargetChanged?.Invoke(true);
         Config.FixHeadTurnBack = false;
+        Config.FixRaidClocks = true;
+        Config.FixArrestLifts = true;
         Config.FixGround = true;
         OffscreenChanged?.Invoke();
         Config.Audio = new();

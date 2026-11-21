@@ -89,6 +89,10 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     /// The tick whose slow world swapped the state arrays last.
     /// </summary>
     long _swappedTick = -1;
+    /// <summary>
+    /// The entries the alerts put on the engaged lists (<see cref="PushAlerted"/>).
+    /// </summary>
+    readonly AlertedAttackers _alerted = new();
 
     #region Configuration
 
@@ -319,6 +323,7 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
         }
 
         hasher.Add(_log.Count);
+        _alerted.Hash(ref hasher);
         _projectiles.Hash(ref hasher);
         _turretManning.Hash(ref hasher);
         _modMoves?.Hash(ref hasher);
@@ -553,10 +558,10 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     int IOrderOwner.SaveKind(OrderEntry order) => order.Detail is PickedAttack or null ? 0 : -1;
 
     /// <summary>
-    /// The detail of a saved attack order: the pick rebuilt for 5 and 61; none for 4, an engine order's attack.
+    /// The detail of a saved attack order: the pick rebuilt for 5 and 61; none for 4, an engine order's attack, and 16, a loaded entry's.
     /// </summary>
     object? IOrderOwner.LoadDetail(World world, CharacterId self, TaskType row, int kind, CharacterId target) =>
-        row == TaskType.MeleeAttack ? null : Picked(world, self, row, target);
+        row is TaskType.FocusedMeleeAttack or TaskType.UnprovokedFocusedMeleeAttack ? Picked(world, self, row, target) : null;
 
     /// <summary>
     /// The pick of a saved attack order (5, 61), rebuilt from its attacker and target.
@@ -571,6 +576,8 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     /// </summary>
     OrderCheck IOrderOwner.CanRun(World world, int slot, OrderEntry order)
     {
+        if (order.Row == TaskType.AttackEnemies) return world.SystemOf<AggroSystem>()?.AttackEntryCheck(world, slot) ?? OrderCheck.Blocked();
+
         var table = world.Characters;
         if (!table.TryResolveNext(order.Target, out int t) || t == slot || table.Cold(t)!.Medical is not { Incapacitated: false })
             return OrderCheck.Gone;
@@ -588,18 +595,27 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     /// </summary>
     bool IOrderOwner.StillHolds(World world, int slot, OrderEntry order)
     {
+        if (order.Row == TaskType.AttackEnemies) return true;   // the fight is on the finder's pick, not on the saved hand
+
         var table = world.Characters;
         return !table.TryResolveNext(order.Target, out int t) || !SwimBarred(table.Cold(slot)!, table.Cold(t), focused: true);
     }
 
     /// <summary>
     /// Starts the attack order: the player's pick (5, 61) as it was given; an engine order's 4 Attacking (DA 29 outside the speaker's town) as a fight
-    /// of that row with the order's provenance.
+    /// of that row with the order's provenance; a loaded 16 entry as 4 on the enemy its finder picks now (row 16's effect 6 is 4's).
     /// </summary>
     void IOrderOwner.Start(World world, int slot, OrderEntry order)
     {
         var table = world.Characters;
         var id = table.IdOf(slot);
+        if (order.Row == TaskType.AttackEnemies)
+        {
+            if (world.SystemOf<AggroSystem>()?.AttackEntryPick(world, slot) is { IsNone: false } foe)
+                EngageOrder(world, slot, foe, TaskType.MeleeAttack, "a loaded attack order");
+            return;
+        }
+
         if (order.Detail is not PickedAttack picked)
         {
             Sync(table);
@@ -639,12 +655,12 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
 
     /// <summary>
     /// The hit path of <c>AI::underMeleeAttack</c> (a landed blow, <c>FUN_1404394f0</c>; a bolt, <c>FUN_140999d50</c>): an NPC hit with its fight
-    /// off, not getting up, has its AI think at the next tick (<see cref="Ai.AiMind.Replan"/>), where its Self preservation weighs the attacker the
-    /// hit made a threat (<see cref="AggroSystem.Force"/>). Serial phases.
+    /// off, not getting up, asks the original's replan (vfunc 3, <see cref="Ai.AiMind.AskReplan"/>): its AI chooses afresh at the next tick, where its
+    /// Self preservation weighs the attacker the hit made a threat (<see cref="AggroSystem.Force"/>). Serial phases.
     /// </summary>
     static void HitReplan(CharacterCold dc, long tick)
     {
-        if (!dc.InCombat && dc.Ai is { } mind && !CharacterFacts.GettingUp(dc, tick)) mind.Replan = true;
+        if (!dc.InCombat && dc.Ai is { } mind && !CharacterFacts.GettingUp(dc, tick)) mind.AskReplan();
     }
 
     #endregion
@@ -755,6 +771,27 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
     }
 
     /// <summary>
+    /// The end of a stagger's <c>Task_Stumble</c> (<c>FUN_140335040</c>, <b>Verified</b>), from any serial phase: the stumble clip is dropped in both
+    /// state arrays (the animation fades it out), and the wait for the fighter's next move it set is cut to now.
+    /// </summary>
+    internal void EndStumble(int slot, int now)
+    {
+        if (slot >= _read.Length) return;
+
+        Drop(ref _read[slot], now);
+        Drop(ref _write[slot], now);
+
+        static void Drop(ref CombatSlot s, int now)
+        {
+            if (s.StumbleClip < 0 || s.StunUntil <= now) return;
+
+            if (s.ReadyTick == s.StunUntil) s.ReadyTick = now;
+            s.StumbleClip = -1;
+            s.StunUntil = now;
+        }
+    }
+
+    /// <summary>
     /// The end of the fight task of <paramref name="slot"/> also zeroes its engaged list (<c>FUN_1406659b0</c> mode 2): everyone who let close in on
     /// it is out of it, by a new <see cref="CombatSlot.ListEpoch"/> the fighters read (<see cref="CombatSlot.JoinedEpoch"/>); they keep their target
     /// and ask again.
@@ -783,17 +820,15 @@ public sealed partial class CombatSystem : ITickSystem, IStateHashed, ITaskOwner
 
         // The fight's end sheathes nothing (docs/game/combat.md "Fight lifecycle and orders", weapon away): the planner puts it away before a goal
         // that needs it away (the AI's UNEQUIP_WEAPON step), a player's character once it stops moving on an order (Act). A character without either
-        // (no mind, or one whose routine is the engine's) sheathes now.
-        if (!cold.IsPlayer && cold.Ai is null or { Engine: true }) cold.DrawnWeapon = WeaponKinds.None;
+        // (no mind) sheathes now.
+        if (!cold.IsPlayer && cold.Ai is null) cold.DrawnWeapon = WeaponKinds.None;
 
         // the fight's own end: idle, its provenance kept (a follow row's, FollowResume)
         if (table.Next[slot].Task == (byte)CharacterTask.Attack) TaskStart.Step(table, slot, CharacterTask.Idle);
 
-        // the fight task ended: a player character is decided again (a follow row takes up its follow)
-        DecisionSystem.Request(cold);
-
-        // and an NPC's AI chooses again at the next tick (the original's "plan finished" trigger)
-        if (cold.Ai is { } mind) mind.Replan = true;
+        // the fight task ended: the original's "plan finished" replan (FUN_14050d7d0's vfunc 3): a player character is decided again (a follow row
+        // takes up its follow), and an AI's mind chooses afresh at the next tick
+        DecisionSystem.Replan(cold);
     }
 
     #endregion

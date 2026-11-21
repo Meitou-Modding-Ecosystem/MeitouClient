@@ -898,7 +898,8 @@ public static partial class SaveCapture
         if (cold.SlaveState != 0 && Kidnap.ObedientSlave.OwnerOf(world, cold) is { } owner) s_memoryPass?.Slavers.Add((g, owner));
         DialogueSave.Write(g, cold);
         if (orders) Orders.Write(g, cold);
-        if (orders && sc.Ai is { } ai)
+        // An NPC's job list too, while it has one (the original's records hold NPCs' 57 and 187, docs/game/ai-tasks.md "Perma-jobs").
+        if ((orders || cold.Jobs.Count > 0) && sc.Ai is { } ai)
         {
             var modJobs = world.SystemOf<PlayerSystem>()?.Extensions?.JobTypes;
             PermaJobSave.Write(ai, cold, world.Buildings, buildings, who => HandOf(world, who), modJobs);
@@ -1144,6 +1145,11 @@ public static partial class SaveCapture
             if (p is not null) platoon.Record.Bools["intact"] = p.IntactFlag;   // +0x100
             ShopSave.Write(platoon.Record, squad is not null ? squad.Shop : sp.Shop, world);
             WriteAi(platoon.Record, squad is not null ? AiSave.Of(squad.Ai) ?? squad.SavedAi : sp.Ai);
+            bool made = sp.Wild is not null && !(p is not null && PackageSave.OwnPersistent(p));
+            if (squad is not null) PackageSave.Write(platoon.Record, squad.Ai, data, made);
+            if (squad is not null) CurrentTownSave.Write(platoon.Record, squad.Ai, s_memoryPass?.TownHands);
+            if (squad is not null) HomeLockSave.Write(platoon.Record, world, squad);
+            else if (p is not null) HomeLockSave.Write(platoon.Record, world, data, sp, p);
 
             // A wild one the AI ran: its package, persistent while it occupies a town (as the original's occupation).
             if (sp.Wild is not null && p is not null && (squad?.Ai?.Current?.Id ?? p.Package) is { } package)
@@ -1646,6 +1652,9 @@ public static partial class SaveCapture
 
             // Moved out of a house the player bought with no other home: not persistent, as the original's purchase leaves it (WriteMovedOut).
             if (squad.MovedOut && squad.HomeBuilding is null) written.Record.Bools["persistent"] = false;
+            PackageSave.Write(written.Record, squad.Ai, _data, roamer is { Pinned: false } && !PackageSave.OwnPersistent(roamer));
+            CurrentTownSave.Write(written.Record, squad.Ai, s_memoryPass?.TownHands);
+            HomeLockSave.Write(written.Record, _world, squad);
             if (roamer is not null && into is null) WriteBaseTown(written.Record, roamer);
             return written;
         }
