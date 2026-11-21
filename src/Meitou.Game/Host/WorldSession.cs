@@ -155,8 +155,8 @@ public sealed class WorldSession : IDisposable
         next.PrisonPoseFix = World.PrisonPoseFix;
         next.CagedAnimalFix = World.CagedAnimalFix;
         next.BagSearchFix = World.BagSearchFix;
-        next.AnimalTargetFix = World.AnimalTargetFix;
         next.CounterTalk = World.CounterTalk;
+        next.AnimalTargetFix = World.AnimalTargetFix;
         next.TakeIntoBackpack = World.TakeIntoBackpack;
         next.ActionLog = World.ActionLog;
         try
@@ -505,11 +505,12 @@ public sealed class WorldSession : IDisposable
         volatile bool _stopping;
 
         /// <summary>
-        /// Starts the runner's background thread.
+        /// Starts the runner's background thread, above normal like the render thread: it takes simulation items itself, so it
+        /// must not sit below its own WorkerPool helpers and get preempted mid-phase.
         /// </summary>
         public TickRunner()
         {
-            _thread = new Thread(Run) { IsBackground = true, Name = "Meitou.Tick" };
+            _thread = new Thread(Run) { IsBackground = true, Name = "Meitou.Tick", Priority = ThreadPriority.AboveNormal };
             _thread.Start();
         }
 

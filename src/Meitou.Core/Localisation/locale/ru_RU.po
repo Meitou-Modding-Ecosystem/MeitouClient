@@ -2840,8 +2840,8 @@ msgstr "Результаты поиска"
 msgid "Search settings"
 msgstr "Поиск настроек"
 
-msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
-msgstr "Если смотреть внутрь здания со скрытой крышей, дождь, пыль и пепел не падают в открытую комнату. Оригинальная игра убирает только то, что падает внутри, поэтому при отдалённой камере дождь перед зданием всё равно проходит через комнату."
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Если смотреть внутрь здания со скрытой крышей, дождь и пепел не падают в открытую комнату. Оригинальная игра убирает только то, что падает внутри, поэтому при отдалённой камере дождь перед зданием всё равно проходит через комнату."
 
 msgid "Seen into a building your characters are in, parts of other buildings that run through it are left out, such as the Hub's town wall in the Shinobi Thieves tower. The game's world places them there and draws them inside the room."
 msgstr "Если смотреть внутрь здания, где находятся ваши персонажи, части других зданий, проходящие сквозь него, не рисуются — например, городская стена Хаба в башне Воров Шиноби. Мир игры ставит их туда и рисует внутри комнаты."
@@ -3897,11 +3897,6 @@ msgstr "тёмные углы"
 msgid "day and night"
 msgstr "день и ночь"
 
-
-
-
-
-
 msgid "fixed sun"
 msgstr "неподвижное солнце"
 
@@ -4298,6 +4293,54 @@ msgstr "{1}: рядом нет свободной клетки"
 msgid "{1}: {2} settings"
 msgstr "{1}: настройки {2}"
 
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "Показать или скрыть подробности выбранного мода рядом со списком"
+
+msgid "Details"
+msgstr "Подробности"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "Сохранить список модов и порядок загрузки как пресет с этим именем"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "Взять список модов и порядок загрузки из выбранного пресета"
+
+msgid "Delete the chosen preset"
+msgstr "Удалить выбранный пресет"
+
+msgid "{1} mods, {2} enabled"
+msgstr "Модов: {1}, включено: {2}"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "Показано модов: {1} из {2}, включено: {3}"
+
+msgid "Not enabled: the game does not load it"
+msgstr "Не включён: игра его не загружает"
+
+msgid "Needs"
+msgstr "Требует"
+
+msgid "not enabled above it"
+msgstr "не включён выше него"
+
+msgid "No description"
+msgstr "Нет описания"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "Контур при наведении в расширенных настройках"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "Контур при наведении в расширенных настройках включён"
+
+msgid "Lit dust"
+msgstr "Освещённая пыль"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "Пыль и брызги из-под бегущих ног освещаются как земля вокруг, а не светятся ночью."
+
 msgid "Save"
 msgstr "Сохранить"
 
@@ -4322,14 +4365,14 @@ msgstr "Это поддерживает меня в разработке Meitou.
 msgid "Mods"
 msgstr "Моды"
 
+msgid "New preset name"
+msgstr "Имя нового пресета"
+
 msgid "Arrange"
 msgstr "Упорядочить"
 
 msgid "Search mods"
 msgstr "Поиск модов"
-
-msgid "New preset name"
-msgstr "Имя нового пресета"
 
 msgid "Graphics"
 msgstr "Графика"
@@ -4381,81 +4424,6 @@ msgstr "Не папка Kenshi: data/gamedata.base не найден."
 
 msgid "Vulkan loader not found; choose Auto/Metal, or install it later in Settings."
 msgstr "Загрузчик Vulkan не найден; выберите Auto/Metal или установите его позже в настройках."
-
-msgid "The code mods load in a different order than when this was saved"
-msgstr "Код-моды загружаются в другом порядке, чем при сохранении"
-
-msgid "{1} ('{2}') is new to this save"
-msgstr "{1} ('{2}') — новый для этого сохранения"
-
-msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
-msgstr "{1} ('{2}') работал при сохранении, а сейчас нет; его сохранённые данные сохранены, но не используются"
-
-msgid "no version"
-msgstr "нет версии"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
-msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4} (старше, чем в сохранении)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
-msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4} (крупное обновление: сохранённые данные могут не подойти)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
-msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4}"
-
-msgid "the world"
-msgstr "мир"
-
-msgid "terrain"
-msgstr "ландшафт"
-
-msgid "terrain colour map (first start only)"
-msgstr "цветовая карта ландшафта (только при первом запуске)"
-
-msgid "terrain textures"
-msgstr "текстуры ландшафта"
-
-msgid "sky"
-msgstr "небо"
-
-msgid "weather"
-msgstr "погода"
-
-msgid "weather effects"
-msgstr "погодные эффекты"
-
-msgid "water"
-msgstr "вода"
-
-msgid "buildings"
-msgstr "здания"
-
-msgid "foliage"
-msgstr "растительность"
-
-msgid "lighting"
-msgstr "освещение"
-
-msgid "people"
-msgstr "люди"
-
-msgid "the interface"
-msgstr "интерфейс"
-
-msgid "paths"
-msgstr "пути"
-
-msgid "characters"
-msgstr "персонажи"
-
-msgid "finishing"
-msgstr "завершение"
-
-msgid "the view"
-msgstr "вид"
-
-msgid "the save"
-msgstr "сохранение"
 
 msgctxt "save notice"
 msgid "Loaded"
@@ -4593,6 +4561,311 @@ msgstr "выкл."
 msgid "unavailable"
 msgstr "недоступно"
 
+msgid "Attach log.txt (it shows folder names; your user name is hidden)"
+msgstr "Приложить log.txt (в нём видны имена папок; имя пользователя скрыто)"
+
+msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
+msgstr "Этой машине для работы нужно электричество. Нужно либо построить генераторы, либо у вас кончилось топливо / нет ветра."
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "игра рисует пыль и брызги, которые поднимает бегущая нога, светящимися спрайтами, ночью такими же яркими, как днём, а в тени — как на солнце; Meitou освещает их так же, как освещена земля: солнцем сквозь его тени, небом, лампами, днём так же, как в игре (docs/render-post.md \"Lit dust\")"
+
+msgid "1 game data problem, see log.txt"
+msgstr "1 проблема с данными игры, см. log.txt"
+
+msgid "built for another version of the game"
+msgstr "создан для другой версии игры"
+
+msgid "Raids keep their progress"
+msgstr "Набеги сохраняют прогресс"
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "Набег, идущий в момент сохранения, продолжается с того же места при загрузке этого сохранения. Игра начинает текущий этап заново при каждой загрузке, поэтому его ожидания и сроки начинаются снова."
+
+msgid "Guards stop passing bodies"
+msgstr "Стражники перестают передавать тела"
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "Стражник поднимает оглушённого пленника, только когда для него есть свободная клетка, и никогда не забирает его у стражника своей фракции. Игра всё равно позволяет стражникам поднимать и хватать пленников, поэтому в полной тюрьме они без конца передают друг другу одно и то же тело."
+
+#. machine-translated
+msgid "Split stacks"
+msgstr "Разделение стопок"
+
+#. machine-translated
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Щелчок по стопке берёт её целиком, Shift+щелчок - половину, Alt+щелчок - один предмет, а Shift+Alt+щелчок открывает ползунок для выбора количества. В игре щелчок берёт один предмет, а Shift или Ctrl - всю стопку."
+
+#. machine-translated
+msgid "Split stack"
+msgstr "Разделить стопку"
+
+#. machine-translated
+msgid "Take"
+msgstr "Взять"
+
+#. machine-translated
+msgid "Take {1} of {2}"
+msgstr "Взять {1} из {2}"
+
+#. machine-translated
+msgid "Talk across shop counters"
+msgstr "Разговор через прилавок"
+
+#. machine-translated
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Оригинал, как в игре: чтобы поговорить или поторговать с торговцем за прилавком, ваш персонаж часто обходит прилавок и встаёт позади него. Meitou: к торговцам можно обратиться со стороны покупателя."
+
+#. machine-translated
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "его множители теперь — «Опыт отряда» в расширенных настройках (откройте его, чтобы задать свой для каждого навыка) и «Показывать опыт отряда»"
+
+#. machine-translated
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "его множители для отдельных навыков теперь находятся в разделе «Опыт отряда» расширенных настроек, а его метка опыта — «Показывать опыт отряда»"
+
+#. machine-translated
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "Как быстро учатся ваши персонажи и остальная ваша фракция: каждый прирост навыков и характеристик умножается на это значение (в игре: 1x). 0 останавливает рост. Щёлкните по числу, чтобы ввести точное значение. Тренировочный манекен всё равно ограничен своим уровнем. Откройте, чтобы задать отдельным навыкам собственный множитель."
+
+#. machine-translated
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "Собственный множитель этого навыка для вашей фракции вместо опыта отряда. В крайнем левом положении (Опыт отряда) он следует опыту отряда."
+
+#. machine-translated
+msgid "Show Squad XP"
+msgstr "Показывать опыт отряда"
+
+#. machine-translated
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "Показывает множитель опыта отряда («XP x10») в левом верхнем углу экрана во время игры."
+
+#. machine-translated
+msgid "STRENGTH"
+msgstr "СИЛА"
+
+#. machine-translated
+msgid "DEXTERITY"
+msgstr "ЛОВКОСТЬ"
+
+#. machine-translated
+msgid "TOUGHNESS"
+msgstr "СТОЙКОСТЬ"
+
+#. machine-translated
+msgid "PERCEPTION"
+msgstr "ВОСПРИЯТИЕ"
+
+#. machine-translated
+msgid "Dodge"
+msgstr "Уклонение"
+
+#. machine-translated
+msgid "DODGE"
+msgstr "УКЛОНЕНИЕ"
+
+#. machine-translated
+msgid "MARTIALARTS"
+msgstr "БОЕВЫЕ ИСКУССТВА"
+
+#. machine-translated
+msgid "KATANAS"
+msgstr "КАТАНЫ"
+
+#. machine-translated
+msgid "SABRES"
+msgstr "САБЛИ"
+
+#. machine-translated
+msgid "HACKERS"
+msgstr "ТЕСАКИ"
+
+#. machine-translated
+msgid "HEAVYWEAPONS"
+msgstr "ТЯЖЁЛОЕ ОРУЖИЕ"
+
+#. machine-translated
+msgid "BLUNT"
+msgstr "ДРОБЯЩЕЕ"
+
+#. machine-translated
+msgid "Polearms"
+msgstr "Древковое"
+
+#. machine-translated
+msgid "POLEARMS"
+msgstr "ДРЕВКОВОЕ"
+
+#. machine-translated
+msgid "CROSSBOWS"
+msgstr "АРБАЛЕТЫ"
+
+#. machine-translated
+msgid "TURRETS"
+msgstr "ТУРЕЛИ"
+
+#. machine-translated
+msgid "STEALTH"
+msgstr "СКРЫТНОСТЬ"
+
+#. machine-translated
+msgid "LOCKPICKING"
+msgstr "ВЗЛОМ ЗАМКОВ"
+
+#. machine-translated
+msgid "THIEVING"
+msgstr "ВОРОВСТВО"
+
+#. machine-translated
+msgid "ASSASSINATION"
+msgstr "УБИЙСТВО"
+
+#. machine-translated
+msgid "ATHLETICS"
+msgstr "АТЛЕТИКА"
+
+#. machine-translated
+msgid "SWIMMING"
+msgstr "ПЛАВАНИЕ"
+
+#. machine-translated
+msgid "MEDIC"
+msgstr "МЕДИЦИНА"
+
+#. machine-translated
+msgid "ROBOTICS"
+msgstr "РОБОТОТЕХНИКА"
+
+#. machine-translated
+msgid "ENGINEERING"
+msgstr "ИНЖЕНЕРИЯ"
+
+#. machine-translated
+msgid "SCIENCE"
+msgstr "НАУКА"
+
+#. machine-translated
+msgid "Bow smith"
+msgstr "Изготовление арбалетов"
+
+#. machine-translated
+msgid "LABOURING"
+msgstr "ТРУД"
+
+#. machine-translated
+msgid "FARMING"
+msgstr "ЗЕМЛЕДЕЛИЕ"
+
+#. machine-translated
+msgid "COOKING"
+msgstr "ГОТОВКА"
+
+#. machine-translated
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1} теперь встроен в Meitou: {2}."
+
+msgid "Adaptive exposure"
+msgstr "Адаптивная экспозиция"
+
+msgid "the game's band"
+msgstr "диапазон игры"
+
+msgid "follows the shade"
+msgstr "следует за тенью"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "экспозиция игры следует за яркостью картинки только до дневного минимума, поэтому каньон или улица в тени утёса остаётся тёмной даже в полдень; Meitou позволяет ей днём опускаться до середины между дневным и ночным минимумами игры (до 1,7 раза светлее в глубокой тени); ночи, открытые солнечные виды и помещения остаются прежними (docs/render-post.md \"Adaptive exposure\")"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "Осветляет картинку днём в глубокой тени, например в каньоне в полдень; ночи и солнечные виды не меняются."
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "Сила адаптивной экспозиции (макс. x)"
+
+msgid "Adaptive exposure strength"
+msgstr "Сила адаптивной экспозиции"
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "Насколько сильнее всего осветляется глубокая тень днём, во сколько раз от экспозиции игры."
+
+msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Если смотреть внутрь здания со скрытой крышей, дождь, пыль и пепел не падают в открытую комнату. Оригинальная игра убирает только то, что падает внутри, поэтому при отдалённой камере дождь перед зданием всё равно проходит через комнату."
+
+msgid "The code mods load in a different order than when this was saved"
+msgstr "Код-моды загружаются в другом порядке, чем при сохранении"
+
+msgid "{1} ('{2}') is new to this save"
+msgstr "{1} ('{2}') — новый для этого сохранения"
+
+msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
+msgstr "{1} ('{2}') работал при сохранении, а сейчас нет; его сохранённые данные сохранены, но не используются"
+
+msgid "no version"
+msgstr "нет версии"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
+msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4} (старше, чем в сохранении)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
+msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4} (крупное обновление: сохранённые данные могут не подойти)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
+msgstr "{1} ('{2}') при сохранении был версии {3}, а сейчас {4}"
+
+msgid "the world"
+msgstr "мир"
+
+msgid "terrain"
+msgstr "ландшафт"
+
+msgid "terrain colour map (first start only)"
+msgstr "цветовая карта ландшафта (только при первом запуске)"
+
+msgid "terrain textures"
+msgstr "текстуры ландшафта"
+
+msgid "sky"
+msgstr "небо"
+
+msgid "weather"
+msgstr "погода"
+
+msgid "weather effects"
+msgstr "погодные эффекты"
+
+msgid "water"
+msgstr "вода"
+
+msgid "buildings"
+msgstr "здания"
+
+msgid "foliage"
+msgstr "растительность"
+
+msgid "lighting"
+msgstr "освещение"
+
+msgid "people"
+msgstr "люди"
+
+msgid "the interface"
+msgstr "интерфейс"
+
+msgid "paths"
+msgstr "пути"
+
+msgid "characters"
+msgstr "персонажи"
+
+msgid "finishing"
+msgstr "завершение"
+
+msgid "the view"
+msgstr "вид"
+
+msgid "the save"
+msgstr "сохранение"
+
 msgid "{1,num} game data problem, see log.txt"
 msgid_plural "{1,num} game data problems, see log.txt"
 msgstr[0] "{1,num} проблема с данными игры, см. log.txt"
@@ -4607,12 +4880,6 @@ msgid_plural "{1,num} members"
 msgstr[0] "{1,num} человек"
 msgstr[1] "{1,num} человека"
 msgstr[2] "{1,num} человек"
-
-msgid "Attach log.txt (it shows folder names; your user name is hidden)"
-msgstr "Приложить log.txt (в нём видны имена папок; имя пользователя скрыто)"
-
-msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
-msgstr "Этой машине для работы нужно электричество. Нужно либо построить генераторы, либо у вас кончилось топливо / нет ветра."
 
 msgid "Exit Game"
 msgstr "Выйти из игры"
@@ -4641,23 +4908,5 @@ msgstr "Пиратский"
 msgid "Morse code"
 msgstr "Азбука Морзе"
 
-msgid "Split stacks"
-msgstr "Делить стопки"
-
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "Щелчок по стопке берёт её целиком, Shift+щелчок — половину, Ctrl+щелчок — один предмет, а Shift+Ctrl+щелчок спрашивает количество ползунком. В игре щелчок берёт один предмет, а Shift или Ctrl — всю стопку."
-
-msgid "Talk across shop counters"
-msgstr "Говорить через прилавок"
-
-msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
-msgstr "Как в игре: чтобы поговорить или поторговать с продавцом за прилавком, ваш персонаж часто обходит прилавок и встаёт за ним. Meitou: до продавцов можно дотянуться со стороны покупателя."
-
-msgid "Split stack"
-msgstr "Разделить стопку"
-
-msgid "Take"
-msgstr "Взять"
-
-msgid "Take {1} of {2}"
-msgstr "Взять {1} из {2}"

@@ -2840,8 +2840,8 @@ msgstr "검색 결과"
 msgid "Search settings"
 msgstr "설정 검색"
 
-msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
-msgstr "지붕을 숨긴 건물 안을 볼 때 열린 방 위로 비, 먼지, 재가 내리지 않습니다. 게임은 안에 떨어지는 것만 빼기 때문에 카메라를 뒤로 빼면 앞쪽 비가 여전히 방을 가로지릅니다."
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "지붕을 숨긴 건물 안을 볼 때 열린 방 위로 비나 재가 내리지 않습니다. 게임은 안에 떨어지는 것만 빼기 때문에 카메라를 뒤로 빼면 앞쪽 비가 여전히 방을 가로지릅니다."
 
 msgid "Seen into a building your characters are in, parts of other buildings that run through it are left out, such as the Hub's town wall in the Shinobi Thieves tower. The game's world places them there and draws them inside the room."
 msgstr "캐릭터가 있는 건물 안을 볼 때 그 건물을 관통하는 다른 건물의 부분을 뺍니다. 예를 들어 Shinobi Thieves 탑 안의 Hub 성벽입니다. 게임의 세계는 그것을 그곳에 두고 방 안에 그립니다."
@@ -4291,6 +4291,54 @@ msgstr "{1}: 근처에 빈 우리가 없습니다"
 msgid "{1}: {2} settings"
 msgstr "{1}: 설정 {2}개"
 
+msgid "Image"
+msgstr "이미지"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "선택한 모드의 세부 정보를 목록 옆에 표시하거나 숨기기"
+
+msgid "Details"
+msgstr "세부 정보"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "모드 목록과 로드 순서를 이 이름의 프리셋으로 저장"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "고른 프리셋의 모드 목록과 로드 순서 가져오기"
+
+msgid "Delete the chosen preset"
+msgstr "고른 프리셋 삭제"
+
+msgid "{1} mods, {2} enabled"
+msgstr "모드 {1}개, {2}개 활성화"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "모드 {2}개 중 {1}개 표시, {3}개 활성화"
+
+msgid "Not enabled: the game does not load it"
+msgstr "비활성화됨: 게임이 불러오지 않습니다"
+
+msgid "Needs"
+msgstr "필요"
+
+msgid "not enabled above it"
+msgstr "위에서 활성화되지 않음"
+
+msgid "No description"
+msgstr "설명 없음"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "고급 설정의 마우스 오버 윤곽선"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "고급 설정의 마우스 오버 윤곽선 켜짐"
+
+msgid "Lit dust"
+msgstr "조명받는 먼지"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "달리는 발이 일으키는 먼지와 물보라를 밤에 빛나게 하지 않고 주변 지면처럼 비춥니다."
+
 msgid "Save"
 msgstr "저장"
 
@@ -4315,14 +4363,14 @@ msgstr "Meitou 개발을 후원해 주세요. ko-fi.com/martinvlcek"
 msgid "Mods"
 msgstr "모드"
 
+msgid "New preset name"
+msgstr "새 프리셋 이름"
+
 msgid "Arrange"
 msgstr "정렬"
 
 msgid "Search mods"
 msgstr "모드 검색"
-
-msgid "New preset name"
-msgstr "새 프리셋 이름"
 
 msgid "Graphics"
 msgstr "그래픽"
@@ -4374,81 +4422,6 @@ msgstr "Kenshi 폴더가 아닙니다: data/gamedata.base 없음."
 
 msgid "Vulkan loader not found; choose Auto/Metal, or install it later in Settings."
 msgstr "Vulkan 로더를 찾을 수 없습니다. Auto/Metal을 선택하거나 나중에 설정에서 설치하세요."
-
-msgid "The code mods load in a different order than when this was saved"
-msgstr "코드 모드가 저장 당시와 다른 순서로 로드됩니다"
-
-msgid "{1} ('{2}') is new to this save"
-msgstr "{1}('{2}')은(는) 이 저장에 새로 추가되었습니다"
-
-msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
-msgstr "{1}('{2}')은(는) 저장 당시 실행 중이었지만 지금은 아닙니다. 저장된 데이터는 유지되지만 사용되지 않습니다"
-
-msgid "no version"
-msgstr "버전 없음"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
-msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다(저장 파일의 버전보다 오래됨)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
-msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다(메이저 업데이트: 저장된 데이터가 맞지 않을 수 있음)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
-msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다"
-
-msgid "the world"
-msgstr "세계"
-
-msgid "terrain"
-msgstr "지형"
-
-msgid "terrain colour map (first start only)"
-msgstr "지형 색상 맵(첫 실행 시에만)"
-
-msgid "terrain textures"
-msgstr "지형 텍스처"
-
-msgid "sky"
-msgstr "하늘"
-
-msgid "weather"
-msgstr "날씨"
-
-msgid "weather effects"
-msgstr "날씨 효과"
-
-msgid "water"
-msgstr "물"
-
-msgid "buildings"
-msgstr "건물"
-
-msgid "foliage"
-msgstr "식생"
-
-msgid "lighting"
-msgstr "조명"
-
-msgid "people"
-msgstr "사람들"
-
-msgid "the interface"
-msgstr "인터페이스"
-
-msgid "paths"
-msgstr "경로"
-
-msgid "characters"
-msgstr "캐릭터"
-
-msgid "finishing"
-msgstr "마무리"
-
-msgid "the view"
-msgstr "시점"
-
-msgid "the save"
-msgstr "저장 파일"
 
 msgctxt "save notice"
 msgid "Loaded"
@@ -4584,6 +4557,311 @@ msgstr "끔"
 msgid "unavailable"
 msgstr "사용 불가"
 
+msgid "Attach log.txt (it shows folder names; your user name is hidden)"
+msgstr "log.txt 첨부(폴더 이름이 보입니다. 사용자 이름은 가려집니다)"
+
+msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
+msgstr "이 기계가 작동하려면 전기가 필요합니다. 발전기를 지어야 하거나, 연료가 떨어졌거나 바람이 없습니다."
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "게임은 달리는 발이 일으키는 먼지와 물보라를 빛나는 스프라이트로 그려서, 밤에도 낮처럼, 그늘에서도 햇빛 아래처럼 밝습니다. Meitou는 땅이 비춰지는 것처럼 비춥니다: 그림자를 통한 태양, 하늘, 등불. 낮에는 게임과 같습니다 (docs/render-post.md \"Lit dust\")"
+
+msgid "1 game data problem, see log.txt"
+msgstr "게임 데이터 문제 1개, log.txt 참조"
+
+msgid "built for another version of the game"
+msgstr "다른 버전의 게임용으로 만들어짐"
+
+msgid "Raids keep their progress"
+msgstr "습격이 진행 상황을 유지"
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "저장할 때 진행 중이던 습격은 그 저장을 불러오면 있던 곳에서 이어집니다. 게임은 불러올 때마다 현재 단계를 처음부터 다시 시작하므로 대기 시간과 제한 시간이 다시 시작됩니다."
+
+msgid "Guards stop passing bodies"
+msgstr "경비병이 몸을 주고받지 않음"
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "경비병은 빈 우리가 있을 때만 기절한 죄수를 들어 올리며, 같은 세력의 경비병에게서 빼앗지 않습니다. 게임은 경비병이 그래도 죄수를 들어 올리고 붙잡게 해서, 꽉 찬 감옥에서는 같은 몸을 끝없이 주고받습니다."
+
+#. machine-translated
+msgid "Split stacks"
+msgstr "스택 분할"
+
+#. machine-translated
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "스택을 클릭하면 전체를, Shift+클릭으로 절반을, Alt+클릭으로 1개를 집으며, Shift+Alt+클릭은 슬라이더로 수량을 묻습니다. 원작에서는 클릭으로 1개, Shift 또는 Ctrl로 스택 전체를 집습니다."
+
+#. machine-translated
+msgid "Split stack"
+msgstr "스택 분할"
+
+#. machine-translated
+msgid "Take"
+msgstr "가져가기"
+
+#. machine-translated
+msgid "Take {1} of {2}"
+msgstr "{2}개 중 {1}개 가져가기"
+
+#. machine-translated
+msgid "Talk across shop counters"
+msgstr "상점 카운터 너머로 대화"
+
+#. machine-translated
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "원작(게임과 동일): 카운터 뒤의 상인과 대화하거나 거래하려면 캐릭터가 종종 카운터를 돌아 상인 뒤에 섭니다. Meitou: 카운터의 손님 쪽에서도 상인에게 닿을 수 있습니다."
+
+#. machine-translated
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "해당 배수는 이제 고급 설정의 분대 XP(각 기술별 배수는 펼쳐서 확인)와 분대 XP 표시로 옮겨졌습니다"
+
+#. machine-translated
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "기술별 배수는 이제 고급 설정의 분대 XP 아래에 있으며, XP 표시는 분대 XP 표시입니다"
+
+#. machine-translated
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "당신의 캐릭터와 나머지 세력원이 배우는 속도: 모든 기술과 능력치 상승에 이 값을 곱합니다(게임: 1x). 0이면 성장이 멈춥니다. 숫자를 클릭하면 정확한 값을 입력할 수 있습니다. 훈련용 허수아비는 여전히 자체 한계 수준에서 멈춥니다. 펼치면 개별 기술에 따로 배수를 지정할 수 있습니다."
+
+#. machine-translated
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "분대 XP 대신 당신의 세력에 적용되는 이 기술만의 배수. 맨 왼쪽(분대 XP)에서는 분대 XP를 따릅니다."
+
+#. machine-translated
+msgid "Show Squad XP"
+msgstr "분대 XP 표시"
+
+#. machine-translated
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "플레이 중 화면 왼쪽 위에 분대 XP 배수(\"XP x10\")를 표시합니다."
+
+#. machine-translated
+msgid "STRENGTH"
+msgstr "근력"
+
+#. machine-translated
+msgid "DEXTERITY"
+msgstr "민첩"
+
+#. machine-translated
+msgid "TOUGHNESS"
+msgstr "강인함"
+
+#. machine-translated
+msgid "PERCEPTION"
+msgstr "지각"
+
+#. machine-translated
+msgid "Dodge"
+msgstr "회피"
+
+#. machine-translated
+msgid "DODGE"
+msgstr "회피"
+
+#. machine-translated
+msgid "MARTIALARTS"
+msgstr "무술"
+
+#. machine-translated
+msgid "KATANAS"
+msgstr "카타나"
+
+#. machine-translated
+msgid "SABRES"
+msgstr "사브르"
+
+#. machine-translated
+msgid "HACKERS"
+msgstr "해커"
+
+#. machine-translated
+msgid "HEAVYWEAPONS"
+msgstr "중병기"
+
+#. machine-translated
+msgid "BLUNT"
+msgstr "둔기"
+
+#. machine-translated
+msgid "Polearms"
+msgstr "장병기"
+
+#. machine-translated
+msgid "POLEARMS"
+msgstr "장병기"
+
+#. machine-translated
+msgid "CROSSBOWS"
+msgstr "석궁"
+
+#. machine-translated
+msgid "TURRETS"
+msgstr "포탑"
+
+#. machine-translated
+msgid "STEALTH"
+msgstr "은신"
+
+#. machine-translated
+msgid "LOCKPICKING"
+msgstr "자물쇠 따기"
+
+#. machine-translated
+msgid "THIEVING"
+msgstr "절도"
+
+#. machine-translated
+msgid "ASSASSINATION"
+msgstr "암살"
+
+#. machine-translated
+msgid "ATHLETICS"
+msgstr "운동"
+
+#. machine-translated
+msgid "SWIMMING"
+msgstr "수영"
+
+#. machine-translated
+msgid "MEDIC"
+msgstr "의술"
+
+#. machine-translated
+msgid "ROBOTICS"
+msgstr "로봇공학"
+
+#. machine-translated
+msgid "ENGINEERING"
+msgstr "공학"
+
+#. machine-translated
+msgid "SCIENCE"
+msgstr "과학"
+
+#. machine-translated
+msgid "Bow smith"
+msgstr "활 제작"
+
+#. machine-translated
+msgid "LABOURING"
+msgstr "노동"
+
+#. machine-translated
+msgid "FARMING"
+msgstr "농사"
+
+#. machine-translated
+msgid "COOKING"
+msgstr "요리"
+
+#. machine-translated
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1}은(는) 이제 Meitou에 내장되어 있습니다: {2}."
+
+msgid "Adaptive exposure"
+msgstr "적응형 노출"
+
+msgid "the game's band"
+msgstr "게임의 범위"
+
+msgid "follows the shade"
+msgstr "그늘을 따름"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "게임의 노출은 화면 밝기를 낮 최솟값까지만 따라가므로 정오에도 협곡이나 절벽 그늘의 거리는 어둡게 남습니다. Meitou는 낮에 게임의 낮과 밤 최솟값의 중간까지 노출을 맞춥니다(깊은 그늘에서 최대 1.7배 밝게). 밤, 탁 트인 맑은 풍경, 실내는 이전과 같습니다 (docs/render-post.md \"Adaptive exposure\")"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "낮의 깊은 그늘(정오의 협곡 등)에서 화면을 밝게 합니다. 밤과 맑은 풍경은 그대로입니다."
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "적응형 노출 강도(최대 x)"
+
+msgid "Adaptive exposure strength"
+msgstr "적응형 노출 강도"
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "낮의 깊은 그늘을 최대 얼마나 밝게 할지(게임 노출의 배수)."
+
+msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "지붕을 숨긴 건물 안을 볼 때 열린 방 위로 비, 먼지, 재가 내리지 않습니다. 게임은 안에 떨어지는 것만 빼기 때문에 카메라를 뒤로 빼면 앞쪽 비가 여전히 방을 가로지릅니다."
+
+msgid "The code mods load in a different order than when this was saved"
+msgstr "코드 모드가 저장 당시와 다른 순서로 로드됩니다"
+
+msgid "{1} ('{2}') is new to this save"
+msgstr "{1}('{2}')은(는) 이 저장에 새로 추가되었습니다"
+
+msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
+msgstr "{1}('{2}')은(는) 저장 당시 실행 중이었지만 지금은 아닙니다. 저장된 데이터는 유지되지만 사용되지 않습니다"
+
+msgid "no version"
+msgstr "버전 없음"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
+msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다(저장 파일의 버전보다 오래됨)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
+msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다(메이저 업데이트: 저장된 데이터가 맞지 않을 수 있음)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
+msgstr "{1}('{2}')은(는) 저장 당시 {3}였고 지금은 {4}입니다"
+
+msgid "the world"
+msgstr "세계"
+
+msgid "terrain"
+msgstr "지형"
+
+msgid "terrain colour map (first start only)"
+msgstr "지형 색상 맵(첫 실행 시에만)"
+
+msgid "terrain textures"
+msgstr "지형 텍스처"
+
+msgid "sky"
+msgstr "하늘"
+
+msgid "weather"
+msgstr "날씨"
+
+msgid "weather effects"
+msgstr "날씨 효과"
+
+msgid "water"
+msgstr "물"
+
+msgid "buildings"
+msgstr "건물"
+
+msgid "foliage"
+msgstr "식생"
+
+msgid "lighting"
+msgstr "조명"
+
+msgid "people"
+msgstr "사람들"
+
+msgid "the interface"
+msgstr "인터페이스"
+
+msgid "paths"
+msgstr "경로"
+
+msgid "characters"
+msgstr "캐릭터"
+
+msgid "finishing"
+msgstr "마무리"
+
+msgid "the view"
+msgstr "시점"
+
+msgid "the save"
+msgstr "저장 파일"
+
 msgid "{1,num} game data problem, see log.txt"
 msgid_plural "{1,num} game data problems, see log.txt"
 msgstr[0] "게임 데이터 문제 {1,num}개, log.txt 참조"
@@ -4594,12 +4872,6 @@ msgstr "{1,num}일째"
 msgid "{1,num} member"
 msgid_plural "{1,num} members"
 msgstr[0] "{1,num}명"
-
-msgid "Attach log.txt (it shows folder names; your user name is hidden)"
-msgstr "log.txt 첨부(폴더 이름이 보입니다. 사용자 이름은 가려집니다)"
-
-msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
-msgstr "이 기계가 작동하려면 전기가 필요합니다. 발전기를 지어야 하거나, 연료가 떨어졌거나 바람이 없습니다."
 
 msgid "Exit Game"
 msgstr "게임 종료"
@@ -4628,23 +4900,5 @@ msgstr "해적 말투"
 msgid "Morse code"
 msgstr "모스 부호"
 
-msgid "Split stacks"
-msgstr "묶음 나누기"
-
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "묶음을 클릭하면 전부, Shift+클릭은 절반, Ctrl+클릭은 하나를 집고, Shift+Ctrl+클릭은 슬라이더로 몇 개인지 묻습니다. 게임에서는 클릭이 하나를, Shift나 Ctrl이 묶음 전체를 집습니다."
-
-msgid "Talk across shop counters"
-msgstr "상점 계산대 너머로 대화"
-
-msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
-msgstr "원작 그대로: 계산대 뒤의 상인과 대화하거나 거래하려면 캐릭터가 종종 계산대를 돌아 상인 뒤에 섭니다. Meitou: 계산대의 손님 쪽에서 상인에게 닿을 수 있습니다."
-
-msgid "Split stack"
-msgstr "묶음 나누기"
-
-msgid "Take"
-msgstr "가져가기"
-
-msgid "Take {1} of {2}"
-msgstr "{2}개 중 {1}개 가져가기"

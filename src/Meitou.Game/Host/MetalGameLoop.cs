@@ -799,8 +799,8 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
         host.Session.World.PrisonPoseFix = host.Config.FixPrisonPose;
         host.Session.World.CagedAnimalFix = host.Config.FixCagedAnimals;
         host.Session.World.BagSearchFix = host.Config.FixBagSearch;
-        host.Session.World.AnimalTargetFix = host.Config.FixAnimalTarget;
         host.Session.World.CounterTalk = host.Config.CounterTalk;
+        host.Session.World.AnimalTargetFix = host.Config.FixAnimalTarget;
         host.Session.World.TakeIntoBackpack = host.Config.TakeIntoBackpack;
         host.Session.World.ActionLog = host.ActionLogs.Log;
         host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed);
@@ -1126,6 +1126,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             SpeedUnit = host.Config.SpeedUnit,
             Floaters = host.Config.Floaters,
             FeedbackButtonInPlay = host.Config.FeedbackButton,
+            XpLabel = Settings.SkillXp.Label(host.Config),
         };
         host.Player = _hud;
         _hud.LoadUi(host.GameOptions.UiMode ?? host.Config.UiMode, host.Assets.Find);
@@ -1342,8 +1343,8 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             PrisonPoseChanged = on => host.Session.World.PrisonPoseFix = on,
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
-            AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
             CounterTalkChanged = on => host.Session.World.CounterTalk = on,
+            AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TutorialsChanged = on => { if (host.Saves.Tutorials is { } t) t.Enabled = on; },
             ResetTutorials = () => host.Saves.Tutorials?.Reset(),
@@ -1692,6 +1693,8 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             v => _worldGpu.ParticleDensity = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Night grading strength (0 = game)", 0, 1, () => host.WorldOptions.Post.NightGradeStrength,
             v => host.WorldOptions.Post.NightGradeStrength = MathF.Round(v * 20) / 20, "0.00"));
+        sliders.Add(new Slider(WorldFrame.AdaptiveExposureSlider, 1, 3, () => host.WorldOptions.Post.AdaptiveExposureStrength,
+            v => host.WorldOptions.Post.AdaptiveExposureStrength = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Light shafts strength", 0, 1, () => host.WorldOptions.Post.ShaftStrength,
             v => host.WorldOptions.Post.ShaftStrength = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Light shafts air (0 = none)", 0, 4, () => host.WorldOptions.Post.ShaftAir,
@@ -2896,7 +2899,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             && (_tour.Active || !host.Session.Camera.IsFree && !_tourHolds))
         {
             var clearEye = host.Camera.Eye;
-            float shortfall = host.Session.Camera.EyeGroundAt(clearEye.X, clearEye.Z) +
+            float shortfall = host.Session.Camera.EyeGroundAt(clearEye.X, clearEye.Z, clearEye.Y) +
                 Meitou.Data.World.KenshiCamera.EyeClearance(host.Camera.Distance) - clearEye.Y;
             // Over a hair only.
             if (shortfall > 1e-3f) host.Camera.Target += new Vector3(0, shortfall, 0);

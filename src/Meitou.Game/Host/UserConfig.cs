@@ -310,12 +310,12 @@ sealed class UserConfig
     public float InGameTransitionSpeed { get; set; } = 1.5f;
     /// <summary>
     /// A double click (or double tap) on a squad member farther than <see cref="FlightDistance"/> from the view flies the camera there in an arc
-    /// (Advanced settings; Meitou only, the game cuts).
+    /// (Advanced settings; off by default, the game cuts).
     /// </summary>
     public bool CharacterFlights { get; set; } = false;
     /// <summary>
     /// Keeps the object meshes and textures and the terrain textures around every squad bar character loaded, not only around the camera (Advanced
-    /// settings; Meitou only, costs video memory).
+    /// settings; on by default, costs video memory).
     /// </summary>
     public bool KeepTexturesAtCharacters { get; set; } = true;
     /// <summary>
@@ -419,6 +419,15 @@ sealed class UserConfig
     /// </summary>
     public float SquadXp { get; set; } = 1;
     /// <summary>
+    /// A skill's own multiplier in place of <see cref="SquadXp"/> (Advanced settings, under "Squad XP"), by its STATS field name
+    /// (<c>strength</c>, <c>attack</c>...; <see cref="SkillXp"/>); a skill not listed follows Squad XP.
+    /// </summary>
+    public Dictionary<string, float> SquadSkillXp { get; set; } = [];
+    /// <summary>
+    /// The Squad XP multiplier ("XP x10") at the top left of the screen during play (Advanced settings "Show Squad XP"; off).
+    /// </summary>
+    public bool ShowSquadXp { get; set; }
+    /// <summary>
     /// What every other character's XP gains are multiplied by (Advanced settings "Others' XP"; 1, as in the game).
     /// </summary>
     public float OthersXp { get; set; } = 1;
@@ -427,11 +436,12 @@ sealed class UserConfig
     /// </summary>
     public const float MinXpRate = 0, MaxXpRate = 1000;
     /// <summary>
-    /// The mods (by <c>mods.cfg</c> name) whose settings Meitou has taken into its own built-in feature, once each (<c>BuiltInMods</c>).
+    /// The mods (by <c>mods.cfg</c> name) whose settings Meitou has taken into its own built-in feature, once each (<c>BuiltInMods</c>); a name
+    /// followed by " (again)" marks a second takeover, of settings a later Meitou added to the feature.
     /// </summary>
     public List<string> AdoptedMods { get; set; } = [];
     /// <summary>
-    /// A loaded or imported save starts paused (Advanced settings, a Faithful / Meitou switch; on by default, Meitou: in the game it runs at once).
+    /// A loaded or imported save starts paused (Advanced settings; on by default; in the game it runs at once).
     /// <c>--load</c> is not paused.
     /// </summary>
     public bool PauseOnLoad { get; set; } = true;
@@ -511,15 +521,16 @@ sealed class UserConfig
     /// </summary>
     public bool FixBagSearch { get; set; } = true;
     /// <summary>
-    /// A dialogue line's search of the player's squad never makes an animal the conversation's target (Fixes settings; off: the first member
-    /// found, as the game does; docs/game/dialogue.md "Retargeting").
-    /// </summary>
-    public bool FixAnimalTarget { get; set; } = true;
-    /// <summary>
     /// A shopkeeper at its counter is talked to from the counter's front (Gameplay settings, Meitou; off: the game's talk reach, so the customer
     /// walks round behind the counter; <c>World.CounterTalk</c>).
     /// </summary>
     public bool CounterTalk { get; set; } = true;
+
+    /// <summary>
+    /// A dialogue line's search of the player's squad never makes an animal the conversation's target (Fixes settings; off: the first member
+    /// found, as the game does; docs/game/dialogue.md "Retargeting").
+    /// </summary>
+    public bool FixAnimalTarget { get; set; } = true;
     /// <summary>
     /// Other buildings' parts (the Hub's wall in the Shinobi Thieves tower) are cut inside a building in the interior view (Fixes settings; off:
     /// drawn, as the game does; docs/render-interior-cut.md).
@@ -1060,6 +1071,7 @@ sealed class UserConfig
         AdoptedMods ??= [];
         SquadXp = float.IsFinite(SquadXp) ? Math.Clamp(SquadXp, MinXpRate, MaxXpRate) : 1;
         OthersXp = float.IsFinite(OthersXp) ? Math.Clamp(OthersXp, MinXpRate, MaxXpRate) : 1;
+        SquadSkillXp = SkillXp.Kept(SquadSkillXp);
         foreach (var (mod, saved) in ModSettings.ToList())
             if (saved is null) ModSettings.Remove(mod);
     }

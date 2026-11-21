@@ -14,7 +14,7 @@ accumulate `min(realDt, 0.05)*speed` (the original's cap before the speed multip
 `AchievedSpeed` reports it. Control ticks precede simulation ticks; a speed change applies
 to the entire frame. `WorldSession` rejects unequal world/clock tick lengths, owns snapshots,
 clocks, input and camera, and disposes systems/services. Of a frame's ticks only the last two publish
-a snapshot (`RunTick(publish, views)`), the pair the host interpolates between; the earlier of them only its motion ([snapshots](#snapshots)). Advanced → Pause after loading (`PauseOnLoad`, a Faithful / Meitou switch, Meitou and on by default; Faithful runs a loaded save at once as the game does, [game loop](game/game-loop.md)) pauses the speed after a menu load or import; `--load` runs. Advanced → Pause while loading (`LoadingPause`, a Faithful / Meitou switch, Meitou and off by default) holds the world without touching the speed while the zones round the camera load, as the game does ([loading pause](game/game-loop.md#loading-pause)).
+a snapshot (`RunTick(publish, views)`), the pair the host interpolates between; the earlier of them only its motion ([snapshots](#snapshots)). Advanced → Pause after loading (`PauseOnLoad`, on by default; in the game a loaded save runs at once, [game loop](game/game-loop.md)) pauses the speed after a menu load or import; `--load` runs. Advanced → Pause while loading (`LoadingPause`, a Faithful / Meitou switch, Meitou and off by default) holds the world without touching the speed while the zones round the camera load, as the game does ([loading pause](game/game-loop.md#loading-pause)).
 
 ### Engine choices against the original's frame loop
 
@@ -46,6 +46,10 @@ other view the last snapshot's, as the host reads nothing else of `PreviousSnaps
 tick). **Observed** (play bench, `bench-bases-2026-10-27`, ~270-290 characters, two interleaved pairs, 2026-11-19; with the 64-slot chunks of
 [threading](#threading)): the publish 3.7-4.3 -> 1.9-2.1 ms a frame in speed-x5 and paths, 2.0-2.4 -> 1.2-1.4 ms a tick at 1x (its characters
 1.1-1.5 -> 0.45-0.6).
+Machine views (**engine choice**, `MachineViewCache`): each publish compares every value a machine's `MachineSnapshot` shows (numbers by bits,
+strings and data records by reference, each stored item's fields); an unchanged machine keeps its snapshot and item views, and `Machines` and
+`MachinesVersion` change only when some view or the set of machines did. `Machines.Worked` counts the ticks the machines work, which the smiths and
+research views (they also read characters) refresh on.
 
 ### Tick ahead
 
@@ -59,7 +63,7 @@ the session's snapshots, and the world reads the renderer only through the weath
 (**engine choice**): a command lands a batch later (one tick, 33 ms, at 1x; about a frame's ticks at 5x); blood marks and sounds come out with the tick, up to a batch before it
 shows; a pause with ticks ahead takes them at once (the picture jumps, then the paused interface's republished snapshots show); a save takes them first
 (`SettleAhead`); `ReplaceWorld` drops them. Display → World tick alongside drawing (`TickAhead`): Faithful never (the world, then the draw); Meitou, the default, once
-a tick takes 4 ms (`WorldSession.TickMs`, smoothed over about ten ticks) until it is under 2 ms (a tick ahead is slower, sharing the cores); Always
+a tick takes 4 ms (`WorldSession.TickMs`, smoothed over about ten ticks, times the game speed above 1x) until it is under 2 ms (a tick ahead is slower, sharing the cores); Always
 every frame. Off whatever the setting in stills, the duel, recorded flights and the play benchmark (their ticks stay in step with the frame).
 F12's `tick ahead` row is its wall time; `outside ticks` leaves it out.
 
@@ -120,7 +124,9 @@ Effects sort by `(target,source,system,sequence)`; spatial-neighbour iteration o
 Commands apply by tick and queue order. Simplification: the original drains a character's command deque from its head each frame; the head is accepted or refused by `FUN_1405d0db0` and a refusal blocks everything behind it and is retried every frame (`FUN_1405d2c30`:15-41, **Verified**), while Meitou's `CommandQueue.TakeDue` removes every due command and a consumer that does not apply one drops it. In-tick orders use serial `World.Defer`; deferred orders
 precede host orders for their due tick. No concurrent host enqueue may alter that ordering.
 Randomness: stateless `Rng.Hash(seed,entityKey,purpose,counter)`; changing purpose/salt changes rolls.
-Worker partitions are `threads*2`, minimum 16 slots (game 32: 128 left a 500-character battle 3 partitions); one worker means caller execution.
+Worker partitions are `threads*2`, minimum 16 slots (game 32: 128 left a 500-character battle 3 partitions). The caller runs partitions
+alongside `threads - 1` above-normal helpers that spin briefly between phases, then park; one thread means caller execution. Navmesh and foliage
+build loops run on their own below-normal threads (`NavBuildScheduler`) besides the calling thread, not the normal-priority thread pool.
 Async path and population results enter at tick boundaries and a navmesh zone goes live when its build ends, also in the middle of a tick; arrival
 timing is not repeatable in play. What play reads that no tick decides (**Observed**, code reading, #1056):
 - Services on their own threads: `PopulationSettings.Background` (town, wild and roamer builds), `PathService` without `SynchronousPaths`,
@@ -256,7 +262,9 @@ first step, `ListTests.OrderBlocked`: the first list B entry `RowStates` evaluat
 repertoire that leads to a step (`ListTests.ProviderSearch`, the planner's rules) blocks it with that state's line, `StateFailureLines`, so a Follow on a downed character
 waits silently until it is up; one with a provider is a step the act-out carries out first, the row's list B tested once the entry it provides holds:
 `OrderEntry.Planned`, `OrderEntry.RowRuns`).
-- A blocked front shows its text (a bark, or a posted message) and stays queued; the character's task is left alone, so its jobs, goals and reactions go on (S5). `Gone` pops it.
+- A blocked front shows its text (a bark, or a posted message) and stays queued; the character's task is left alone, so its jobs, goals and reactions go on (S5). `Gone` pops it,
+  except a front not started whose target character or site resolves to nothing now and whose plan fails on that (`ListTests.BlockedOnGone`): it stays blocked, as the
+  original's order keeps its hand ([vanished targets](game/ai-tasks.md#precedence)).
   An order given to a character out cold waits queued (the chooser does not run while it is carried, out cold or dead, `DecisionSystem.Down`, for the player's
   characters too) and is wiped when it wakes outside a bed or cage (the wake's get-up order has the clear flag, below).
 - **The body's orders** (`Combat.BodyOrders`, the original's engine order givers, [order givers](game/ai-tasks.md#order-givers); any character, the player's
@@ -877,7 +885,7 @@ random for `random yaw`, owned by the building's faction (`GroundItem.OwnedBy`) 
 loose items (`ownedby` null); an empty slot's due game hour is saved as `meitou slot due item<n>` in its building's GAMESTATE_BUILDING (`ItemSlots.WriteDue`,
 [save keys](formats/save.md)), and a slot saved empty waits for it (capped at its longest respawn time from the load) and claims nothing; on a reload each other slot
 takes the nearest saved item of its group's records lying within 2 of it in XZ and 10 in height, and nearer to it in 3D than to the building's other slots (shelf spots
-lie closer than 2, two in the Hub's bar 1.6 apart, **Observed**, and shelves stand above one another); a save from the original has no such key, so a slot emptied in
+lie closer than 2, two in the Hub's bar 1.6 apart, **Observed**, and shelves stand above one another); unclaimed saved items lying within 0.1 in 3D of an inactive interior layout's slot of a non-emptied town building (matching that slot's group) are dropped on registration so items from an older or replaced layout do not float in mid-air (#1077); a save from the original has no such key, so a slot emptied in
 it is due at once after the load; upper-floor items are not hidden when a lower floor is viewed. The original, loading such a save, generates the interiors again beside those items.
 
 ## Items and eating
@@ -1004,7 +1012,7 @@ paths; preserve current ordering.
 Relation events (`FactionDeeds`, built with the aggro part; [factions 3.5](game/factions-squads-towns.md#35-what-fires-relation-changes-observed-decompile)):
 every landed melee blow and bolt, the cagings of the player, the police and kidnappers, and first aid on an unconscious or crawling member, for
 any two factions, weighted by the victim's `faction importance` and the town it stands in (`PopulationData.TownAt`, its squad's
-`Town`). The striker's rating is its goal's intended aggression (`FactionDeeds.Rating`: the mind's goal in a fight its AI started, else the fight's row, a defence 0). Engine choices: a death is credited only at the killing blow (a later
+`Town`). The striker's rating is its goal's intended aggression (`TaskAggression.OfGoal`: the started order's row for an order-owned task such as 240 arrest, the mind's goal for a goal duty such as 204 or a fight its AI started, else the fight's row, a defence 0). Engine choices: a death is credited only at the killing blow (a later
 bleed-out has no killer); first-aid gratitude on every bandaging update. The attack order and looting change no relation. A
 witness that regards the culprit as friendly (slot 126, squad tags included) and cares about the victim takes 20 off once: its squad drops TEMP_ALLY on the culprit and tags it TEMP_ENEMY, so it no longer regards it as friendly (`CrimeSystem.Betrayed`; **Verified**, the witness function `FUN_140854d10`'s ally branch, tags 3 and 4 before the relation call). Testing the faction relation alone, every witness took 20 off every sweep and a town's allies went to war with it within seconds (#948). Wars:
 `PlayerRelations.DeclareWar` / `EndWar` (one direction, the speaker's table; the war flag is not saved). Campaigns and diplomats in the aggro
@@ -1297,7 +1305,12 @@ which an order's hold refuses. The chain's rows and states are in [AI tasks](gam
   `repetition limit` decide what is said (each of the 14 base roots any dialogue package lists for event 44 has a limit: 1, 2 h, in 7; 2, 6 h, in 3;
   3 and 4 in one each; 6, 20 minutes, in "police bounty spotted" and "Shek law spots bounty"; **Verified**, the packages' `dialogs` lists in the
   gamedata dump; of the roots for events 45 and 36, which the same pass fires, "police escaping prisoner" and "slave spotting escapING" have limit 0). The target is left alone only while the guard still talks or walks up to talk (order 102 at
-  his queue's front; engine); paying ends it. DA 49 also has the speaker forgive the target (engine choice, `DialogueSystem.ClearBounties`): the speaker's faction's squads drop their short-term TEMP_ENEMY, criminal and aggressor tags on it, so a guard tag left by an arrest attempt (and saved) does not start a fight after the fine is paid. Observed 2026-11-20 in a traced run of a player save: without it, the guards fought the squad, and every police blow booked a squad member for Assault. An expired bounty likewise has the booking faction's squads drop those tags on the character (engine choice, `DialogueSystem.ForgiveExpired`): short-term tags fade 6 game hours after their last write and a bounty 0.04 h per cat after its last raise, so a tag written in the bounty's last 6 hours would outlive it.
+  his queue's front; engine); paying ends it. Paying a fine (DA 49, `DialogueSystem.ClearBounties`) or a bounty expiring (`BountyBook.Expire`)
+  also forgives the target across each cleared booking faction and any faction sharing its `legal system` (engine choice,
+  `DialogueSystem.ForgiveBookingFaction`; DA 49 also runs `DialogueSystem.Forgive` for the speaker and nearby allies): those squads drop their
+  short-term TEMP_ENEMY, criminal and aggressor tags on the target, and the target's squad drops its TEMP_ENEMY tags on them, so a tag left by
+  an arrest attempt (short-term tags fade 6 game hours after their last write; a bounty 0.04 h per cat after its last raise) cannot outlive the
+  bounty and trigger an Assault cascade via `CrimeSystem.Hit`.
 - **Arrest orders** (DA 29, `ArrestSystem.OrderArrest`): in his own town (the town his resident squad belongs to, `Ai.AiSystem.TownAt` by its radius; engine stand-in without
   town data: within 2 x the squad's home radius of its centre) a non-animal target gets the guard 240 (his queue cleared), then 112 queued behind it; otherwise 4 Attacking
   (cleared; refused with "My arm is broken!" when no arm works), his squad tagging the target TEMP_ENEMY first, so his mates join through their own attack-on-sight
@@ -2360,7 +2373,7 @@ Meitou only (the original's AI plans for no player squad; asked for as the RE_Ke
   `GameMods.DropUnownedAutonomy`); one with no owner stays as saved.
 - **Engine choices**: the sleeping desire and state 72 (fully rested) read an autonomous member as an NPC (with the player stand-in its sleep
   goals would never plan).
-- **Not built**: the outpost's turrets as goal targets (the player's turret job, `AddJob`, mans them with the player turret's power and
+- **Not built**: the outpost's turrets as targets of the turret goals 149 and 222 (the player's turret job, `AddJob`, mans them with the player turret's power and
   research; the AI's town turret post applies neither), its guard posts (157), bars and relaxing (a player-built building has no nodes, bar
   designation or tables); a work building; the contract's mission target over a save (as NPC platoons).
 
@@ -2429,10 +2442,13 @@ nothing, no goal pre-empts it and its fight requests are dropped; it thinks agai
 
 **Campaign phase package** (**Verified**, `FUN_140272570`, `FUN_140272240`, `FUN_14026a110`): on each visit a loaded campaign platoon whose war-manager record gives a package (pt1, pt2 or retreat; the leader platoon's `... leader`, the others' `... others` falling back to it, `CampaignData.PackageOf`) holds that package as the blackboard's override when it has none or another (`AiSystem.InstallPhasePackage` = `Blackboard.StartContract` with the 24 h contract time, saved as `contractjob` / `jobhr` and the engine key `meitou phase package`). The override ends by the finished test of its class, as the original's walk asks it on every visit (`Blackboard.PhaseContract`): the contract classes and a signal-0 package (built as `Contract_Timed`) at the 24 h, a retreat (1, 25) once its leader is in a town of its own faction, Retreat and refresh (5) once the squad is intact, so for an intact squad it is installed and ended on every visit and the template's packages run. With the campaign removed or the platoon released, nothing installs it again and it stays until its test passes, so a retreat outlives its campaign. The war classes 19 / 20 / 32 end once the platoon is out of its campaign, and the defence 31 after the 24 h while no hostile campaign runs. A contract that dialogue or a code mod starts ends at its hours whatever its class (engine choice; the original asks its class too). A save without the key (the original's) loads an override of a class only campaigns run in the data (1, 25, 19, 20, 32, 31) as a phase package all the same, so a retreat that outlived its campaign there keeps going; any other override without the key loads as a timed contract until its campaign gives it again (a Retreat and refresh or a signal-0 package after its campaign's removal ends at its saved `jobhr`). The campaign sets the squad's war targets (`PopulationCampaigns.StepCampaignLoaded`), so `StepPackage` leaves a campaign squad's alone. The blackboard hash covers the war start's lead, pace and point.
 
-Scoring follows the original (`TaskProfiles`: desire, commitment, crowding per goal type); a goal whose desire the original computes in a
-function of its own has it built (`AiSystem.FinderFactor`, `AiSystem.FightDesire`, the engine goals' `IDutyGoal.Desire`; 253 Following
-(urgent escape): `AiSystem.EscapeDesire`, [follow goals](game/ai-tasks.md#desire-and-commitment)); a plan row on the way whose desire is a function of its own counts 1 (`PlanContext.Desire`, but row 98's
-and the engine goals' rows). A committed goal holds only within its hours
+Scoring follows the original (`TaskProfiles`: desire, commitment, crowding per goal type). Every desire is the row's registered one
+(`TaskDesires`: 111 rows AI slot 19's 1.0, 33 other constants, 5 slot 48's roll, 104 functions of their own, [desires](game/ai-tasks.md#desire-and-commitment));
+a goal whose desire is a function of its own has it built (`AiSystem.FinderFactor`, `AiSystem.FightDesire`, the engine goals' `IDutyGoal.Desire`; 253
+Following (urgent escape): `AiSystem.EscapeDesire`). A row on the way of a plan takes its registered desire as well (`RowDesires`, for players and NPCs
+alike, and in the lock system's door and gate plans): its constant, the roll, or its function; a row an engine goal's act-out carries out takes its
+system's, which computes the same function. Each of the 42 function rows a planner can ask has its function (checked when the class loads); the
+other 62 are goals only (list A empty, no provider, or nothing needs what they provide). A committed goal holds only within its hours
 ([goal end](game/ai-tasks.md#precedence)); one lying in its bed with only the default task left lies on with no goal, as the original's
 (**Verified**, [goal end](game/ai-tasks.md#precedence): nothing in the default 14's plan needs it out of bed). Town goals ([ai-tasks.md](game/ai-tasks.md#town-goals)):
 wandering in town walks to a general node of a public town building in the walker's zone
@@ -2495,7 +2511,7 @@ gun, facing its way (**Verified**: the move-task start `FUN_140332390` sets a no
 use task, vfunc `0x418`, is 146, which `TurretBuilding` returns, `FUN_140440550`; `AiSystem.ActTurret`, `SpeedMode.Free`); the home-building goal (222) takes only a turret mounted on its home (the
 state's `mounted` handle). Claim order and gunner spot are engine choices. The goals are done while
 no enemy is sensed (list A `isNoEnemiesInVicinity`, [combat.md](game/combat.md#turrets)): false while the character's senses count an
-enemy (`numEnemies`, `SenseBlock.Enemies`), so guards man the turrets only while enemies come. A guard at its turret fires it ([Ranged](#ranged)).
+enemy (`numEnemies`, `SenseBlock.Enemies`), so guards man the turrets only while enemies come. A guard at its turret fires it ([Ranged](#ranged)). Self preservation's turret (234 then 146 under 32, [ai-tasks](game/ai-tasks.md#combat-goals)) is held per character (`AiMind.Guard`), claimed in the AI's serial step after the fights, and manned by the character standing at its gun (`TurretManning.GuardPost`): a town's turret as a guard's, a placed one with its machine's power and its building's research.
 
 ### Engine goals
 

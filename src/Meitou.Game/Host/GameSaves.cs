@@ -542,9 +542,9 @@ sealed class GameSaves(GameHost host)
         if (saved.HasView)
         {
             var (yaw, pitch, distance) = KenshiCamera.FromSaved(saved.Rotation, saved.Zoom);
-            var pivot = KenshiCamera.SavedPivotInBounds(saved.Position) ? new Vector2(saved.Position.X, saved.Position.Z)
-                : KenshiCamera.SavedPivotFallback;
-            host.Session.Camera.Place(pivot, yaw, pitch, distance);
+            bool inBounds = KenshiCamera.SavedPivotInBounds(saved.Position);
+            var pivot = inBounds ? new Vector2(saved.Position.X, saved.Position.Z) : KenshiCamera.SavedPivotFallback;
+            host.Session.Camera.Place(pivot, yaw, pitch, distance, inBounds ? saved.Position.Y : null);
         }
         if (host.PlayerSquad is { } squad && !squad.Leader.IsNone)
         {
@@ -552,7 +552,7 @@ sealed class GameSaves(GameHost host)
             if (!saved.HasView)
             {
                 var view = host.Session.Camera.Current;
-                host.Session.Camera.Place(new Vector2(at.X, at.Z), view.Yaw, view.Pitch, view.Distance);
+                host.Session.Camera.Place(new Vector2(at.X, at.Z), view.Yaw, view.Pitch, view.Distance, at.Y);
             }
             navmesh = NavmeshAround(at);
         }
@@ -694,6 +694,7 @@ sealed class GameSaves(GameHost host)
             (data.BodyOptions.Dismemberment, data.BodyOptions.Decapitation, data.BodyOptions.AdvancedRagdolls) =
                 (gameplay.Dismemberment, host.Config.Decapitation, host.Config.AdvancedRagdolls);
             (data.BodyOptions.SquadXp, data.BodyOptions.OthersXp) = (host.Config.SquadXp, host.Config.OthersXp);
+            data.BodyOptions.SquadSkillXp = SkillXp.Rates(host.Config.SquadSkillXp);
         }
 
         foreach (var population in host.Session.World.Systems.OfType<PopulationSystem>())

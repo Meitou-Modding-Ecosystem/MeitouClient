@@ -2183,7 +2183,7 @@ msgid "Needs {1}"
 msgstr "需要 {1}"
 
 msgid " (not enabled above it: {1})"
-msgstr " （未在上方启用：{1}）"
+msgstr "（未在上方启用：{1}）"
 
 msgid "Preset '{1}' saved."
 msgstr "预设「{1}」已保存。"
@@ -3082,15 +3082,6 @@ msgstr "搜索模组"
 
 msgid "Show only the mods whose name or author holds this text"
 msgstr "只显示名称或作者包含此文字的模组"
-
-msgid "Regex"
-msgstr "正则"
-
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "将搜索内容视为正则表达式（不区分大小写）"
-
-msgid "Invalid regular expression: {1}"
-msgstr "正则表达式无效：{1}"
 
 msgid "No mods match the search."
 msgstr "没有符合搜索的模组。"
@@ -4258,8 +4249,8 @@ msgstr "笼子里或柱子上的动物会呼吸、四处张望，被击倒时会
 msgid "Rain in open buildings"
 msgstr "开放建筑中的雨"
 
-msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
-msgstr "看进隐藏了屋顶的建筑时，开放的房间上方不会落下雨、尘土或灰烬。游戏只去掉落在建筑内的部分，所以镜头拉远时前方的雨仍会划过房间。"
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "看进隐藏了屋顶的建筑时，开放的房间上方不会落下雨或灰烬。游戏只去掉落在建筑内的部分，所以镜头拉远时前方的雨仍会划过房间。"
 
 msgid "Ground in buried ruins"
 msgstr "掩埋废墟中的地面"
@@ -5190,11 +5181,6 @@ msgstr "-潜行技能效果"
 msgid "-Dodge skill effect"
 msgstr "-闪避技能效果"
 
-
-
-
-
-
 msgid "STEALING CHANCE:"
 msgstr "偷窃几率："
 
@@ -5241,6 +5227,54 @@ msgstr "已关闭商店的 {1} 堆物品被留在了地上。"
 msgid "Character {1} of {2} tried to spawn inside walls!"
 msgstr "{2} 个角色中的第 {1} 个试图在墙内生成！"
 
+msgid "Image"
+msgstr "图片"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "在列表旁显示或隐藏所选模组的详情"
+
+msgid "Details"
+msgstr "详情"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "将模组列表和加载顺序保存为此名称的预设"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "采用所选预设的模组列表和加载顺序"
+
+msgid "Delete the chosen preset"
+msgstr "删除所选预设"
+
+msgid "{1} mods, {2} enabled"
+msgstr "{1} 个模组，{2} 个已启用"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "显示 {2} 个模组中的 {1} 个，{3} 个已启用"
+
+msgid "Not enabled: the game does not load it"
+msgstr "未启用：游戏不会加载它"
+
+msgid "Needs"
+msgstr "需要"
+
+msgid "not enabled above it"
+msgstr "未在其上方启用"
+
+msgid "No description"
+msgstr "无描述"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "高级设置中的悬停描边"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "高级设置中的悬停描边已开启"
+
+msgid "Lit dust"
+msgstr "受光照的尘土"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "奔跑的脚扬起的尘土和水花像周围地面一样受光照，而不是在夜里发光。"
+
 msgid "Arrange"
 msgstr "排列"
 
@@ -5255,81 +5289,6 @@ msgstr "未找到 Vulkan 加载器。请安装 Homebrew 和 MoltenVK，或使用
 
 msgid "The Vulkan loader is not installed: use Auto/Metal, or install MoltenVK from Settings > Setup."
 msgstr "未安装 Vulkan 加载器：请使用 Auto/Metal，或在 设置 > 配置 中安装 MoltenVK。"
-
-msgid "The code mods load in a different order than when this was saved"
-msgstr "代码模组的加载顺序与保存时不同"
-
-msgid "{1} ('{2}') is new to this save"
-msgstr "{1}（'{2}'）是此存档中新加入的"
-
-msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
-msgstr "{1}（'{2}'）在保存时正在运行，现在没有；其保存的数据会保留但不再使用"
-
-msgid "no version"
-msgstr "无版本"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
-msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}（比存档中的旧）"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
-msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}（重大更新：其保存的数据可能不再适用）"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
-msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}"
-
-msgid "the world"
-msgstr "世界"
-
-msgid "terrain"
-msgstr "地形"
-
-msgid "terrain colour map (first start only)"
-msgstr "地形颜色图（仅首次启动）"
-
-msgid "terrain textures"
-msgstr "地形纹理"
-
-msgid "sky"
-msgstr "天空"
-
-msgid "weather"
-msgstr "天气"
-
-msgid "weather effects"
-msgstr "天气效果"
-
-msgid "water"
-msgstr "水体"
-
-msgid "buildings"
-msgstr "建筑"
-
-msgid "foliage"
-msgstr "植被"
-
-msgid "lighting"
-msgstr "光照"
-
-msgid "people"
-msgstr "人物"
-
-msgid "the interface"
-msgstr "界面"
-
-msgid "paths"
-msgstr "路径"
-
-msgid "characters"
-msgstr "角色"
-
-msgid "finishing"
-msgstr "收尾"
-
-msgid "the view"
-msgstr "视角"
-
-msgid "the save"
-msgstr "存档"
 
 msgid "WASD move    Q / E down, up    Right mouse look    Ctrl + left click focus    Wheel zoom    Alt + wheel fly speed    Shift fast    Ctrl slow    Z / X roll    V level    "
 msgstr "WASD 移动    Q / E 下降、上升    右键 环顾    Ctrl + 左键 聚焦    滚轮 缩放    Alt + 滚轮 飞行速度    Shift 加速    Ctrl 减速    Z / X 翻滚    V 水平    "
@@ -5446,6 +5405,320 @@ msgstr "作者"
 msgid "Custom list"
 msgstr "自定义列表"
 
+msgid "Attach log.txt (it shows folder names; your user name is hidden)"
+msgstr "附加 log.txt（会显示文件夹名称；你的用户名会被隐藏）"
+
+msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
+msgstr "这台机器需要电力才能运转。你要么需要建造发电机，要么燃料耗尽了 / 没有风。"
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "原版游戏把奔跑的脚扬起的尘土和水花画成发光的精灵，夜里和白天一样亮，阴影中和阳光下一样亮；Meitou 像照亮地面那样照亮它们：透过阴影的太阳、天空、灯光，白天与原版相同 (docs/render-post.md \"Lit dust\")"
+
+msgid "1 game data problem, see log.txt"
+msgstr "1 个游戏数据问题，请查看 log.txt"
+
+msgid "built for another version of the game"
+msgstr "为另一个游戏版本构建"
+
+msgid "Raids keep their progress"
+msgstr "袭击保留进度"
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "保存时正在进行的袭击，在载入该存档时会从原处继续。原版游戏每次载入都会重新开始当前阶段，因此其等待和时限会重新计时。"
+
+msgid "Guards stop passing bodies"
+msgstr "守卫不再互相传递人体"
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "守卫只有在有空笼子时才会捡起昏迷的囚犯，并且绝不会从本派系的守卫手中夺走。原版游戏仍允许守卫抬起和抓住囚犯，因此在满员的监狱里他们会无休止地互相传递同一个人。"
+
+#. machine-translated
+msgid "Split stacks"
+msgstr "拆分堆叠"
+
+#. machine-translated
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "单击堆叠会拿取全部，Shift+单击拿取一半，Alt+单击拿取一个，Shift+Alt+单击会弹出滑块选择数量。原版中单击拿取一个，按住 Shift 或 Ctrl 拿取整组。"
+
+#. machine-translated
+msgid "Split stack"
+msgstr "拆分堆叠"
+
+#. machine-translated
+msgid "Take"
+msgstr "拿取"
+
+#. machine-translated
+msgid "Take {1} of {2}"
+msgstr "拿取 {1} / {2}"
+
+#. machine-translated
+msgid "Talk across shop counters"
+msgstr "隔着柜台交谈"
+
+#. machine-translated
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "忠实，与原版游戏一致：要与柜台后的店主交谈或交易时，你的角色常常会绕过柜台走到店主身后。Meitou：可以从柜台的顾客一侧与店主交谈。"
+
+#. machine-translated
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "其倍率现已移至高级设置中的 Squad XP（展开可为每项技能单独设置）以及“显示 Squad XP”"
+
+#. machine-translated
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "其各技能倍率现位于高级设置中的 Squad XP 下，其 XP 标签则为“显示 Squad XP”"
+
+#. machine-translated
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "你的角色及派系其他成员的学习速度：每项技能和属性的成长都会乘以此值（游戏默认：1x）。设为 0 则停止成长。点击数字可输入精确数值。训练假人仍会在其等级处停止。展开可为单项技能设置独立倍率。"
+
+#. machine-translated
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "此技能对你的派系单独生效的倍率，取代 Squad XP。拖到最左侧（Squad XP）时跟随 Squad XP。"
+
+#. machine-translated
+msgid "Show Squad XP"
+msgstr "显示 Squad XP"
+
+#. machine-translated
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "游戏中在屏幕左上角显示 Squad XP 倍率（“XP x10”）。"
+
+#. machine-translated
+msgid "STRENGTH"
+msgstr "力量"
+
+#. machine-translated
+msgid "DEXTERITY"
+msgstr "敏捷"
+
+#. machine-translated
+msgid "TOUGHNESS"
+msgstr "坚韧"
+
+#. machine-translated
+msgid "PERCEPTION"
+msgstr "感知"
+
+#. machine-translated
+msgid "Dodge"
+msgstr "闪避"
+
+#. machine-translated
+msgid "DODGE"
+msgstr "闪避"
+
+#. machine-translated
+msgid "MARTIALARTS"
+msgstr "武术"
+
+#. machine-translated
+msgid "KATANAS"
+msgstr "武士刀"
+
+#. machine-translated
+msgid "SABRES"
+msgstr "军刀"
+
+#. machine-translated
+msgid "HACKERS"
+msgstr "砍刀"
+
+#. machine-translated
+msgid "HEAVYWEAPONS"
+msgstr "重武器"
+
+#. machine-translated
+msgid "BLUNT"
+msgstr "钝器"
+
+#. machine-translated
+msgid "Polearms"
+msgstr "长柄武器"
+
+#. machine-translated
+msgid "POLEARMS"
+msgstr "长柄武器"
+
+#. machine-translated
+msgid "CROSSBOWS"
+msgstr "弩"
+
+#. machine-translated
+msgid "TURRETS"
+msgstr "炮塔"
+
+#. machine-translated
+msgid "STEALTH"
+msgstr "潜行"
+
+#. machine-translated
+msgid "LOCKPICKING"
+msgstr "开锁"
+
+#. machine-translated
+msgid "THIEVING"
+msgstr "偷窃"
+
+#. machine-translated
+msgid "ASSASSINATION"
+msgstr "刺杀"
+
+#. machine-translated
+msgid "ATHLETICS"
+msgstr "运动"
+
+#. machine-translated
+msgid "SWIMMING"
+msgstr "游泳"
+
+#. machine-translated
+msgid "MEDIC"
+msgstr "医疗"
+
+#. machine-translated
+msgid "ROBOTICS"
+msgstr "机械"
+
+#. machine-translated
+msgid "ENGINEERING"
+msgstr "工程"
+
+#. machine-translated
+msgid "SCIENCE"
+msgstr "科学"
+
+#. machine-translated
+msgid "Bow smith"
+msgstr "弩匠"
+
+#. machine-translated
+msgid "LABOURING"
+msgstr "劳作"
+
+#. machine-translated
+msgid "FARMING"
+msgstr "务农"
+
+#. machine-translated
+msgid "COOKING"
+msgstr "烹饪"
+
+#. machine-translated
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1} 现已内置于 Meitou：{2}。"
+
+msgid "Adaptive exposure"
+msgstr "自适应曝光"
+
+msgid "the game's band"
+msgstr "游戏的范围"
+
+msgid "follows the shade"
+msgstr "随阴影调整"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "游戏的曝光只会随画面亮度降到白天的最小值，因此正午时峡谷或悬崖阴影中的街道仍然很暗；Meitou 让它在白天降到游戏白天与夜晚最小值的中间（深阴影中最多亮 1.7 倍）；夜晚、开阔的晴天景色和室内保持不变 (docs/render-post.md \"Adaptive exposure\")"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "白天在深阴影中（如正午的峡谷）提亮画面；夜晚和晴天景色保持不变。"
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "自适应曝光强度（最大 x）"
+
+msgid "Adaptive exposure strength"
+msgstr "自适应曝光强度"
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "白天深阴影最多提亮多少，以游戏曝光的倍数表示。"
+
+msgid "Regex"
+msgstr "正则"
+
+msgid "Read the search as a regular expression, ignoring case"
+msgstr "将搜索内容视为正则表达式（不区分大小写）"
+
+msgid "Invalid regular expression: {1}"
+msgstr "正则表达式无效：{1}"
+
+msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "看进隐藏了屋顶的建筑时，开放的房间上方不会落下雨、尘土或灰烬。游戏只去掉落在建筑内的部分，所以镜头拉远时前方的雨仍会划过房间。"
+
+msgid "The code mods load in a different order than when this was saved"
+msgstr "代码模组的加载顺序与保存时不同"
+
+msgid "{1} ('{2}') is new to this save"
+msgstr "{1}（'{2}'）是此存档中新加入的"
+
+msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
+msgstr "{1}（'{2}'）在保存时正在运行，现在没有；其保存的数据会保留但不再使用"
+
+msgid "no version"
+msgstr "无版本"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
+msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}（比存档中的旧）"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
+msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}（重大更新：其保存的数据可能不再适用）"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
+msgstr "{1}（'{2}'）保存时为 {3}，现在为 {4}"
+
+msgid "the world"
+msgstr "世界"
+
+msgid "terrain"
+msgstr "地形"
+
+msgid "terrain colour map (first start only)"
+msgstr "地形颜色图（仅首次启动）"
+
+msgid "terrain textures"
+msgstr "地形纹理"
+
+msgid "sky"
+msgstr "天空"
+
+msgid "weather"
+msgstr "天气"
+
+msgid "weather effects"
+msgstr "天气效果"
+
+msgid "water"
+msgstr "水体"
+
+msgid "buildings"
+msgstr "建筑"
+
+msgid "foliage"
+msgstr "植被"
+
+msgid "lighting"
+msgstr "光照"
+
+msgid "people"
+msgstr "人物"
+
+msgid "the interface"
+msgstr "界面"
+
+msgid "paths"
+msgstr "路径"
+
+msgid "characters"
+msgstr "角色"
+
+msgid "finishing"
+msgstr "收尾"
+
+msgid "the view"
+msgstr "视角"
+
+msgid "the save"
+msgstr "存档"
+
 msgid "{1,num} game data problem, see log.txt"
 msgid_plural "{1,num} game data problems, see log.txt"
 msgstr[0] "{1,num} 个游戏数据问题，请查看 log.txt"
@@ -5456,12 +5729,6 @@ msgstr "第 {1,num} 天"
 msgid "{1,num} member"
 msgid_plural "{1,num} members"
 msgstr[0] "{1,num} 名成员"
-
-msgid "Attach log.txt (it shows folder names; your user name is hidden)"
-msgstr "附加 log.txt（会显示文件夹名称；你的用户名会被隐藏）"
-
-msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
-msgstr "这台机器需要电力才能运转。你要么需要建造发电机，要么燃料耗尽了 / 没有风。"
 
 msgid "Exit Game"
 msgstr "退出游戏"
@@ -5481,59 +5748,5 @@ msgstr "海盗腔"
 msgid "Morse code"
 msgstr "摩尔斯电码"
 
-msgid "Split stacks"
-msgstr "拆分堆叠"
-
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "点击一堆物品会全部拿起，Shift+点击拿一半，Ctrl+点击拿一个，Shift+Ctrl+点击会用滑块询问数量。原版游戏中点击拿一个，Shift 或 Ctrl 拿整堆。"
-
-msgid "Talk across shop counters"
-msgstr "隔着柜台交谈"
-
-msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
-msgstr "忠实（如原版）：要与柜台后的店主交谈或交易，你的角色常会绕过柜台站到店主身后。Meitou：可以从柜台的顾客一侧与店主交谈。"
-
-msgid "Split stack"
-msgstr "拆分堆叠"
-
-msgid "Take"
-msgstr "拿取"
-
-msgid "Take {1} of {2}"
-msgstr "拿取 {1} / {2}"
-
-msgid "Details"
-msgstr "详情"
-
-msgid "Show or hide the selected mod's details beside the list"
-msgstr "在列表旁显示或隐藏所选模组的详情"
-
-msgid "Save the mod list and load order as a preset of this name"
-msgstr "将模组列表和加载顺序保存为此名称的预设"
-
-msgid "Take the chosen preset's mod list and load order"
-msgstr "采用所选预设的模组列表和加载顺序"
-
-msgid "Delete the chosen preset"
-msgstr "删除所选预设"
-
-msgid "Needs"
-msgstr "需要"
-
-msgid "not enabled above it"
-msgstr "未在上方启用"
-
-msgid "No description"
-msgstr "无描述"
-
-msgid "Not enabled: the game does not load it"
-msgstr "未启用：游戏不会加载它"
-
-msgid "Image"
-msgstr "图片"
-
-msgid "{1} mods, {2} enabled"
-msgstr "{1} 个模组，{2} 个已启用"
-
-msgid "{1} of {2} mods shown, {3} enabled"
-msgstr "显示 {2} 个模组中的 {1} 个，{3} 个已启用"

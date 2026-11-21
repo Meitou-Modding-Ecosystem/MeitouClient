@@ -130,6 +130,16 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     internal PopulationData Data => data;
 
     /// <summary>
+    /// <see cref="Rows"/>, made on first use (it holds no state, so two threads making one each is harmless).
+    /// </summary>
+    RowDesires? _rows;
+
+    /// <summary>
+    /// The desires of the rows on the way of a plan (<see cref="RowDesires"/>).
+    /// </summary>
+    internal RowDesires Rows => _rows ??= new RowDesires(this);
+
+    /// <summary>
     /// The gate codes of the lock system (<see cref="Locks.LockSystem.Regions"/>), for the towns' waypoints; null before the serial step found it.
     /// </summary>
     internal Locks.IGateRegions? GateRegions => _locks?.Regions;
@@ -465,7 +475,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         if (cold.InCombat) return;   // its fight goes on
 
         if (mind.Step == TaskType.RunAway) mind.FleeRequest = FleeAsk.Threat;
-        else AskFight(world, i, TaskType.SelfPreservation, mind);
+        else if (mind.Step != TaskType.UseTurret) AskFight(world, i, TaskType.SelfPreservation, mind);
     }
 
     /// <summary>
@@ -670,14 +680,15 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// <summary>
     /// The choice of a character in its own fight (<see cref="OwnsFight"/>): a combat goal or Self preservation's fight (row 13) keeps the fight
     /// running (the fight is its plan's task, already queued: no new start, whichever of them is current now; the combat system re-targets); Self
-    /// preservation's run (35) or a goal 35 asks the flee step, which stops the fight (a new goal 35 rolls its commitment); any other goal ends the
-    /// fight in the serial step, and the character thinks again at the next tick to act it out (docs/game/ai-tasks.md "Combat goals"). Writes only
+    /// preservation's run (35) or a goal 35 asks the flee step, which stops the fight (a new goal 35 rolls its commitment); any other goal, Self
+    /// preservation's turret (146) among them, ends the fight in the serial step, and the character thinks again at the next tick to act it out (docs/game/ai-tasks.md "Combat goals"). Writes only
     /// its own mind.
     /// </summary>
     void InFight(World world, int slot, AiMind mind, AiGoal goal, Blackboard board)
     {
         var behaviour = TaskBehaviours.Of(goal.Task.Type);
-        if (behaviour is not (AiBehaviour.Fight or AiBehaviour.SelfPreserve or AiBehaviour.Flee))
+        bool guards = behaviour == AiBehaviour.SelfPreserve && mind.Step == TaskType.UseTurret;
+        if (guards || behaviour is not (AiBehaviour.Fight or AiBehaviour.SelfPreserve or AiBehaviour.Flee))
         {
             mind.LeaveFight = true;
             Interlocked.Exchange(ref _leaving, 1);
@@ -1021,13 +1032,18 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
 
         float desire = profile.Desire switch
         {
-            TaskProfiles.Random => 0.01f + 0.4f * Rng.Float(Rng.Hash(world.Seed, Rng.Key(self), RngPurpose.Think,
-                SeedSalts.AiDesire ^ (ulong)world.Tick << 9 ^ (ulong)type)),
+            TaskProfiles.Random => RandomDesire(world, self, type),
             TaskProfiles.Special => 1,
             var d => d,
         };
         return desire * FinderFactor(world, behaviour, type, squad, board, mind, self, targeting);
     }
+
+    /// <summary>
+    /// AI slot 48's desire (<c>FUN_1406415e0</c>, <b>Verified</b>): 0.01 + 0.4 x a fresh roll, drawn per character, tick and row.
+    /// </summary>
+    internal static float RandomDesire(World world, CharacterId self, TaskType type) =>
+        0.01f + 0.4f * Rng.Float(Rng.Hash(world.Seed, Rng.Key(self), RngPurpose.Think, SeedSalts.AiDesire ^ (ulong)world.Tick << 9 ^ (ulong)type));
 
     /// <summary>
     /// An engine-acted goal's desire (<see cref="DutyGoals.Desire"/>: the registering system's desire times its finder's factor, or a
@@ -1089,10 +1105,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
                 : board.Destination.IsNone || CurrentTown(world, world.Characters.Previous[self.Slot].Position) == board.Destination ? 0 : 1,
             // Only while an alarm of its town is in reach (the row's done state !ALARMS_IN_THE_VICINITY).
             AiBehaviour.Investigate => AlarmOf(world, self.Slot, type, board) is null ? 0 : 1,
-            // The assault's finder factor: 1 while a member of the mission target's squad passes its tests, else 0 (FUN_140793eb0).
-            // Crouching is wanted always (it holds the pose while it runs); standing up (its effects !24 !25 !26) only while crouched.
-            AiBehaviour.Crouch => type == TaskType.Crouch || world.Characters.Cold(self.Slot) is { Crouched: true } ? 1 : 0,
-            AiBehaviour.Assault => targeting == TaskTargetType.SquadMission && !AssaultTargetFor(world, self.Slot, board).IsNone ? 1 : 0,
+            // Crouching is wanted always (it holds the pose while it runs); standing up (its effects !24 !25 !26) only while crouched, times its
+            // desire FUN_140317bd0 (1 while it can get up, RowDesires.CanGetUp).
+            AiBehaviour.Crouch => type == TaskType.Crouch ? 1 : StandUpDesire(world.Characters.Cold(self.Slot)),
+            AiBehaviour.Assault => AssaultDesire(world, type, board, self, targeting),
             // Self preservation: the threat level (AI slot 17); Running away: row 35's own (AI slot 55), a goal of the packages that list it.
             AiBehaviour.SelfPreserve => SelfPreservationDesire(world, self.Slot, mind),
             AiBehaviour.Flee => mind.PlayerSide ? PlayerSideRunDesire(world, self.Slot)
@@ -1111,6 +1127,25 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     }
 
     /// <summary>
+    /// 28 Standing as a goal: wanted only while crouched, at its desire (<c>FUN_140317bd0</c>, <b>Verified</b>: 1.0 while it can get up,
+    /// <see cref="RowDesires.CanGetUp"/>).
+    /// </summary>
+    static float StandUpDesire(CharacterCold? cold) => cold is { Crouched: true } && RowDesires.CanGetUp(cold) ? 1 : 0;
+
+    /// <summary>
+    /// The assault goals 101 and 248: the finder's factor, 1 while a member of the mission target's squad passes its tests (<c>FUN_140793eb0</c>),
+    /// else 0; 248's times its desire, AI slot 32 (<c>FUN_140598a40</c>, <b>Verified</b>: 0 while it stands in no town and has an ownership town,
+    /// <see cref="Crime.ArrestGoals.ArrestsHere"/>), 101's being slot 19's 1.0.
+    /// </summary>
+    float AssaultDesire(World world, TaskType type, Blackboard board, CharacterId self, TaskTargetType targeting)
+    {
+        if (targeting != TaskTargetType.SquadMission || AssaultTargetFor(world, self.Slot, board).IsNone) return 0;
+        if (type != TaskType.DefeatSquadLimitChaseRange) return 1;
+
+        return world.Characters.Cold(self.Slot) is { } cold && Crime.ArrestGoals.ArrestsHere(world, self.Slot, cold) ? 1 : 0;
+    }
+
+    /// <summary>
     /// The Medic goal's desire (<c>FUN_140998410</c>, <b>Verified</b> by disassembly): 0.01 while the medic's senses hold a threat towards it (AI
     /// <c>+0xb0</c>), else 0.05 while they count an enemy (<c>+0xbc</c>, <c>numEnemies</c>), else 1. Its own senses, not its squad's fights.
     /// </summary>
@@ -1126,8 +1161,16 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// character's <c>followMe</c> (<see cref="FollowMe"/>, as stamped this tick), so a member follows a patrolling or travelling leader (1) at 0.5
     /// and one standing about or asleep (0.1) at 0.05. Other follow rows want 1.
     /// </summary>
-    float FollowDesire(TaskType type, CharacterId target) => type is TaskType.StayCloseToTarget or TaskType.GetNearTo or TaskType.FollowPlayerOrder
-        or TaskType.FollowSquadleader or TaskType.Unnamed289 ? FollowShare * _followMe.Of(target.Slot) : 1;
+    internal float FollowDesire(TaskType type, CharacterId target) =>
+        type is TaskType.StayCloseToTarget or TaskType.GetNearTo or TaskType.FollowPlayerOrder or TaskType.FollowSquadleader or TaskType.Unnamed289
+            ? FollowShare * _followMe.Of(target.Slot)
+            : 1;
+
+    /// <summary>
+    /// <see cref="FollowDesire"/> of a row on the way, whose target may not resolve: 1.0 then (<c>FUN_1405a33f0</c>, <b>Verified</b>).
+    /// </summary>
+    internal float FollowDesireOf(World world, TaskType type, CharacterId target) =>
+        world.Characters.IsAlive(target) ? FollowDesire(type, target) : 1;
 
     /// <summary>
     /// Following needs a living target other than self: the contract's mission target, else the slave owner or squad leader, as movement resolves
@@ -1191,7 +1234,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// Whether a character is within its squad's home town's radius (a site's or an outpost's, <see cref="HomePlace"/>); true when the squad has no
     /// town or the character is not alive.
     /// </summary>
-    bool AtHomeTown(World world, Squad squad, Blackboard board, CharacterId self)
+    internal bool AtHomeTown(World world, Squad squad, Blackboard board, CharacterId self)
     {
         if (HomePlace(world, board) is not { } town || !world.Characters.IsAlive(self)) return true;
 
@@ -2018,12 +2061,13 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// <summary>
     /// A player-faction character's goal over a task that is not the AI's, an NPC's over its job's (<see cref="PlayerSideHold.OwnsTask"/>; the
     /// think's own-slot starts end no handler, <see cref="TaskStart.StartOwn"/>): a fight or a run is asked of the serial steps, whose start replaces the task as any start does;
-    /// any other goal has the serial step end the task (<see cref="LeaveFights"/>: the character idle, the task's handler ended) and is acted out at
+    /// any other goal (Self preservation's turret among them) has the serial step end the task (<see cref="LeaveFights"/>: the character idle, the task's handler ended) and is acted out at
     /// the next tick, from its own stand.
     /// </summary>
     void ActOverTask(World world, int slot, AiMind mind, TaskType type, AiBehaviour behaviour)
     {
-        if (behaviour == AiBehaviour.Fight || behaviour == AiBehaviour.SelfPreserve && mind.Step != TaskType.RunAway)
+        if (behaviour == AiBehaviour.SelfPreserve && GuardsTurret(mind)) LeaveTask(mind);
+        else if (behaviour == AiBehaviour.Fight || behaviour == AiBehaviour.SelfPreserve && mind.Step != TaskType.RunAway)
             AskFight(world, slot, type, mind);
         else if (behaviour is AiBehaviour.SelfPreserve or AiBehaviour.Flee)
             mind.FleeRequest = behaviour == AiBehaviour.SelfPreserve ? FleeAsk.Threat : FleeAsk.Enemies;
@@ -2421,6 +2465,9 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
                 break;
             case AiBehaviour.Duty:
                 ActDuty(world, slot, mind, goal);
+                break;
+            case AiBehaviour.SelfPreserve when GuardsTurret(mind):
+                ActGuardTurret(world, slot, mind);
                 break;
             case AiBehaviour.Fight:
             case AiBehaviour.SelfPreserve when mind.Step != TaskType.RunAway:
@@ -3572,6 +3619,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
 
         if (Interlocked.Exchange(ref _assaulting, 0) != 0) SendAssaults(world);
         if (Interlocked.Exchange(ref _fighting, 0) != 0) SendFights(world);
+        ClaimGuardsIfAny(world);
         if (Interlocked.Exchange(ref _treating, 0) != 0) (_firstAid ??= world.SystemOf<FirstAid.FirstAidSystem>())?.SendGoalTreatments(world);
         if (Interlocked.Exchange(ref _announcing, 0) != 0) SendAnnouncements(world);
 
@@ -3953,14 +4001,89 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         melee ? d2 <= TurretNearMelee * TurretNearMelee ? 0.8f : 0.05f : d2 <= TurretNear * TurretNear ? 1 : 0.3f;
 
     /// <summary>
-    /// The desire of the turret goals (AI slot 35 <c>FUN_140598080</c>): 0 when carrying; 2.0 when enemies are sensed; else 1.0. The original gives
-    /// 2.0 only while the character mans a turret (Character <c>+0x260</c>, written by <c>TurretBuilding</c>'s <c>FUN_140434d20</c>). Not modelled:
-    /// the 0 for a Passive character outside melee combat mode, the cut at the squared distance clamp(<c>AI+0x28</c> x 1.2, 10000, 1e6) and the 0.4
-    /// of a hungry one (hunger level below 2.1, stomach buffer empty) with none sensed; the player-faction branch (1.0 with a 146 in the order deque,
-    /// <c>FUN_140507c10</c>, else 0 without a 234 job, <c>FUN_140507200</c>, or Ranged, stat flag <c>+0x129</c>) is no NPC's.
+    /// The hunger level below which a turret goal's desire drops to <see cref="TurretHungry"/> with an empty stomach and no enemy sensed
+    /// (<c>DAT_1416efdd4</c>).
     /// </summary>
-    float TurretDesire(World world, int slot) =>
-        world.Characters.Cold(slot) is not { } cold || !cold.Carrying.IsNone ? 0 : _aggro?.SensesOf(slot) is { Enemies: > 0 } ? 2 : 1;
+    const float TurretHungerBelow = 2.1f;
+
+    /// <summary>
+    /// A turret goal's desire for a hungry character (<c>DAT_141696c90</c>).
+    /// </summary>
+    const float TurretHungry = 0.4f;
+
+    /// <summary>
+    /// The least and largest squared distance an NPC's turret cut allows (<c>DAT_14168dae4</c>, <c>DAT_1416888b4</c>), and its factor on the
+    /// nearest enemy's squared distance (<c>DAT_1416852f0</c>).
+    /// </summary>
+    const float TurretCutMin = 10000, TurretCutMax = 1e6f, TurretCutFactor = 1.2f;
+
+    /// <summary>
+    /// A player-faction character's turret cut with a 234 job or a 146 queued (<c>DAT_1416888b0</c>), and with Ranged alone (<c>DAT_1416e3460</c>).
+    /// </summary>
+    const float TurretCutJob = 1e8f, TurretCutRanged = 62500;
+
+    /// <summary>
+    /// AI slot 35 (<c>FUN_140598080</c>, <b>Verified</b>, decompile and constants), the desire of the turret rows 149, 222, 234 and 146: 0 when
+    /// carrying, or Passive outside melee combat mode; for a character of the player's faction 1 with a 146 in its order queue, else 0 with neither
+    /// a 234 job nor Ranged; 0 when its target is a building (<paramref name="building"/>, the turret of a 146; <c>FUN_140792910</c> resolves
+    /// building hands only, so 149 and 222 with <c>targeting</c> 0 and 234 on the character itself have no cut) farther in squared distance than the
+    /// cut: an NPC's clamp(the nearest enemy's x 1.2, 1e4, 1e6) (<see cref="SenseBlock.NearestEnemy"/>), a player-faction one's 1e8 with the job,
+    /// 62500 on Ranged alone; then 2 with an enemy sensed while it mans a turret (Character <c>+0x260</c>, the turret hand <c>TurretBuilding</c>
+    /// slot 150 <c>FUN_140434d20</c> writes from <c>Task_UseTurret</c>'s update; Meitou: <see cref="CharacterCold.Gunning"/>), 0.4 hungry (hunger
+    /// below 2.1, stomach empty) with none sensed, else 1.
+    /// </summary>
+    internal float TurretDesire(World world, int slot, Vector3? building = null)
+    {
+        if (world.Characters.Cold(slot) is not { } cold || !cold.Carrying.IsNone) return 0;
+        if (PassiveOffMelee(world, slot, cold)) return 0;
+
+        var senses = _aggro?.SensesOf(slot);
+        float cut = TurretCut(senses);
+        if (cold.Faction == PlayerFactionOf(world))
+        {
+            if (!PlayerSideTurretWanted(cold, out bool queued, out bool job)) return 0;
+            if (queued) return 1;
+
+            cut = job ? TurretCutJob : TurretCutRanged;
+        }
+
+        if (building is { } at && Vector3.DistanceSquared(world.Characters.Previous[slot].Position, at) > cut) return 0;
+
+        int enemies = senses?.Enemies ?? 0;
+        if (enemies > 0 && cold.Gunning is not null) return 2;
+
+        bool hungry = cold.Medical is { Hunger: < TurretHungerBelow, Fed: <= 0 };
+        return hungry && enemies == 0 ? TurretHungry : 1;
+    }
+
+    /// <summary>
+    /// An NPC's turret cut: clamp(the nearest enemy's squared distance x 1.2, 1e4, 1e6); no enemy (the float maximum) gives 1e6.
+    /// </summary>
+    static float TurretCut(SenseBlock? senses) =>
+        Math.Clamp((senses?.NearestEnemy ?? float.MaxValue) * TurretCutFactor, TurretCutMin, TurretCutMax);
+
+    /// <summary>
+    /// Passive (standing order 13, the <c>+0x450</c> object's <c>+0x12c</c>) and not in melee combat mode (<c>FUN_140436610</c>).
+    /// </summary>
+    static bool PassiveOffMelee(World world, int slot, CharacterCold cold)
+    {
+        if ((cold.Orders & CharacterOrders.Passive) == 0) return false;
+
+        var table = world.Characters;
+        return world.SystemOf<Combat.CombatSystem>() is not { } combat || !combat.IsInCombatMode(table, table.IdOf(slot), cold, melee: true, ranged: false);
+    }
+
+    /// <summary>
+    /// Slot 35's player-faction gate: a 146 in the order queue (<c>FUN_140507c10</c>, <paramref name="queued"/>: the desire is 1 at once), else a
+    /// 234 job (<c>FUN_140507200</c>; <paramref name="job"/>, either of the two) or Ranged (<see cref="Orders.RangedMode"/>); without any the desire is 0.
+    /// </summary>
+    static bool PlayerSideTurretWanted(CharacterCold cold, out bool queued, out bool job)
+    {
+        queued = cold.OrderQueue.Any(o => o.Row == TaskType.UseTurret);
+        job = queued || cold.Jobs.Exists(j => j.Type == TaskType.ManATurretPlayerJob);
+
+        return job || Orders.RangedMode(cold);
+    }
 
     /// <summary>
     /// Where a turret is manned: behind its gun (the gunner stands between the gun and the walkway behind it), inside the turret's <c>use range</c>:

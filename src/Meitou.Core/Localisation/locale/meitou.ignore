@@ -256,6 +256,7 @@ FOREVER
 FXAA
 Faction Name
 Faction name
+Failed
 Failed to learn from blueprint: Technology requirements not met
 Failed to load the core '{1}' file.
 Failed to load the following mod(s):
@@ -325,6 +326,7 @@ Hunger Rate:
 Hunger time
 Hunger:
 Hungry
+I can't carry anyone with this arm.
 I can't get out of here.
 I can't get there.
 I don't have any building materials.
@@ -434,6 +436,7 @@ Money:
 Move
 Moving
 Music volume
+My arm is broken!
 Name
 Name:
 Nameless
@@ -646,6 +649,7 @@ Switched off
 Switching on will incinerate the entire inventory!
 TUTORIALS
 Talk To
+Talking
 Taunt
 Tech Level
 Terrorism
@@ -707,6 +711,7 @@ This is the rate at which your athletics skill is increasing while running.
 This is the rate at which your strength is increasing.
 This is the rate at which your toughness increases when you get hurt.
 This isn't mine
+This limb is gone forever.
 This limb is severely damaged and in need of repairs. Luckily though skeleton limbs don't degenerate.
 This machine has broken down as a result of damage. Send one of your engineers to repair it.
 This machine is currently under construction.
@@ -897,7 +902,7 @@ when finished
 {1} to {2} has failed
 {1} was defeated on their way to {2}
 
-# Not shown as Meitou's text: widget, skin and icon names, alignments, formats, fonts, record names (translated by .translation files), editor fields.
+# Not shown as Meitou's text: widget, skin and icon names, alignments, formats, fonts, record names (translated by .translation files), Workshop mod titles, editor fields.
  d MMM
 ACES
 Alert
@@ -911,6 +916,7 @@ Camp
 Cascadia Mono, Consolas, DejaVu Sans Mono, Menlo, monospace
 Cascadia Mono, Consolas, Menlo, DejaVu Sans Mono, monospace
 Center
+Character Highlight
 Choice
 Client
 Crushed
@@ -918,6 +924,7 @@ DLAA
 DLSS
 Datapanel
 Debug
+Disarm
 Disguises
 Drifter's Boots
 Drifter's Leather Pants
@@ -937,11 +944,13 @@ HCenter VCenter
 Hover
 Hurt
 Iron Hat
+It. Tickles. Me
 Jame
 Jog
 KENSHI
 Katana
 Kenshi
+Label
 Left
 Left Bottom
 Left Top
@@ -961,6 +970,7 @@ Password
 Player XP Only x10 RE
 Portrait
 Prison
+Quiet
 Red
 Right
 Right Top
@@ -973,6 +983,7 @@ SSAO
 Secondary
 Slider
 Small Backpack
+Speed Menu
 Stretch
 Swamp Turtle FIX
 Tab
@@ -993,6 +1004,13 @@ White
 Widget
 Workcamp
 Yellow
+[Meitou Client] Disarm Port
+[Meitou Client] It. Tickles. Me. Port
+[Meitou Client] Kill Counter Port
+[Meitou Client] Level Up Notify Port
+[Meitou Client] Speed Menu Port
+[Meitou Client] Stack Sort Port
+[Meitou Client] Taunt Expansion Port
 [MeitouClient] Execution
 [Meitou] Proving Grounds
 brew install molten-vk vulkan-loader
@@ -1007,5 +1025,6 @@ fonts:Kenshi#Exo 2, $Default
 interior layout name
 meitou world states
 npc range
+town panel line 
 world Y pos
 yyyy-MM-dd HH:mm

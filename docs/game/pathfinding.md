@@ -250,10 +250,15 @@ House roof storey, stood "Following leader" on the floors below).
 `SpeedGroup`; nothing else creates one (**Observed**: no other callers), so NPC squads never use it. `SpeedGroup::getSpeed` (`1407f5740`),
 once per frame: speed = the lowest max speed of members not down and not carried, centre = their mean position, direction = the sum
 of their velocities. A member ahead of the centre (positive dot with the direction) gets speed × max(0.8, 1 − 0.001 × XZ distance to
-the centre); others the plain group speed. `assignSpeedGroup` (`1407f97c0`) also runs on each formation move order (`1407f9e20`); with fewer
-than two selected it changes nothing, and it groups only when someone selected is in mode 3 (**Observed**). Engine choice (#729): Meitou's group is runtime only and made by the speed order alone, so a player's character in mode 3
-without a group of two or more (after a load, or set alone) takes the lowest max speed of its squad mates ordered to mode 3, not down and
-not carried, whatever they are doing (followers steering straight at their slot have no path and must still count).
+the centre); others the plain group speed. `assignSpeedGroup` (`1407f97c0`) also runs on each formation move order (`1407f9e20`); it groups
+only when someone selected is in mode 3 (**Observed**). When the selected already share one group and the selection holds all its members,
+they keep it; otherwise each selected character leaves its group and the selection gets one new group, so a character set alone that was in
+a group gets a group of its own and, its group's slowest being itself, moves at its own max speed. With nobody selected in a group, fewer
+than two selected get no group (**Verified** against the original's `assignSpeedGroup` and `SpeedGroup::getSpeed`, Steam 1.0.68 and 1.0.65
+alike, names KenshiLib). Meitou gives a character set alone a group of one, which moves the same. Engine choice (#729): Meitou's group is
+runtime only and made by the speed order alone, so a player's character in mode 3 with no group (after a load) takes the lowest max speed of
+its squad mates ordered to mode 3, not down and not carried, whatever they are doing (followers steering straight at their slot have no path
+and must still count).
 
 ## Own builder
 
@@ -284,7 +289,11 @@ which it walks out of the hole to (start polygons score 4 × plan distance + hei
 the nearest starts were all on the hut's ramp and floor 32 above (score 52 against the ground edge's ~80, 20 away); it stood for good and its attackers on the floor
 over it never reached it. Now it walks out to the ground and the fight goes on. The original (**Observed**, Kenshi 1.0.65 through `kh`, the issue's save,
 2026-11-15): loaded, the cannibal already stood at -96838,138,-52567, on the ground at its own height 21 from its saved spot (not on the ramp), fought and was
-knocked out within 30 game seconds; the spot is inside the hut's rock (the camera's centre snaps to its top at 193), so a live teleport there could not be tried. Movement turns early for the next waypoint (within 5) only where it can stand along
+knocked out within 30 game seconds; the spot is inside the hut's rock (the camera's centre snaps to its top at 193), so a live teleport there could not be tried.
+Off the mesh means no layer over the spot within `StandRise`/`StandDrop` of the walker's height (`NavmeshWalkability.IsOnMesh`); a layer only beyond them does
+not count. **Observed** (save "butt", Holy Nation patrol followers on the ground at -56098,1079,-12942 under a ramp whose slope polygon lies 12.4 above,
+`meitou-tools probe watch --nav`): counted on the mesh, every path started on the slope and ran into the ramp, so they stood for good while their squad left;
+now the next start, the ground 5 east, takes them round the ramp's foot. Movement turns early for the next waypoint (within 5) only where it can stand along
 the first 10 units of the straight line to it, else it walks to within 2 of the corner. A step blocked on the navmesh part asks for the path again from where the walker
 stands, up to 3 times since its last waypoint more than a stride (`ArriveRadius` 10) from where the count began (`CharacterCold.BlockedAt`) or order (`BlockedRepathLimit`), before the path and an engine GoTo are dropped (a player's move order is kept and
 asks again every 5 s, [walls](#blocked-walkers)); a GoTo sent again to the goal of a walk given up (blocked past the limits, or no path) asks for its path only 5 s after
@@ -461,9 +470,13 @@ original-only 20.32 1.6 → 0.6 %, 18.35 1.1 → 0.3 %, 21.19 1.4 → 0.3 %; 19.
 (`--feature-tops`: samples every 8 units where a feature's top face is walkable and 12+ over the terrain, with a polygon within 8): the original walks
 feature tops reached from the ground (statue 3,281 of 4,026; Gravel-Pile02 2,144 of 2,551 and 1,912 of 2,132), but on Mourn's `Vast_Land Tube 01` (34.46)
 its 1,278 of 42,908 all lie where the defensive walls' walkway (y ~1,049, kept in its tile) coincides with the tube; Meitou kept 5,958, the flat band at
-z 66,200..66,500 reached where the tube's 24° top rises out of the wall walkway (`Defensive Wall IV 34.46:20-`). Engine choice: where a feature's upward surface runs inside a building's
-solid, its surface within 2 cells (`FeatureSeamCells`) is removed, so the walkway and the feature are not neighbours; the tube then keeps 1,328 samples,
-34.46's floors under floors 5,183 → 544 (510 before features), other zones within 0.1 %. Features are obstacles of the long routes too (below) and ragdolls land
+z 66,200..66,500 reached where the tube's 24° top rises out of the wall walkway (`Defensive Wall IV 34.46:20-`); now Meitou keeps 1,349 there with no
+rule of its own. A feature's surface joins a building's walkable top where the two meet, as in the original. **Observed** (`--probe`, zone 42.22,
+2694-Newwworld.mod): the Watchtower `42.22:151-Newwworld-INGAME`'s porch ramp (`Storm_House_09_Exterior[Steps]`) runs into the top of
+`Canyonland_Zone_Cliffblock_02`, the street, at x ~47376; the original's tile has polygons across it at 1569, 1565, 1563. A rule that cut the feature's
+surface within 2 cells of where it runs inside a building's solid left a 4-unit gap there, so no path led from the street up the ramp; without it,
+original-only area falls in 42.22 (738 → 592 samples), 34.46, 21.19, 22.19, 23.22 and 18.35, 34.46's floors under floors go 404 → 405, and the
+other zones' original-only area is unchanged. Features are obstacles of the long routes too (below) and ragdolls land
 on them ([simulation](../simulation.md)).
 **Observed** (issue #214, Black Desert 33.30 at 6791,-5404; `--feature-tops` over the neighbours' features, `--probe`): the original walks the tops of the
 pipeline `Tarsand_Pipeline01` (a 1,436-unit triangle mesh placed in 33.31; 380 of 1,085 top samples, ours 384) and of the fallen

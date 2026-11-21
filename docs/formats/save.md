@@ -333,7 +333,9 @@ the NPC platoons. A save older than 0.90.0 drops the reset, buildings, research 
 `SaveLoader` recognizes an original save's `imported` marker and excludes that zone from `World.SavedZones`, so NPC
 generators use fresh construction and switch defaults while player-owned generators retain their state. Meitou's own
 import filter does not yet write that marker (the NPC platoons are left out, so every town makes its residents anyway). The relation table is shared by the
-data, so an import without Relations first sets it back to the FACTION values (`FactionRelations.Reset`).
+data, so an import without Relations first sets it back to the FACTION values (`FactionRelations.Reset`), and every other load that applies the save's
+relations starts its change count again (`FactionRelations.RestartChanges`): the state hash reads that count, so it would otherwise depend on the
+games played before in the session.
 
 ### Object handles and slot lists
 
@@ -819,7 +821,9 @@ A player character's order queue (the deque at `AITaskSytem` +0x40, [order queue
   test). The entry is never dropped for its hand: the second list loses entries only to the clears (`FUN_1405074a0`, `FUN_140507530`) and the remove-by-type `FUN_140507090`
   (**Verified**, every write of its count `+0x78` in `re/field_writes.txt` and the decrement in `FUN_140507090`), and its scorer weighs each entry alone ([second list](../game/ai-tasks.md#precedence)), so the entries
   around one whose hand names nothing are scored as usual; the hand is looked up in the handle registry each time it is read (`FUN_140284510`), so it names the character
-  once that is made (**Observed**). Meitou: an order on a character of one of the save's NPC platoons not made yet, or on a fixture of a town whose fixtures are not registered
+  once that is made (**Observed**), a dead one too (**Verified**: a character hand is looked up in its platoon's list, then in the dead characters' map at `DAT_142134110`
+  `+0x708`, which `FUN_140623920` fills for a character with the dead byte `+0x5bc`). Meitou: an order on a character of one of the save's NPC platoons not made yet (a
+  dead member too, whose body comes back with its platoon), or on a fixture of a town whose fixtures are not registered
   yet (both come in on later ticks), waits in its place in the second list as no candidate (`OrderEntry.Awaits`) and is made on the first look that finds its target; one whose
   target will come no more stays there spent (`OrderEntry.Spent`: no candidate until the list is cleared). An order is dropped when no system owns its row, its target
   character or site is neither in the world nor still to come, or its handle names nothing the save holds; an entry of a finder row
@@ -1053,7 +1057,7 @@ yet, is left out. Round trip checked with a throwaway probe (write, read, clear)
   (`GunClass::serialise` `FUN_1404390a0` / `loadFromSerialise` `FUN_140439140`): int `current shots` (the gun's `+0x20` loaded harpoons) into the same state, read back as
   min(saved, `+0x1c` the gun's shots), a missing key as 0 (**Verified** by decompile). The reload timer (the gunner's controller), aim and rotation error are **not** saved,
   so a loaded turret keeps its harpoons, starts a fresh reload and re-acquires its target. Meitou writes `current shots` for each turret manned since loading (the others keep the
-  loaded value; `CombatSystem.WriteTurretShots`) and a turret's first manning reads it (capped at max(`num shots`, 1)); it writes no `mounted` link and adds no key.
+  loaded value; `CombatSystem.WriteTurretShots`) and a turret's first manning reads it (capped at max(`num shots`, 1)); it writes no `mounted` link and adds no key. It reads the `mounted` handle of a player-built turret as the building it is mounted on (`BuildSite.MountedOn`, `BuildingSave`), for the turret finder's building filter ([ai-tasks](../game/ai-tasks.md#combat-goals)).
 
 ### Cross-checks against base data (the sample vs `GameDatabase` of the four base files)
 

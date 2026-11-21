@@ -152,8 +152,9 @@ public abstract record HeldCommand : SimCommand
 /// <summary>
 /// Lifts <see cref="Count"/> units of <see cref="Item"/> out of <see cref="From"/> onto the mouse (<c>FUN_1407139a0</c>): the whole stack when
 /// <see cref="Count"/> reaches its quantity, else that many (at least one). The original lifts one unit, or the whole stack with Shift or Ctrl;
-/// Meitou's stack splitting asks for any count (docs/game/ui-screens.md "Holding an item"). For a machine's slots the token's section is <c>in1</c> / <c>in2</c> (an input) or <c>out</c> (the
-/// output, or the crafted item at the token's index); a storage or container grid is <c>main</c>. Nothing while an item is held already.
+/// Meitou's stack splitting asks for any count (docs/game/ui-screens.md "Holding an item"). For a machine's slots the token's section is <c>in1</c> /
+/// <c>in2</c> (an input) or <c>out</c> (the output, or the crafted item at the token's index); a storage or container grid is <c>main</c>. Nothing
+/// while an item is held already.
 /// </summary>
 public sealed record LiftItem(CharacterId Actor, ItemOwner From, InventoryItemToken Item, int Count) : HeldCommand;
 
