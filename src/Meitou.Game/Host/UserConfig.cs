@@ -447,7 +447,7 @@ sealed class UserConfig
     public bool AutoOpenBags { get; set; } = true;
     /// <summary>
     /// Meitou's stack splitting (Advanced settings, a Faithful / Meitou switch; on by default, Meitou): a left press lifts the whole stack, Shift
-    /// half, Ctrl one unit, Shift + Ctrl asks how many. Off, as in the game: one unit, the whole stack with Shift or Ctrl.
+    /// half, Alt one unit, Shift + Alt asks how many. Off, as in the game: one unit, the whole stack with Shift or Ctrl.
     /// </summary>
     public bool SplitStacks { get; set; } = true;
     /// <summary>
