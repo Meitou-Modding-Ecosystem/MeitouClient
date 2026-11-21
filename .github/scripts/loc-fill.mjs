@@ -23,8 +23,6 @@ let budget = Number(process.env.LOC_MAX_MESSAGES || 3000);
 const LANGUAGES = {
   de_DE: 'German', es_ES: 'Spanish (Spain)', fr_FR: 'French', it_IT: 'Italian', ja_JP: 'Japanese', ko_KR: 'Korean',
   pt_BR: 'Brazilian Portuguese', ru_RU: 'Russian', zh_CN: 'Simplified Chinese',
-  en_PigLatin: 'Pig Latin (a joke language)', en_Pirate: 'pirate speak (a joke language)',
-  en_Morse: 'Morse code written with . and - (letters separated by a space, words by " / "; a joke language)',
 };
 
 const Answer = z.object({ translations: z.array(z.object({ index: z.number().int(), forms: z.array(z.string()) })) });

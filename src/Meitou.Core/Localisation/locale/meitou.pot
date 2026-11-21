@@ -16,10 +16,6 @@ msgid " (no upscaler: plain scaling)"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid " (not enabled above it: {1})"
-msgstr ""
-
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid " Continuing '{1}'."
 msgstr ""
 
@@ -180,11 +176,15 @@ msgid "A character's bag window opens with their inventory until you close it wi
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
-msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "A double click on a squad member far from the view (or a double tap of their number) flies the camera there in an arc instead of cutting."
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -197,6 +197,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "A mod"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
 msgstr ""
 
 #: src/Meitou.Game/SettingsMenu.cs
@@ -247,10 +251,30 @@ msgstr ""
 msgid "A wounded prisoner on a pole or in a cage keeps the pole's or cage's pose. In the game it clutches its wounds there instead."
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "ASSASSINATION"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "ATHLETICS"
+msgstr ""
+
 #: src/Meitou.Game/Ui/TooltipRuntime.cs
 msgid ""
 "Activates sneak mode so the character will try to go unnoticed.\n"
 "If the character is unconscious, when he wakes up he will stay down on the ground and crawl to avoid detection."
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/Settings/SettingHints.cs src/Meitou.Game/SettingsMenu.cs
+msgid "Adaptive exposure"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SettingHints.cs
+msgid "Adaptive exposure strength"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/WorldFrame.cs
+msgid "Adaptive exposure strength (max x)"
 msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
@@ -537,6 +561,10 @@ msgstr ""
 msgid "BACKPACK"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "BLUNT"
+msgstr ""
+
 #: src/Meitou.Game/Ui/ProductionWindows.cs
 msgid "BUILDING"
 msgstr ""
@@ -657,8 +685,16 @@ msgstr ""
 msgid "Bounced light: the game's flat ambient, ray-traced probes, or probes with a fine cache near the camera. Needs ray tracing."
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "Bow smith"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Brighten or darken nights further, on top of Ambient light strength."
+msgstr ""
+
+#: src/Meitou.Game/Settings/SettingHints.cs
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
 msgstr ""
 
 #: src/Meitou.Game/SettingsMenu.cs
@@ -705,12 +741,20 @@ msgstr ""
 msgid "CONTAINER"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "COOKING"
+msgstr ""
+
 #: src/Meitou.Game/Ui/FeedbackPanel.cs
 msgid "COPY LINK"
 msgstr ""
 
 #: src/Meitou.Game/Title/TitleMenu.cs
 msgid "CREDITS"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "CROSSBOWS"
 msgstr ""
 
 #: src/Meitou.Game/Ui/ContextMenuWindow.cs src/Meitou.Game/Ui/FurnitureUse.cs
@@ -1081,8 +1125,16 @@ msgstr ""
 msgid "Cycle GPU, CPU and hidden profiler views."
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "DEXTERITY"
+msgstr ""
+
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs src/Meitou.Game/Settings/SettingHints.cs
 msgid "DLSS preset"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "DODGE"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -1133,6 +1185,10 @@ msgstr ""
 msgid "Delete preset?"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Delete the chosen preset"
+msgstr ""
+
 #: src/Meitou.Game/Ui/HudPanels.cs
 msgid "Delivering materials"
 msgstr ""
@@ -1155,6 +1211,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/LookPresets.cs
 msgid "Detail"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Details"
 msgstr ""
 
 #: launcher/Meitou.Launcher/GraphicsPage.cs
@@ -1207,6 +1267,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Do you want to subscribe now?"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "Dodge"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
@@ -1293,6 +1357,10 @@ msgstr ""
 msgid "Drops of water stand on wet skin, leather and metal, in the rain and after a swim."
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "ENGINEERING"
+msgstr ""
+
 #: src/Meitou.Game/Title/TitleMenu.cs
 msgid "ENTER"
 msgstr ""
@@ -1375,6 +1443,10 @@ msgstr ""
 
 #: src/Meitou.Game/SettingsMenu.cs
 msgid "FAITHFUL"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "FARMING"
 msgstr ""
 
 #: src/Meitou.Game/Ui/TooltipRuntime.cs
@@ -1841,8 +1913,20 @@ msgstr ""
 msgid "Guards spare their own"
 msgstr ""
 
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Guards stop passing bodies"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "HACKERS"
+msgstr ""
+
 #: src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/SettingsMenu.cs
 msgid "HDR output"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "HEAVYWEAPONS"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
@@ -1989,6 +2073,14 @@ msgstr ""
 msgid "Hover outline"
 msgstr ""
 
+#: src/Meitou.Core/Content/CoveredMods.cs
+msgid "Hover outline in the Advanced settings"
+msgstr ""
+
+#: src/Meitou.Game/Mods/BuiltInMods.cs
+msgid "Hover outline in the Advanced settings is on"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "How edges are smoothed."
 msgstr ""
@@ -2022,7 +2114,7 @@ msgid "How fast the wheel and the zoom keys move the camera in and out (the game
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
-msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level."
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
 msgstr ""
 
 #: src/Meitou.Game/Settings/FeatureGrouping.cs
@@ -2111,6 +2203,10 @@ msgstr ""
 
 #: src/Meitou.Game/Ui/ProductionWindows.cs
 msgid "Idle"
+msgstr ""
+
+#: launcher/Meitou.Launcher/BbCodeView.cs
+msgid "Image"
 msgstr ""
 
 #: src/Meitou.Game/Title/FrontendScreens.cs
@@ -2253,6 +2349,10 @@ msgstr ""
 msgid "Japanese"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "KATANAS"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Keep large wrecks, towers and landmarks visible farther away."
 msgstr ""
@@ -2301,12 +2401,20 @@ msgstr ""
 msgid "Korean"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "LABOURING"
+msgstr ""
+
 #: src/Meitou.Game/Ui/ScreenRouter.cs
 msgid "LIMBS"
 msgstr ""
 
 #: src/Meitou.Game/Title/FrontendScreens.cs src/Meitou.Game/Title/TitleMenu.cs
 msgid "LOAD GAME"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "LOCKPICKING"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/Settings/QualityTiers.cs src/Meitou.Game/Settings/SettingHints.cs src/Meitou.Game/SettingsMenu.cs
@@ -2474,6 +2582,10 @@ msgid "Light shafts strength"
 msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr ""
+
+#: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Light the night scene from the planet and moon."
 msgstr ""
 
@@ -2483,6 +2595,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "List the mods folder and the Steam workshop items again"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/Settings/SettingHints.cs src/Meitou.Game/SettingsMenu.cs
+msgid "Lit dust"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -2568,6 +2684,14 @@ msgstr ""
 
 #: src/Meitou.Game/Title/FrontendScreens.cs
 msgid "MAIN MENU"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "MARTIALARTS"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "MEDIC"
 msgstr ""
 
 #: src/Meitou.Game/SettingsMenu.cs
@@ -2934,6 +3058,10 @@ msgstr ""
 msgid "Near tree fade"
 msgstr ""
 
+#: launcher/Meitou.Launcher/ModDetailsView.cs
+msgid "Needs"
+msgstr ""
+
 #: src/Meitou.Game/PlayerInterface.Ui.cs
 msgid "Needs first aid"
 msgstr ""
@@ -2944,10 +3072,6 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs src/Meitou.Game/SettingsMenu.cs
 msgid "Needs restart"
-msgstr ""
-
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid "Needs {1}"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
@@ -3025,6 +3149,10 @@ msgstr ""
 msgid "No character selected"
 msgstr ""
 
+#: launcher/Meitou.Launcher/ModDetailsView.cs
+msgid "No description"
+msgstr ""
+
 #: src/Meitou.Simulation/Carrying/CarrySystem.cs
 msgid "No free bed to take anyone to."
 msgstr ""
@@ -3091,6 +3219,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/SetupOverlay.axaml.cs
 msgid "Not a Kenshi folder: data/gamedata.base not found."
+msgstr ""
+
+#: launcher/Meitou.Launcher/ModDetailsView.cs
+msgid "Not enabled: the game does not load it"
 msgstr ""
 
 #: src/Meitou.Simulation/Crime/ArrestSystem.Bounties.cs
@@ -3289,6 +3421,14 @@ msgstr ""
 msgid "Overlaymaps"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "PERCEPTION"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "POLEARMS"
+msgstr ""
+
 #: src/Meitou.Game/Ui/ProspectingPanel.cs
 msgid "PROSPECTING RESULTS"
 msgstr ""
@@ -3411,6 +3551,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Points added to every interface font's default height (the game: 3)."
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "Polearms"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs
@@ -3545,12 +3689,20 @@ msgstr ""
 msgid "RE_Kenshi sound banks: loaded before the game's"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "ROBOTICS"
+msgstr ""
+
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Raid and campaign data that builds on a base campaign counts the base's squads and follow-up campaigns once. The game counts them twice, so inherited squads come up more often and follow-up raids are about twice as likely."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Raids as written"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Raids keep their progress"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs
@@ -3777,6 +3929,14 @@ msgstr ""
 msgid "Russian"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "SABRES"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "SCIENCE"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "SETTINGS"
 msgstr ""
@@ -3787,6 +3947,18 @@ msgstr ""
 
 #: src/Meitou.Game/Ui/TooltipRuntime.cs
 msgid "STEALING CHANCE:"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "STEALTH"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "STRENGTH"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "SWIMMING"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
@@ -3847,6 +4019,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Save the game to the quicksave slot."
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Save the mod list and load order as a preset of this name"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -3922,7 +4098,7 @@ msgid "Seconds a character flight takes, and each hop of the squad tour (numpad 
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
-msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -3945,7 +4121,7 @@ msgstr ""
 msgid "Select a release to read its notes."
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Select all"
 msgstr ""
 
@@ -3953,7 +4129,7 @@ msgstr ""
 msgid "Select characters and press the interface (the game's left button). Binding it elsewhere moves the other buttons along."
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Select none"
 msgstr ""
 
@@ -4098,6 +4274,10 @@ msgid "Shoulder"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
+msgid "Show Squad XP"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
 msgid "Show names"
 msgstr ""
 
@@ -4109,8 +4289,16 @@ msgstr ""
 msgid "Show or hide frame statistics."
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Show or hide the selected mod's details beside the list"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Show the next squad in the squad bar."
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -4249,7 +4437,7 @@ msgstr ""
 msgid "Split stacks"
 msgstr ""
 
-#: src/Meitou.Game/Settings/GamePages.cs
+#: src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/Settings/GamePages.cs
 msgid "Squad XP"
 msgstr ""
 
@@ -4413,8 +4601,20 @@ msgstr ""
 msgid "THANK YOU"
 msgstr ""
 
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "THIEVING"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "TOUGHNESS"
+msgstr ""
+
 #: src/Meitou.Game/Ui/TradeWindows.cs
 msgid "TRADER"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SkillXp.cs
+msgid "TURRETS"
 msgstr ""
 
 #: src/Meitou.Game/Ui/StackSplitDialog.cs
@@ -4423,6 +4623,10 @@ msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoPanel.cs
 msgid "Take picture"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Take the chosen preset's mod list and load order"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
@@ -4653,6 +4857,10 @@ msgstr ""
 msgid "The most blood marks on walls and objects and bloody footprints drawn in a frame, the ones that look largest first."
 msgstr ""
 
+#: src/Meitou.Game/Settings/SettingHints.cs
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr ""
+
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "The most sounds heard at once: the loudest play, quieter ones wait silently and come back when they are loud enough. Lower it if big fights stutter; All mixes every sound."
 msgstr ""
@@ -4753,7 +4961,11 @@ msgstr ""
 msgid "This save file is currently in use and cannot be deleted"
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Tick every mod the search shows"
 msgstr ""
 
@@ -4941,7 +5153,7 @@ msgstr ""
 msgid "Unstable: daily builds of the newest code, untested. They may crash or corrupt save files; off, only full releases are offered."
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Untick every mod the search shows"
 msgstr ""
 
@@ -5375,6 +5587,10 @@ msgstr ""
 msgid "buildings"
 msgstr ""
 
+#: src/Meitou.Game/Mods/ModHost.cs
+msgid "built for another version of the game"
+msgstr ""
+
 #: launcher/Meitou.Launcher/GraphicsPage.cs src/Meitou.Game/Settings/LookBar.cs src/Meitou.Game/Settings/LookPresets.cs
 msgid "built in"
 msgstr ""
@@ -5436,6 +5652,10 @@ msgid "foliage"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
+msgid "follows the shade"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs
 msgid "full detail"
 msgstr ""
 
@@ -5480,7 +5700,11 @@ msgid "its game data changes failed to apply"
 msgstr ""
 
 #: src/Meitou.Game/Mods/BuiltInMods.cs
-msgid "its multiplier is now Squad XP in the Advanced settings (per-skill multipliers are not kept)"
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr ""
+
+#: src/Meitou.Game/Mods/BuiltInMods.cs
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
@@ -5537,6 +5761,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/Rows.cs
 msgid "no {1} build"
+msgstr ""
+
+#: launcher/Meitou.Launcher/ModDetailsView.cs
+msgid "not enabled above it"
 msgstr ""
 
 #: launcher/Meitou.Launcher/ContinueSave.cs
@@ -5716,6 +5944,10 @@ msgid "the game draws its sake and rum bottles solid; Meitou draws them as glass
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs
 msgid "the game ends all of a layer's meshes at one range (1000 x foliage range for most: trees, ruins, junk and litter alike); Meitou draws large meshes (trees, ruins, wrecks, rock stacks) far, medium ones (junk, boulders, bushes) midway and small ones (litter, small plants) near, each class with its own Tab slider"
 msgstr ""
 
@@ -5800,6 +6032,10 @@ msgid "the game's"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
+msgid "the game's band"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs
 msgid "the game's blood stays on the skin: a blade that has just cut a man is clean, and a coat over a bleeding wound shows nothing; Meitou lets a weapon take the blood of what it wounds on its blade (wet and bright, then dried and dark, then flaking off; washed away in water and rain) and lets worn armour and clothing show the splatter of the body part under them, as the skin does (docs/game/blood-decals.md \"On weapons and gear\")"
 msgstr ""
 
@@ -5825,6 +6061,10 @@ msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
 msgid "the game's dust and smoke sprites cut straight into the ground and walls they cross (all but its mist and steam, which fade; Faithful draws those hard-edged too); Meitou fades each sprite out over the last stretch before a surface (a quarter of its size, 0.2 to 30 m), so dust clouds meet the ground softly; the game's sprites are also flat and not fogged (one brightness in sun and shade, near and far, seen through fog banks), Meitou darkens dust and smoke where the sun is shadowed, brightens them towards the sun and puts the haze and the fog volumes in front of them over them; and it fades each effect out before the distance it stops being simulated at, where its whole cloud popped in and out (docs/render-post.md \"Fog\")"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/Enhancements.cs
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
 msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/Enhancements.cs
@@ -6027,10 +6267,6 @@ msgstr ""
 msgid "{1} bought {2} for c.{3}"
 msgstr ""
 
-#: src/Meitou.Simulation/Crime/ArrestSystem.cs
-msgid "{1} cannot pay the fine of c.{2}"
-msgstr ""
-
 #: launcher/Meitou.Launcher/GraphicsPage.cs
 msgid "{1} changes from the game"
 msgstr ""
@@ -6041,14 +6277,6 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/GraphicsPage.cs
 msgid "{1} deleted; the look is Meitou."
-msgstr ""
-
-#: src/Meitou.Simulation/Crime/ArrestSystem.cs
-msgid "{1} found no free cage for {2}"
-msgstr ""
-
-#: src/Meitou.Simulation/Locks/LockSystem.cs
-msgid "{1} got out of the cage"
 msgstr ""
 
 #: src/Meitou.Simulation/Crime/CrimeSystem.cs
@@ -6063,12 +6291,12 @@ msgstr ""
 msgid "{1} installed."
 msgstr ""
 
-#: src/Meitou.Simulation/Crime/ArrestSystem.Bounties.cs
-msgid "{1} is after the bounty on {2}!"
-msgstr ""
-
 #: src/Meitou.Simulation/Crime/ArrestSystem.cs
 msgid "{1} is arresting {2}!"
+msgstr ""
+
+#: src/Meitou.Game/Mods/BuiltInMods.cs
+msgid "{1} is built into Meitou now: {2}."
 msgstr ""
 
 #: src/Meitou.Simulation/Crime/BountyBook.cs
@@ -6093,12 +6321,16 @@ msgstr[1] ""
 msgid "{1} item stack(s) of a closed shop were left on the ground."
 msgstr ""
 
-#: src/Meitou.Simulation/Crime/ArrestSystem.Bounties.cs
-msgid "{1} paid a bail of c.{2} for {3}"
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "{1} mods, {2} enabled"
 msgstr ""
 
-#: src/Meitou.Simulation/Crime/ArrestSystem.cs
-msgid "{1} paid a fine of c.{2} to {3}; the bounty is cleared"
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr ""
+
+#: src/Meitou.Simulation/Crime/ArrestSystem.Bounties.cs
+msgid "{1} paid a bail of c.{2} for {3}"
 msgstr ""
 
 #: launcher/Meitou.Launcher/GraphicsPage.cs

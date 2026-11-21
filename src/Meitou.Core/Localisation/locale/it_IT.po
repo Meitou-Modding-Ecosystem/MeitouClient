@@ -2840,8 +2840,8 @@ msgstr "Risultati della ricerca"
 msgid "Search settings"
 msgstr "Cerca impostazioni"
 
-msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
-msgstr "Guardando dentro un edificio con il tetto nascosto, non cade pioggia, polvere o cenere sulla stanza aperta. Il gioco omette solo ciò che cade dentro, così con la telecamera arretrata la pioggia davanti attraversa ancora la stanza."
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Guardando dentro un edificio con il tetto nascosto, non cade pioggia o cenere sulla stanza aperta. Il gioco omette solo ciò che cade dentro, così con la telecamera arretrata la pioggia davanti attraversa ancora la stanza."
 
 msgid "Seen into a building your characters are in, parts of other buildings that run through it are left out, such as the Hub's town wall in the Shinobi Thieves tower. The game's world places them there and draws them inside the room."
 msgstr "Guardando dentro un edificio dove si trovano i tuoi personaggi, le parti di altri edifici che lo attraversano vengono omesse, come le mura cittadine dell'Hub nella torre degli Shinobi Thieves. Il mondo del gioco le colloca lì e le disegna dentro la stanza."
@@ -4292,6 +4292,54 @@ msgstr "{1}: nessuna gabbia libera nelle vicinanze"
 msgid "{1}: {2} settings"
 msgstr "{1}: {2} impostazioni"
 
+msgid "Image"
+msgstr "Immagine"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "Mostra o nascondi i dettagli della mod selezionata accanto all'elenco"
+
+msgid "Details"
+msgstr "Dettagli"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "Salva l'elenco delle mod e l'ordine di caricamento come preset con questo nome"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "Prendi l'elenco delle mod e l'ordine di caricamento del preset scelto"
+
+msgid "Delete the chosen preset"
+msgstr "Elimina il preset scelto"
+
+msgid "{1} mods, {2} enabled"
+msgstr "{1} mod, {2} attive"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "{1} di {2} mod mostrate, {3} attive"
+
+msgid "Not enabled: the game does not load it"
+msgstr "Non attiva: il gioco non la carica"
+
+msgid "Needs"
+msgstr "Richiede"
+
+msgid "not enabled above it"
+msgstr "non attiva sopra di essa"
+
+msgid "No description"
+msgstr "Nessuna descrizione"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "Contorno al passaggio nelle impostazioni Avanzate"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "Contorno al passaggio nelle impostazioni Avanzate è attivo"
+
+msgid "Lit dust"
+msgstr "Polvere illuminata"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "Illumina la polvere e gli spruzzi sollevati dai piedi in corsa come il terreno intorno, invece di farli brillare di notte."
+
 msgid "Save"
 msgstr "Salva"
 
@@ -4316,14 +4364,14 @@ msgstr "Mi sostiene nello sviluppo di Meitou. ko-fi.com/martinvlcek"
 msgid "Mods"
 msgstr "Mod"
 
+msgid "New preset name"
+msgstr "Nome del nuovo preset"
+
 msgid "Arrange"
 msgstr "Ordina"
 
 msgid "Search mods"
 msgstr "Cerca mod"
-
-msgid "New preset name"
-msgstr "Nome del nuovo preset"
 
 msgid "Graphics"
 msgstr "Grafica"
@@ -4375,81 +4423,6 @@ msgstr "Non è una cartella di Kenshi: data/gamedata.base non trovato."
 
 msgid "Vulkan loader not found; choose Auto/Metal, or install it later in Settings."
 msgstr "Loader Vulkan non trovato; scegli Auto/Metal, oppure installalo più tardi nelle Impostazioni."
-
-msgid "The code mods load in a different order than when this was saved"
-msgstr "Le mod di codice si caricano in un ordine diverso da quando è stato salvato"
-
-msgid "{1} ('{2}') is new to this save"
-msgstr "{1} ('{2}') è nuova in questo salvataggio"
-
-msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
-msgstr "{1} ('{2}') era attiva al salvataggio e ora non lo è; i suoi dati salvati sono conservati ma inutilizzati"
-
-msgid "no version"
-msgstr "nessuna versione"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
-msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora (più vecchia di quella del salvataggio)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
-msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora (un aggiornamento importante: i suoi dati salvati potrebbero non adattarsi)"
-
-msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
-msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora"
-
-msgid "the world"
-msgstr "il mondo"
-
-msgid "terrain"
-msgstr "terreno"
-
-msgid "terrain colour map (first start only)"
-msgstr "mappa dei colori del terreno (solo al primo avvio)"
-
-msgid "terrain textures"
-msgstr "texture del terreno"
-
-msgid "sky"
-msgstr "cielo"
-
-msgid "weather"
-msgstr "meteo"
-
-msgid "weather effects"
-msgstr "effetti meteo"
-
-msgid "water"
-msgstr "acqua"
-
-msgid "buildings"
-msgstr "edifici"
-
-msgid "foliage"
-msgstr "vegetazione"
-
-msgid "lighting"
-msgstr "illuminazione"
-
-msgid "people"
-msgstr "persone"
-
-msgid "the interface"
-msgstr "l'interfaccia"
-
-msgid "paths"
-msgstr "percorsi"
-
-msgid "characters"
-msgstr "personaggi"
-
-msgid "finishing"
-msgstr "rifinitura"
-
-msgid "the view"
-msgstr "la vista"
-
-msgid "the save"
-msgstr "il salvataggio"
 
 msgctxt "save notice"
 msgid "Loaded"
@@ -4586,6 +4559,311 @@ msgstr "disattivato"
 msgid "unavailable"
 msgstr "non disponibile"
 
+msgid "Attach log.txt (it shows folder names; your user name is hidden)"
+msgstr "Allega log.txt (mostra i nomi delle cartelle; il tuo nome utente è nascosto)"
+
+msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
+msgstr "Questa macchina ha bisogno di elettricità per funzionare. Devi costruire dei generatori, oppure hai finito il carburante / non c'è vento."
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "il gioco disegna la polvere e gli schizzi sollevati da un piede che corre come sprite luminosi, brillanti di notte come di giorno e all'ombra come al sole; Meitou li illumina come è illuminato il terreno: il sole attraverso le sue ombre, il cielo, le lampade, come il gioco di giorno (docs/render-post.md \"Lit dust\")"
+
+msgid "1 game data problem, see log.txt"
+msgstr "1 problema nei dati di gioco, vedi log.txt"
+
+msgid "built for another version of the game"
+msgstr "creata per un'altra versione del gioco"
+
+msgid "Raids keep their progress"
+msgstr "Le incursioni mantengono i progressi"
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "Un'incursione in corso al salvataggio riprende da dove era quando quel salvataggio viene caricato. Il gioco ricomincia la fase attuale a ogni caricamento, così le sue attese e i suoi limiti di tempo ripartono da capo."
+
+msgid "Guards stop passing bodies"
+msgstr "Le guardie smettono di passarsi i corpi"
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "Una guardia raccoglie un prigioniero svenuto solo quando c'è una gabbia libera per lui, e non lo prende mai a una guardia della propria fazione. Il gioco lascia comunque che le guardie sollevino e afferrino i prigionieri, così in una prigione piena si passano lo stesso corpo all'infinito."
+
+#. machine-translated
+msgid "Split stacks"
+msgstr "Dividi pile"
+
+#. machine-translated
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Un clic su una pila la raccoglie tutta, Maiusc+clic la metà, Alt+clic un oggetto e Maiusc+Alt+clic chiede quanti con un cursore. Nel gioco un clic raccoglie un oggetto e Maiusc o Ctrl l'intera pila."
+
+#. machine-translated
+msgid "Split stack"
+msgstr "Dividi pila"
+
+#. machine-translated
+msgid "Take"
+msgstr "Prendi"
+
+#. machine-translated
+msgid "Take {1} of {2}"
+msgstr "Prendi {1} di {2}"
+
+#. machine-translated
+msgid "Talk across shop counters"
+msgstr "Parla da dietro i banconi dei negozi"
+
+#. machine-translated
+msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
+msgstr "Originale, come nel gioco: per parlare o commerciare con un negoziante dietro un bancone, il tuo personaggio spesso fa il giro del bancone per mettersi dietro di lui. Meitou: i negozianti si possono raggiungere dal lato cliente del bancone."
+
+#. machine-translated
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "i suoi moltiplicatori ora sono XP squadra nelle impostazioni avanzate (aprila per quello di ogni abilità) e Mostra XP squadra"
+
+#. machine-translated
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "i suoi moltiplicatori per abilità ora sono sotto XP squadra nelle impostazioni avanzate, e la sua etichetta XP è Mostra XP squadra"
+
+#. machine-translated
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "Quanto velocemente imparano i tuoi personaggi e il resto della tua fazione: ogni guadagno di abilità e statistica viene moltiplicato per questo valore (il gioco: 1x). 0 lo ferma. Fai clic sul numero per digitare un valore esatto. Un manichino da allenamento si ferma comunque al suo livello. Aprila per dare alle singole abilità un moltiplicatore proprio."
+
+#. machine-translated
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "Il moltiplicatore proprio di questa abilità per la tua fazione, al posto di XP squadra. All'estrema sinistra (XP squadra) segue XP squadra."
+
+#. machine-translated
+msgid "Show Squad XP"
+msgstr "Mostra XP squadra"
+
+#. machine-translated
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "Mostra il moltiplicatore XP squadra (\"XP x10\") in alto a sinistra dello schermo durante il gioco."
+
+#. machine-translated
+msgid "STRENGTH"
+msgstr "FORZA"
+
+#. machine-translated
+msgid "DEXTERITY"
+msgstr "DESTREZZA"
+
+#. machine-translated
+msgid "TOUGHNESS"
+msgstr "ROBUSTEZZA"
+
+#. machine-translated
+msgid "PERCEPTION"
+msgstr "PERCEZIONE"
+
+#. machine-translated
+msgid "Dodge"
+msgstr "Schivata"
+
+#. machine-translated
+msgid "DODGE"
+msgstr "SCHIVATA"
+
+#. machine-translated
+msgid "MARTIALARTS"
+msgstr "ARTI MARZIALI"
+
+#. machine-translated
+msgid "KATANAS"
+msgstr "KATANA"
+
+#. machine-translated
+msgid "SABRES"
+msgstr "SCIABOLE"
+
+#. machine-translated
+msgid "HACKERS"
+msgstr "MANNAIE"
+
+#. machine-translated
+msgid "HEAVYWEAPONS"
+msgstr "ARMI PESANTI"
+
+#. machine-translated
+msgid "BLUNT"
+msgstr "CONTUNDENTI"
+
+#. machine-translated
+msgid "Polearms"
+msgstr "Armi in asta"
+
+#. machine-translated
+msgid "POLEARMS"
+msgstr "ARMI IN ASTA"
+
+#. machine-translated
+msgid "CROSSBOWS"
+msgstr "BALESTRE"
+
+#. machine-translated
+msgid "TURRETS"
+msgstr "TORRETTE"
+
+#. machine-translated
+msgid "STEALTH"
+msgstr "FURTIVITÀ"
+
+#. machine-translated
+msgid "LOCKPICKING"
+msgstr "SCASSO"
+
+#. machine-translated
+msgid "THIEVING"
+msgstr "FURTO"
+
+#. machine-translated
+msgid "ASSASSINATION"
+msgstr "ASSASSINIO"
+
+#. machine-translated
+msgid "ATHLETICS"
+msgstr "ATLETICA"
+
+#. machine-translated
+msgid "SWIMMING"
+msgstr "NUOTO"
+
+#. machine-translated
+msgid "MEDIC"
+msgstr "MEDICINA"
+
+#. machine-translated
+msgid "ROBOTICS"
+msgstr "ROBOTICA"
+
+#. machine-translated
+msgid "ENGINEERING"
+msgstr "INGEGNERIA"
+
+#. machine-translated
+msgid "SCIENCE"
+msgstr "SCIENZA"
+
+#. machine-translated
+msgid "Bow smith"
+msgstr "Fabbro di balestre"
+
+#. machine-translated
+msgid "LABOURING"
+msgstr "LAVORO MANUALE"
+
+#. machine-translated
+msgid "FARMING"
+msgstr "AGRICOLTURA"
+
+#. machine-translated
+msgid "COOKING"
+msgstr "CUCINA"
+
+#. machine-translated
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1} è ora integrato in Meitou: {2}."
+
+msgid "Adaptive exposure"
+msgstr "Esposizione adattiva"
+
+msgid "the game's band"
+msgstr "banda del gioco"
+
+msgid "follows the shade"
+msgstr "segue l'ombra"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "l'esposizione del gioco segue la luminosità dell'immagine solo fino a un minimo diurno, quindi un canyon o una strada all'ombra di una scogliera resta buia a mezzogiorno; Meitou la lascia adattare di giorno fino a metà tra i minimi diurno e notturno del gioco (fino a 1,7 volte più luminosa nell'ombra profonda); notti, viste aperte e soleggiate e stanze restano come prima (docs/render-post.md \"Adaptive exposure\")"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "Schiarisce l'immagine di giorno nell'ombra profonda, come un canyon a mezzogiorno; notti e viste soleggiate restano invariate."
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "Intensità dell'esposizione adattiva (max x)"
+
+msgid "Adaptive exposure strength"
+msgstr "Intensità dell'esposizione adattiva"
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "Quanto viene schiarita al massimo l'ombra profonda di giorno, come multiplo dell'esposizione del gioco."
+
+msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Guardando dentro un edificio con il tetto nascosto, non cade pioggia, polvere o cenere sulla stanza aperta. Il gioco omette solo ciò che cade dentro, così con la telecamera arretrata la pioggia davanti attraversa ancora la stanza."
+
+msgid "The code mods load in a different order than when this was saved"
+msgstr "Le mod di codice si caricano in un ordine diverso da quando è stato salvato"
+
+msgid "{1} ('{2}') is new to this save"
+msgstr "{1} ('{2}') è nuova in questo salvataggio"
+
+msgid "{1} ('{2}') was running when this was saved and is not now; its saved data is kept but unused"
+msgstr "{1} ('{2}') era attiva al salvataggio e ora non lo è; i suoi dati salvati sono conservati ma inutilizzati"
+
+msgid "no version"
+msgstr "nessuna versione"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (older than the save's)"
+msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora (più vecchia di quella del salvataggio)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now (a major update: its saved data may not fit)"
+msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora (un aggiornamento importante: i suoi dati salvati potrebbero non adattarsi)"
+
+msgid "{1} ('{2}') was {3} when this was saved and is {4} now"
+msgstr "{1} ('{2}') era {3} al salvataggio ed è {4} ora"
+
+msgid "the world"
+msgstr "il mondo"
+
+msgid "terrain"
+msgstr "terreno"
+
+msgid "terrain colour map (first start only)"
+msgstr "mappa dei colori del terreno (solo al primo avvio)"
+
+msgid "terrain textures"
+msgstr "texture del terreno"
+
+msgid "sky"
+msgstr "cielo"
+
+msgid "weather"
+msgstr "meteo"
+
+msgid "weather effects"
+msgstr "effetti meteo"
+
+msgid "water"
+msgstr "acqua"
+
+msgid "buildings"
+msgstr "edifici"
+
+msgid "foliage"
+msgstr "vegetazione"
+
+msgid "lighting"
+msgstr "illuminazione"
+
+msgid "people"
+msgstr "persone"
+
+msgid "the interface"
+msgstr "l'interfaccia"
+
+msgid "paths"
+msgstr "percorsi"
+
+msgid "characters"
+msgstr "personaggi"
+
+msgid "finishing"
+msgstr "rifinitura"
+
+msgid "the view"
+msgstr "la vista"
+
+msgid "the save"
+msgstr "il salvataggio"
+
 msgid "{1,num} game data problem, see log.txt"
 msgid_plural "{1,num} game data problems, see log.txt"
 msgstr[0] "{1,num} problema nei dati di gioco, vedi log.txt"
@@ -4598,12 +4876,6 @@ msgid "{1,num} member"
 msgid_plural "{1,num} members"
 msgstr[0] "{1,num} membro"
 msgstr[1] "{1,num} membri"
-
-msgid "Attach log.txt (it shows folder names; your user name is hidden)"
-msgstr "Allega log.txt (mostra i nomi delle cartelle; il tuo nome utente è nascosto)"
-
-msgid "This machine needs electricity to function. You either need to build generators, or you are out of fuel / there is no wind."
-msgstr "Questa macchina ha bisogno di elettricità per funzionare. Devi costruire dei generatori, oppure hai finito il carburante / non c'è vento."
 
 msgid "Exit Game"
 msgstr "Esci dal gioco"
@@ -4632,23 +4904,5 @@ msgstr "Piratesco"
 msgid "Morse code"
 msgstr "Codice Morse"
 
-msgid "Split stacks"
-msgstr "Dividi pile"
-
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "Un clic su una pila la prende tutta, Maiusc+clic metà, Ctrl+clic un oggetto, e Maiusc+Ctrl+clic chiede quanti con un cursore. Nel gioco un clic prende un oggetto e Maiusc o Ctrl l'intera pila."
-
-msgid "Talk across shop counters"
-msgstr "Parla oltre i banconi"
-
-msgid "Faithful, as in the game: to talk or trade with a shopkeeper behind a counter, your character often walks round the counter to stand behind them. Meitou: shopkeepers can be reached from the customer's side of the counter."
-msgstr "Fedele, come nel gioco: per parlare o commerciare con un negoziante dietro un bancone, il tuo personaggio spesso gira intorno al bancone per mettersi dietro di lui. Meitou: i negozianti si raggiungono dal lato cliente del bancone."
-
-msgid "Split stack"
-msgstr "Dividi pila"
-
-msgid "Take"
-msgstr "Prendi"
-
-msgid "Take {1} of {2}"
-msgstr "Prendi {1} di {2}"

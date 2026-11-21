@@ -81,7 +81,9 @@ public static class SaveLoader
         world.GameHours = camera.Day * 24 + loaded.Clock.HourOfDay;
         NoteMissingMods(camera, data, loaded);
 
+        // The table is shared by the data: its change count (read by the state hash) starts with this game, not the previous one of the session.
         if (options.ResetRelations) data.Relations.Reset();
+        else if (options.ApplyRelations) data.Relations.RestartChanges();
 
         LoadFactions(save, data, options, loaded);
         TakeBaselines(data, loaded);
@@ -291,7 +293,7 @@ public static class SaveLoader
             }
         }
 
-        world.Fixtures.LayoutsFromSave(world, data);   // the layouts the original furnished the saved buildings with
+        world.Fixtures.LayoutsFromSave(world, data, save, context.Handles);   // the layouts the original furnished the saved buildings with
         world.Fixtures.RuinsFromSave(world, data);
 
         foreach (var site in data.Sites)

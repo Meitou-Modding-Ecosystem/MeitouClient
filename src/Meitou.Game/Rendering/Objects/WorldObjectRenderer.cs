@@ -1561,6 +1561,12 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     public float? FloorHeightAt(float x, float z, Func<string, int> floorOf) => _objects.Floors.HighestFloorAt(x, z, floorOf);
 
     /// <summary>
+    /// The highest map feature surface at a point at or under <paramref name="top"/>; null for none or still being made (docs/formats/camera.md
+    /// "Height").
+    /// </summary>
+    public float? FeatureHeightBelow(float x, float z, float top) => _objects.FeatureFloors.HighestBelow(x, z, top);
+
+    /// <summary>
     /// The loaded mask of a building or one of its layout objects (building id / item id).
     /// </summary>
     internal InteriorVolume? InteriorFor(string placementId)
@@ -2418,8 +2424,8 @@ public sealed unsafe partial class WorldObjectRenderer : IDisposable
     public bool CutIntoViewed { get; set; } = true;
 
     /// <summary>
-    /// Meitou (Fixes settings, <c>Rain in open buildings</c>): the rain and the other <c>CLIP_INTERIOR</c> particles are also cut in front of a
-    /// building in the interior view, over its mask (docs/render-interior-cut.md); off, only inside it, as the game does.
+    /// Meitou (Fixes settings, <c>Rain in open buildings</c>): full-size camera-box <c>CLIP_INTERIOR</c> particles (rain and ash flakes) are also
+    /// cut in front of a building in the interior view, over its mask (docs/render-interior-cut.md); off, only inside it, as the game does.
     /// </summary>
     public bool CutRainOverViewed { get; set; } = true;
 

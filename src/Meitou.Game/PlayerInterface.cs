@@ -361,6 +361,11 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     public bool FeedbackButtonInPlay { get; set; } = true;
 
     /// <summary>
+    /// The Squad XP label during play ("XP x10", <see cref="Settings.SkillXp.Label"/>); null while Show Squad XP is off.
+    /// </summary>
+    public string? XpLabel { get; set; }
+
+    /// <summary>
     /// The original's <c>Show names</c> option (<c>FUN_1406e2fd0</c>): off, the name tag keeps only its icons.
     /// </summary>
     public bool ShowNames { get; set; } = true;
@@ -1315,7 +1320,7 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
         if (Session.CurrentSnapshot.Characters.FirstOrDefault(c => c.Id == id) is not { } c) return;
         var view = Session.Camera.Current;
         c = Carrier(c);
-        Session.Camera.Place(new Vector2(c.Position.X, c.Position.Z), view.Yaw, view.Pitch, view.Distance);
+        Session.Camera.Place(new Vector2(c.Position.X, c.Position.Z), view.Yaw, view.Pitch, view.Distance, c.Position.Y);
         Follow = follow ? id : null;
     }
 

@@ -116,12 +116,13 @@ sealed class HeldItems(PopulationData? data)
     /// </summary>
     static ItemInstance Split(Inventory holder, ItemInstance item, int count)
     {
+        count = Math.Max(1, count);
         if (count >= item.Quantity)
         {
             holder.Items.Remove(item);
             return item;
         }
-        return Part(item, Math.Max(1, count));
+        return Part(item, count);
     }
 
     /// <summary>
@@ -251,9 +252,10 @@ sealed class HeldItems(PopulationData? data)
         else if (t.Section == "out" && m.Craft is { } craft)
         {
             if (craft.Done.ElementAtOrDefault(t.Index) is not { } item || item.Record != t.Record) return;
-            bool whole = lift.Count >= item.Quantity;
+            int count = Math.Max(1, lift.Count);
+            bool whole = count >= item.Quantity;
             if (whole) craft.Done.Remove(item);
-            Hold(world, lift, whole ? item : Part(item, Math.Max(1, lift.Count)), null, "out", t.Index, 0);
+            Hold(world, lift, whole ? item : Part(item, count), null, "out", t.Index, 0);
         }
         else
         {
@@ -560,6 +562,7 @@ sealed class HeldItems(PopulationData? data)
         if (item.Quantity <= 0) world.Player.Held = null;
         else
             Undo(in p, item);
+        if (buy || sell) p.Trade!.ReportHeld(world);
         if (p.Changes) HeldItemTheft.LeftLoot(world, held, p.Death);
         if (p.Changes) HeldItemTheft.ReportTake(world, held, n, caught: false);
         Touched(world, held, target);
@@ -584,6 +587,7 @@ sealed class HeldItems(PopulationData? data)
             target.Owner?.Medical?.RemoveReplacement(fitted);
         Put(target, item, p.X, p.Y);
         HoldOther(in p, other);
+        if (buy || sell) p.Trade!.ReportHeld(world);
         if (p.Changes) HeldItemTheft.LeftLoot(world, held, p.Death);
         if (p.Changes) HeldItemTheft.ReportTake(world, held, item.Quantity, caught: false);
         Touched(world, held, target);
@@ -659,6 +663,7 @@ sealed class HeldItems(PopulationData? data)
         if (ReferenceEquals(unit, item)) world.Player.Held = null;
         else
             Undo(in p, item);
+        if (buy || sell) p.Trade!.ReportHeld(world);
         if (p.Changes) HeldItemTheft.LeftLoot(world, held, p.Death);
         if (p.Changes) HeldItemTheft.ReportTake(world, held, n, caught: false);
         Touched(world, held, target);
