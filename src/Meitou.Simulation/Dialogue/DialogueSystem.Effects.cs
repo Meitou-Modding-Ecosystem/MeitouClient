@@ -320,6 +320,11 @@ public sealed partial class DialogueSystem
                     ledger.Remove(local);
                 if (ledger.Count == 0) tc.Bounties = null;
                 tc.Recognition = 0;
+
+                // Engine choice, no counterpart known in the original: the speaker forgives the target, so a TEMP_ENEMY tag its faction's guards
+                // still hold from an arrest attempt (saved with the squad memory) does not send them at a character who just paid. Without it,
+                // the guards fought the squad and each police blow booked a squad member for Assault (CrimeSystem.Hit).
+                if (world.Characters.TryResolveNext(me, out int speaker)) Forgive(world, speaker, target);
                 break;
         }
     }
