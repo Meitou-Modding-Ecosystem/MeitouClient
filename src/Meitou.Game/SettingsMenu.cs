@@ -1510,6 +1510,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.PauseOnLoad = true;
         Player.InventoryWindows.AutoOpenBags = Config.AutoOpenBags = true;
         Player.TradeWindows.AutoArrange = Config.AutoArrangeShops = false;
+        Player.InventoryWindows.SplitStacks = Config.SplitStacks = true;
         Config.AnimalsPickUp = false;
         AnimalsPickUpChanged?.Invoke(false);
         Config.FixDoorBreak = Config.FixAmbienceSuffix = Config.FixWindStop = true;
