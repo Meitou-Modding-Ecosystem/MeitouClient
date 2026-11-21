@@ -44,13 +44,14 @@ sealed class InventoryWindows(PlayerInterface player)
     internal (ItemOwner Window, int Code)? Lifting;
 
     /// <summary>
-    /// Shift and Ctrl at the last press (<see cref="LiftCount"/>).
+    /// Shift, Ctrl and Alt (the Highlight key, Alt by default) at the last press (<see cref="LiftCount"/>).
     /// </summary>
-    internal bool PressShift, PressCtrl;
+    internal bool PressShift, PressCtrl, PressAlt;
 
     /// <summary>
     /// Meitou's stack splitting (the Advanced page's Split stacks; docs/game/ui-screens.md "Holding an item"): a press lifts the whole stack, half of
-    /// it with Shift, one unit with Ctrl, and Shift + Ctrl asks how many (<see cref="LiftCount"/>).
+    /// it with Shift, one unit with Alt, and Shift + Alt asks how many (<see cref="LiftCount"/>). Not Ctrl: Left Ctrl is a default Orbit binding,
+    /// so Ctrl with a mouse move turns the camera.
     /// </summary>
     internal bool SplitStacks;
 
@@ -439,7 +440,7 @@ sealed class InventoryWindows(PlayerInterface player)
 
     /// <summary>
     /// A press on an item cell lifts it (<c>FUN_1407139a0</c>): a character's item, the stock's, a machine's or container's. Nothing for the other
-    /// controls. Shift + Ctrl with stack splitting on asks how many first (<see cref="StackSplitDialog"/>).
+    /// controls. Shift + Alt with stack splitting on asks how many first (<see cref="StackSplitDialog"/>).
     /// </summary>
     bool LiftAt(string screen, UiControl control, Vector2 p)
     {
@@ -449,7 +450,7 @@ sealed class InventoryWindows(PlayerInterface player)
             : null;
         if (lift is not { } chosen) return false;
 
-        if (SplitStacks && PressShift && PressCtrl && chosen.View.Quantity > 1)
+        if (SplitStacks && PressShift && PressAlt && chosen.View.Quantity > 1)
         {
             player.StackSplitDialog.Ask(chosen.View, n => LiftUnits(chosen, n, control.Bounds, p, held: false));
             return true;
@@ -461,13 +462,13 @@ sealed class InventoryWindows(PlayerInterface player)
 
     /// <summary>
     /// The units a press lifts out of a stack of <paramref name="quantity"/> without the dialog. The original's: one, or the whole stack with Shift
-    /// or Ctrl. Meitou's stack splitting (<see cref="SplitStacks"/>): the whole stack, half of it (rounded up) with Shift, one with Ctrl.
+    /// or Ctrl. Meitou's stack splitting (<see cref="SplitStacks"/>): the whole stack, half of it (rounded up) with Shift, one with Alt.
     /// </summary>
     internal int LiftCount(int quantity)
     {
         if (!SplitStacks) return PressShift || PressCtrl ? quantity : 1;
         if (PressShift) return (quantity + 1) / 2;
-        return PressCtrl ? 1 : quantity;
+        return PressAlt ? 1 : quantity;
     }
 
     /// <summary>
