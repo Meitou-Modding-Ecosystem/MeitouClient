@@ -200,12 +200,6 @@ public sealed class CharacterCold
         Running is { Task: CharacterTask.Attack, Row: not Data.Gameplay.Ai.TaskType.Bodyguard } run && Production.PermaJobs.Follows(run.Row);
 
     /// <summary>
-    /// The target a manned-turret gunner was told to shoot at (Shoot At, 235; <see cref="Combat.ShootAtOrder"/>); None: the gunner chooses. Not
-    /// saved; hashed only while set.
-    /// </summary>
-    public CharacterId TurretTarget { get; set; } = CharacterId.None;
-
-    /// <summary>
     /// The caged prisoner this character walks to free (Set Free, 110; <see cref="Locks.SetFreeOrder"/>); None: none. Not saved; hashed only while
     /// set.
     /// </summary>
@@ -1188,6 +1182,19 @@ public sealed class CharacterCold
     public int SlaveOwner { get; set; } = -1;
 
     /// <summary>
+    /// The last character whose melee blow left this one knocked out or dead (Character <c>+0x2c0</c>, written only by the melee take-hit
+    /// <c>FUN_1404394f0</c>, <b>Verified</b>; the bolt hit <c>FUN_140439c90</c> has no write to it). Read by a slave's escape as its savior
+    /// (<see cref="Kidnap.SlaveEscape"/>). Not saved; hashed while set.
+    /// </summary>
+    public CharacterId DefeatedBy { get; set; } = CharacterId.None;
+
+    /// <summary>
+    /// The tick since which a slave's owner is not in the world (AI <c>+0x2f0</c>, stamped by <c>FUN_1405a4ae0</c>; -1: not running). Not saved;
+    /// hashed while running.
+    /// </summary>
+    public long MasterLostTick { get; set; } = -1;
+
+    /// <summary>
     /// The squad a slave obeys (the original's owner handle naming a platoon; -1 none): job 187 Obedient Slave runs that squad's <c>Slave AI
     /// Goals</c> (<see cref="Ai.AiSystem"/>). Runtime only (not saved, not hashed): set where the slave is made or sold.
     /// </summary>
@@ -1490,15 +1497,15 @@ public sealed class CharacterCold
     /// The receiver's second list (<c>+0x70</c>, count <c>+0x78</c>; docs/game/ai-tasks.md "Precedence" source 3): orders the chooser scores after
     /// its committed stop and before the urgent job pass (<see cref="Ladder"/>; the serial look scores each, the serial pass starts the pick). The
     /// queue loader <c>FUN_1405092d0</c> fills it from a saved order queue (<see cref="Saving.OrderSave.Restore"/>); entries are never popped by
-    /// completion (a done one is skipped) and leave only by the clears (<c>FUN_1405074a0</c>, <c>FUN_140507530</c>). Serial phases write it;
+    /// completion (a done one is skipped) nor for a hand that names nothing, and leave only by the clears (<c>FUN_1405074a0</c>,
+    /// <c>FUN_140507530</c>) and the remove by type (<c>FUN_140507090</c>). Serial phases write it;
     /// hashed while not empty; not saved (the original's writer saves the order queue only).
     /// </summary>
     public List<OrderEntry> SecondList { get; } = [];
 
     /// <summary>
-    /// The queued orders a load read (<see cref="Saving.OrderSave"/>), until the decision step puts them in the <see cref="SecondList"/> once the
-    /// world they name is there (those from the first whose target is still to come wait, <see cref="Saving.OrderSave.Restore"/>); null: none.
-    /// Hashed by count while set.
+    /// The queued orders a load read (<see cref="Saving.OrderSave"/>), until the decision step puts them in the <see cref="SecondList"/>
+    /// (<see cref="Saving.OrderSave.Restore"/>); null: none. Hashed by count while set.
     /// </summary>
     public IReadOnlyList<Saving.SavedOrder>? SavedOrders { get; set; }
 
@@ -1907,8 +1914,8 @@ public sealed class CharacterTable
     }
 
     /// <summary>
-    /// The second list (<see cref="CharacterCold.SecondList"/>): its count, then each order's row, start, try, row run, spent mark, target, site and
-    /// point in list order.
+    /// The second list (<see cref="CharacterCold.SecondList"/>): its count, then each order's row, start, try, row run, planned entry (when one is
+    /// recorded), spent mark, target, site, point and wait for its target in list order.
     /// </summary>
     static void HashSecondList(ref StateHasher hasher, List<OrderEntry> list)
     {
@@ -1920,10 +1927,12 @@ public sealed class CharacterTable
             hasher.Add(e.Started);
             hasher.Add(e.Tried);
             hasher.Add(e.RowRuns);
+            if (e.Planned is { } planned) hasher.Add(PlayerOrders.PlannedKey(planned));
             hasher.Add(e.Spent);
             hasher.Add(e.Target);
             hasher.Add(e.Site is { } site ? Rng.StableHash(site) : 0UL);
             hasher.Add(e.Point);
+            if (e.Awaits is not null) hasher.Add(0x41776169);   // "Awai": a loaded order waiting for its target
         }
     }
 
@@ -2113,10 +2122,11 @@ public sealed class CharacterTable
         // a wake owed while carried; the rest is told from the medical state
         if ((k.BodyEvents & Combat.BodyEvents.Woke) != 0) hasher.Add(0x576F6B65);
 
-        if (!k.TurretTarget.IsNone)
+        // the target of a running Shoot At (its queue entry alone is hashed the legacy way)
+        if (Combat.ShootAt.TargetOf(k) is { IsNone: false } shootAt)
         {
             hasher.Add(0x54725467);
-            hasher.Add(k.TurretTarget);
+            hasher.Add(shootAt);
         }
 
         if (!k.Freeing.IsNone)
@@ -2198,6 +2208,14 @@ public sealed class CharacterTable
             hasher.Add(k.SlaveOwner);
             if (k.SlaveState > 1) hasher.Add(k.SlaveSince);
         }
+
+        if (!k.DefeatedBy.IsNone)
+        {
+            hasher.Add(0x44656662);
+            hasher.Add(k.DefeatedBy);
+        }
+
+        if (k.MasterLostTick >= 0) hasher.Add(k.MasterLostTick);
 
         if (k.Shaved) hasher.Add(0x53686176);
         if (k.Crouched) hasher.Add(0x43726F63);

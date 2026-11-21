@@ -897,14 +897,21 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
             return;
         }
 
-        if (FollowsWalk(mind))
-        {
-            var type = current.Task.Type;
-            float desire = Desire(world, TaskBehaviours.Of(type), type, TaskProfiles.Of(type), squad, board, mind, id, current.Task.Target);
-            plans.TryPlan(current, desire, current: true);
-        }
-
+        if (FollowsWalk(mind)) FollowWalk(world, slot, id, mind, squad, board, plans, current);
         if (!PlanSteps.Run(world, slot, mind, plans, current, hour)) mind.Goal = null;
+    }
+
+    /// <summary>
+    /// The kept plan of a walk made again (<see cref="FollowsWalk"/>): a plan whose running step is now another (the walk no longer needed) starts
+    /// that step, rolling the task's timer as the original's next task start does (<see cref="StartTask"/>).
+    /// </summary>
+    void FollowWalk(World world, int slot, CharacterId id, AiMind mind, Squad squad, Blackboard board, PlanContext plans, AiGoal current)
+    {
+        var type = current.Task.Type;
+        var before = mind.Step;
+        float desire = Desire(world, TaskBehaviours.Of(type), type, TaskProfiles.Of(type), squad, board, mind, id, current.Task.Target);
+        plans.TryPlan(current, desire, current: true);
+        if (mind.Step != before) StartTask(world, slot, mind);
     }
 
     /// <summary>
@@ -1995,7 +2002,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         var profile = TaskProfiles.Of(type);
         bool fresh = TakeUp(world, slot, mind, goal, type, profile);
         behaviour = Adopt(world, slot, mind, goal, board, type, behaviour, fresh);
-        if (fresh) PlanAnew(world, slot, mind, goal, board, profile);
+        if (!fresh) return behaviour;
+
+        PlanAnew(world, slot, mind, goal, board, profile);
+        StartTask(world, slot, mind);
         return behaviour;
     }
 
@@ -2052,10 +2062,9 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
 
         // A goal taken up anew starts over: a fresh target and, for a goal it commits to, a fresh commitment. A planned goal stays the current one only
         // while its plan runs (Kept); once the plan is over it is no longer current (EndStep), so choosing it again is anew. A goal that is its own
-        // plan is chosen again at every think: one it committed to starts over once its commitment ran out (engine reading: the original's target
-        // finders roll a new target then, so the goal counts as new).
-        bool fresh = mind.Goal is not { } before || before.Task.Type != type || before.Task.Target != goal.Task.Target
-            || profile.Commits && world.GameHours >= mind.CommitUntil && !PlanContext.Stepped(goal);
+        // plan and is chosen again stays current: the pick keeps a current goal whose task runs without setting it again (FUN_140510650, Verified),
+        // so its commitment ends by its timers (TierRungs.Begin).
+        bool fresh = mind.Goal is not { } before || before.Task.Type != type || before.Task.Target != goal.Task.Target;
         if (!fresh) return false;
 
         mind.GoalTick = world.Tick;
@@ -2089,8 +2098,58 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     }
 
     /// <summary>
+    /// A step of the current goal starts (the task start <c>FUN_14050d540</c> -> <c>FUN_14050d130</c>, <b>Verified</b>): when its commit step
+    /// (<see cref="CommitStep"/>) commits, the task's timer (<see cref="AiMind.TaskCommitUntil"/>) runs from now for that row's
+    /// <see cref="TaskProfile.CommitMin"/> plus a uniform share of <see cref="TaskProfile.CommitRange"/>; else it is left as it is.
+    /// </summary>
+    internal static void StartTask(World world, int slot, AiMind mind)
+    {
+        if (CommitStep(mind) is { } type) RollTaskTimer(world, slot, mind, type);
+    }
+
+    /// <summary>
+    /// Rolls the task's timer (<see cref="AiMind.TaskCommitUntil"/>) from now for <paramref name="type"/>'s commitment when that row commits
+    /// (<c>FUN_14050d130</c>, <b>Verified</b>); else leaves it as it is.
+    /// </summary>
+    static void RollTaskTimer(World world, int slot, AiMind mind, TaskType type)
+    {
+        if (TaskProfiles.Of(type) is not { Commits: true } profile) return;
+
+        ulong roll = Rng.Hash(world.Seed, Rng.Key(world.Characters.IdOf(slot)), RngPurpose.Think,
+            SeedSalts.AiTaskCommit ^ (ulong)world.Tick << 9 ^ (ulong)type);
+        mind.TaskCommitUntil = world.GameHours + profile.CommitMin + Rng.Float(roll) * profile.CommitRange;
+    }
+
+    /// <summary>
+    /// The row whose commitment the running task carries (<c>FUN_14050cff0</c>, <b>Verified</b>): the running step, or the next queued one when the
+    /// running row does not commit and the next has an effect (a goal row: the walk to a goal's place carries the goal's commitment). A goal that is
+    /// its own plan is its own task. None without a goal or a step.
+    /// </summary>
+    internal static TaskType? CommitStep(AiMind mind)
+    {
+        if (mind.Goal is not { } goal) return null;
+        if (!PlanContext.Stepped(goal)) return goal.Task.Type;
+        if (mind.Plan.Count == 0) return null;
+
+        var running = mind.Plan[0].Type;
+        if (mind.Plan.Count == 1 || TaskProfiles.Of(running).Commits) return running;
+
+        var next = mind.Plan[1].Type;
+        return TaskDataTable.Of(next)?.Effect is not null ? next : running;
+    }
+
+    /// <summary>
+    /// Whether the running task's commitment ends it now (<c>FUN_14050f0b0</c>, <b>Verified</b>): its commit step commits with TaskData
+    /// <c>+0x21</c> (<see cref="TaskProfile.EndsWithTask"/>) and the task's timer has passed.
+    /// </summary>
+    internal static bool TaskCommitOver(World world, AiMind mind) =>
+        CommitStep(mind) is { } type && TaskProfiles.Of(type) is { Commits: true, EndsWithTask: true }
+        && world.GameHours >= mind.TaskCommitUntil;
+
+    /// <summary>
     /// A goal installed in a fight (<see cref="InFight"/>) that commits and was not the current one rolls its commitment, as one acted out does
-    /// (<see cref="TakeUp"/>): the original sets it whenever a committing goal becomes current.
+    /// (<see cref="TakeUp"/>): the original sets it whenever a committing goal becomes current. The fight is the goal's own task, so the task's
+    /// timer is rolled for the goal's row (<see cref="RollTaskTimer"/>), as its start would.
     /// </summary>
     static void CommitInFight(World world, int slot, AiMind mind, AiGoal goal)
     {
@@ -2100,6 +2159,7 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         if (mind.Goal is { } before && before.Task.Type == type && before.Task.Target == goal.Task.Target) return;
 
         Commit(world, slot, mind, type, profile);
+        RollTaskTimer(world, slot, mind, type);
     }
 
     /// <summary>
@@ -3181,8 +3241,9 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
     /// <summary>
     /// Books a walk to <paramref name="target"/> that is over (<c>isAtLocation</c> <c>FUN_1405a2450</c>: a finished path is arrival whatever the
     /// distance). One the movement followed to its last point (<see cref="WalkEnd.Finished"/>) with no fight or flight taking it arrives; one it gave
-    /// up (<see cref="WalkEnd.Failed"/>: no way there, blocked, a locked door) or a fight or flight took counts toward <see cref="MaxFailedWalks"/>;
-    /// one another system stopped (a captive job's or lock round's stand) is neither, so the next act-out walks again.
+    /// up (<see cref="WalkEnd.Failed"/>: no way there, blocked, a locked door) or a fight or flight took counts toward <see cref="MaxFailedWalks"/>,
+    /// and one it gave up ends the goal's commitment; one another system stopped (a captive job's or lock round's stand) is neither, so the next
+    /// act-out walks again.
     /// </summary>
     static void WalkOver(CharacterTable table, int slot, AiMind mind, Vector2 target, Vector2 here, bool away)
     {
@@ -3204,6 +3265,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         }
 
         mind.FailedWalks++;
+
+        // A walk the movement gave up is the original's plan step finding the mover idle away from its place: the failed flag, whose handler zeroes
+        // the goal's timer (FUN_14050d970, FUN_14050d080, Verified), so the commitment is over. Its replan stays the give-up rule's retries.
+        if (!fought && cold.WalkEnd == WalkEnd.Failed) mind.CommitUntil = 0;
     }
 
     /// <summary>
@@ -3476,7 +3541,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
             if (squad.Ai is null)
             {
                 if (cadence) ClaimSlaveWork(world, squad);
-                if (!AttachNew(world, squad, cadence)) continue;
+                if (AttachNew(world, squad, cadence)) UpdateSquad(world, squad);
+                else StepStay(world, squad, cadence);
+
+                continue;
             }
             else if (!cadence) continue;   // the rest is looked at on the package cadence only (and when the squad appears)
 
@@ -3539,6 +3607,22 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         if (squad.Ai!.Town >= 0 && !_townPlaces.Has(squad.Ai.Town)) _townPlaces.Refresh(world, this);
 
         return true;
+    }
+
+    /// <summary>
+    /// A squad the AI does not run (a player's): the town and hour its save held, the first time it is looked at since the load (as
+    /// <c>FUN_140272c20</c> reads them into every platoon's blackboard), then its town step on the cadence.
+    /// </summary>
+    void StepStay(World world, Squad squad, bool cadence)
+    {
+        if (squad.SavedTown is { } saved)
+        {
+            if (world.Saved is { } placed)
+                (squad.StayTown, squad.StaySince) = saved.Applied(squad.StayTown, h => Saving.CurrentTownSave.TownOf(world, placed, h));
+            squad.SavedTown = null;
+        }
+
+        if (cadence) UpdateStay(world, squad);
     }
 
     /// <summary>
@@ -3869,9 +3953,10 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         melee ? d2 <= TurretNearMelee * TurretNearMelee ? 0.8f : 0.05f : d2 <= TurretNear * TurretNear ? 1 : 0.3f;
 
     /// <summary>
-    /// The desire of the turret goals (AI slot 35 <c>FUN_140598080</c>): 0 when carrying; 2.0 when enemies are sensed (it has a turret as target);
-    /// else 1.0. Not modelled: the 0 for a combat-flagged character outside melee mode, the cut at the squared distance clamp(<c>AI+0x28</c> x 1.2,
-    /// 10000, 1e6) and the 0.4 of a hurt character with none sensed; the player-faction branch (1.0 with a 146 in the order deque,
+    /// The desire of the turret goals (AI slot 35 <c>FUN_140598080</c>): 0 when carrying; 2.0 when enemies are sensed; else 1.0. The original gives
+    /// 2.0 only while the character mans a turret (Character <c>+0x260</c>, written by <c>TurretBuilding</c>'s <c>FUN_140434d20</c>). Not modelled:
+    /// the 0 for a Passive character outside melee combat mode, the cut at the squared distance clamp(<c>AI+0x28</c> x 1.2, 10000, 1e6) and the 0.4
+    /// of a hungry one (hunger level below 2.1, stomach buffer empty) with none sensed; the player-faction branch (1.0 with a 146 in the order deque,
     /// <c>FUN_140507c10</c>, else 0 without a 234 job, <c>FUN_140507200</c>, or Ranged, stat flag <c>+0x129</c>) is no NPC's.
     /// </summary>
     float TurretDesire(World world, int slot) =>
@@ -3976,11 +4061,18 @@ public sealed partial class AiSystem(PopulationData data, AiSettings? settings =
         // a saved squad then takes its saved town.
         if (TownPosition(world, squad) is { } at) (squad.Ai.InTown, squad.Ai.InTownSince) = (StartTown(world, at), world.GameHours);
 
+        // A player's squad the AI starts to run keeps the town it was in and its hour (the original's platoon has one blackboard throughout).
+        if (IsPlayers(world, squad))
+        {
+            StepStay(world, squad, false);
+            (squad.Ai.InTown, squad.Ai.InTownSince) = (squad.StayTown, squad.StaySince);
+        }
+
         // The town and arrival hour its platoon's save record held, for the first squad in it since the load, made from the save's characters or
         // from its template (FUN_140272c20 reads currenttown and towntime into the platoon's blackboard).
         if (squad.PlatoonId >= 0 && world.Platoons.Find(squad.PlatoonId) is { SavedTown: { } stay } platoon)
         {
-            if (world.Saved is { } placed) stay.Apply(squad.Ai, h => Saving.WarSave.Town(world, placed, h));
+            if (world.Saved is { } placed) stay.Apply(squad.Ai, h => Saving.CurrentTownSave.TownOf(world, placed, h));
             platoon.SavedTown = null;
         }
         if (squad.SavedAi is { } saved)

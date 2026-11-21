@@ -253,8 +253,9 @@ Every order command (`OrderCommand`) goes through `PlayerOrders.Give`: without `
 (Shift) the queue is cleared first, as the original's order giver `FUN_1405d20d0`; the order is queued; at the front it starts through its owner when `PlayerOrders.CanRun` says so (the row's repertoire, then
 the owner's pure `IOrderOwner.CanRun`: `Run`, `Blocked` with its failure text, or `Gone` when its target or site no longer fits the verb; then the plan's
 first step, `ListTests.OrderBlocked`: the first list B entry `RowStates` evaluates that fails (the walk left out) with no provider in the character's
-repertoire blocks it with that state's line, `StateFailureLines`, so a Follow on a downed character waits silently until it is up; one with a provider is a step
-the act-out carries out first, the row's list B tested once it held: `OrderEntry.RowRuns`).
+repertoire that leads to a step (`ListTests.ProviderSearch`, the planner's rules) blocks it with that state's line, `StateFailureLines`, so a Follow on a downed character
+waits silently until it is up; one with a provider is a step the act-out carries out first, the row's list B tested once the entry it provides holds:
+`OrderEntry.Planned`, `OrderEntry.RowRuns`).
 - A blocked front shows its text (a bark, or a posted message) and stays queued; the character's task is left alone, so its jobs, goals and reactions go on (S5). `Gone` pops it.
   An order given to a character out cold waits queued (the chooser does not run while it is carried, out cold or dead, `DecisionSystem.Down`, for the player's
   characters too) and is wiped when it wakes outside a bed or cage (the wake's get-up order has the clear flag, below).
@@ -287,10 +288,10 @@ the act-out carries out first, the row's list B tested once it held: `OrderEntry
 - After `Give` the decision step ([below](#decision-step)) asks the front again as its source 1: a blocked one falls through to goals and jobs there.
 - A done front leaves before it is asked (`PlayerOrders.PopDone`, `ListTests.OrderDone`: its row's list A, effect test and finished test, the original's
   order step, [finished tests](game/ai-tasks.md#finished-tests)), and so does one whose desire is 0 or less (`OrderDesire`: a first aid or splint order with no kit, a lift
-  order once the body is carried) and a running one whose list B fails while its own row runs (`ListTests.OrderNeedsFail`; `OrderEntry.RowRuns`: list B held at its start, or since, the plan step's end, [precedence](game/ai-tasks.md#precedence)).
+  order once the body is carried) and a running one whose list B fails while its own row runs (`ListTests.OrderNeedsFail`; `OrderEntry.RowRuns`: list B held at its start, or the entry its plan's first step provides has held since, the plan step's end, [precedence](game/ai-tasks.md#precedence)).
   A follow order (31) running its row ends so when the followed character is attacked (16) or goes down (7): the follower falls through to its goals (15 Protect allies
   joins the fight) and does not follow again (`PlayerOrders.FollowRowRuns`; the guards' fight and the fight-step provenance are only for a follow job, or a follow
-  order given while its target is already threatened, whose fight is the step before its row);
+  order given while its target is already threatened, whose fight is the step before its row; that order leaves once the fight is over if its target went down meanwhile);
   a running one ends its task (`TaskEnd.Done`) when its row is done or cannot run, while a desire of 0 leaves the act-out to its own end. The decision step tests this on every
   tick a character with a front steps (`PlayerOrders.PopsNow`) and decides it then. So a pick order on a lock already open leaves at once. A move leaves within 12 of its point
   and its walk goes on (`Task_Move`'s end stops the mover only once it is done), so the next order or job takes the walk over there.
@@ -315,7 +316,13 @@ the act-out carries out first, the row's list B tested once it held: `OrderEntry
   ([order givers](game/ai-tasks.md#order-givers)); `World.GiveOrder(queued: true)` appends one. DA_TRADE opens its window with no order (`OpenTradeNow`).
 - **Escape** (the caged character's menu verb, and Alt + the quick click on it in another faction's unlocked cage, `CageClickOrder`) is order 207 Escape cage (`GetOutOrder` → `Locks.CageEscape`) for every selected character, the queue cleared, as the
   original's giver: done for one in no cage (list A `!79`), held while the cage is locked (list B `!54`), else Task_GetOutOfCage's leave with the escape flag.
-- Not queued (they act at once): Shoot At (sets the turret's target), Dispose Corpse (an errand). **Stop** is no order in the original either
+- **Shoot At** is order 235 (`ShootAtOrder` → `Combat.ShootAt`) for every selected character, the menu clearing the queue and the quick click appending it (so behind
+  a running 146 order, which never finishes, it waits): it runs only on a manned turret (list B 145, `RowStates`), where it takes over the operate task as row 235,
+  the turret's target choice reading its target; it ends when the target is down (list A 7) or the gunner stops manning, and the operate task ends with it.
+- **Corpse Disposal** is order 136 (`DisposeCorpseOrder` → `ProductionSystem.CorpseOrders`) on the clicked machine for every selected character (menu and quick click,
+  the queue cleared): done at once for one carrying nothing (list A 100), held for one carrying a living body (99 fails), else the walk to that machine is its task and
+  the corpse errand feeds the body in there; a walk that ends short ends it.
+- **Stop** is no order in the original either
   (`FUN_1407f6470`, [what clears the queue](game/ai-tasks.md#what-clears-the-queue)): it wipes the queue, the second list and the goal (`PlayerOrders.Wipe`) and ends the task.
 - `World.CanOrder(row, actor, target, site, point)` / `CanOrder(OrderEntry, actor)` -> `(Can, Why)` is `PlayerOrders.CanRun` as a pure read between ticks (a `Gone` verdict is `false` with no text); the queue's start and bark use the same read. It is not a menu filter (decision D5): the original's menu offers its verbs (operate, build, dismantle, prospect, ...) without testing the character and lets the order fail with its text, so Meitou's does too; no verb is greyed. Planned native multiplayer can call it on the host to gate guest commands.
 - Every `OrderCommand` also applies while paused (`World.ApplyPausedInterfaceCommands`, through every `IOrderOwner`'s inputs).
@@ -369,7 +376,7 @@ the act-out carries out first, the row's list B tested once it held: `OrderEntry
   ([decision step](#decision-step)). Left out: a row no system owns, a target character or site that is not in the world, a handle that names nothing, ground-item pick-ups (a runtime
   item id) and the Medic / Rescue buttons' one-shot looks. An owner with a detail (`IOrderOwner.SaveKind` / `LoadDetail`) codes it in Meitou's own key. Before an order is first checked,
   its owner readies what its live command would (`IOrderOwner.Restored`): production makes the machine of a rock, town dummy or seat, which no save holds (without it the operate order
-  was `Gone` and a miner stood idle after a load, #598). Of the add function's job-form remaps Meitou makes all but 146 → 234 and 136 → 137 (`OrderSave.LoadedRow`, [loaded entries](game/ai-tasks.md#precedence)). Hashed as the move-only
+  was `Gone` and a miner stood idle after a load, #598). Of the add function's job-form remaps Meitou makes all but 146 → 234 (`OrderSave.LoadedRow`; 136 → 137 has no loaded 137 entry yet, so it is dropped, [loaded entries](game/ai-tasks.md#precedence)). Hashed as the move-only
   queue was while it holds only that (nothing, a started order alone, started moves), else under its own mark.
 
 ### Decision step
@@ -1273,8 +1280,9 @@ one starts with the order's provenance. The phases stay because Meitou's order s
 which an order's hold refuses. The chain's rows and states are in [AI tasks](game/ai-tasks.md#arrest-and-prison-rows). Goal 204 is an [engine goal](#engine-goals) (below); goals 203, 112 and 281 are not in `TaskBehaviours.Table`.
 - **Triggers**: a police-like witness that books a crime acts at once (`CrimeSystem.BookingsOf`, the witnessed-crime
   events); every 15 ticks an awake NPC within 400 that sees a player character (`Visibility`/`SneakVisibility`) whose
-  bounty with its faction reaches its class threshold spots it, unless it regards the target as friendly
-  (`CrimeSystem.RegardsFriendly`, slot 126 by real factions, squad love included; such a looker neither fills the meter nor fires), at once while `RecentlyWanted` > 0 (250 game seconds after
+  bounty with its faction reaches its class threshold spots it while it wears no uniform piece (disguise level 0, `FUN_140856f00`) (not a looker in combat mode,
+  melee or ranged, `ArrestSystem.InCombatMode`, which fills no meter, a disguise's included, nor one that regards the target as friendly,
+  `CrimeSystem.RegardsFriendly`, slot 126 by real factions, squad love included; neither fires), at once while `RecentlyWanted` > 0 (250 game seconds after
   a booking or a witnessed crime; engine: the countdown), else after 45 s of being seen (engine: one meter per target,
   rate not decoded); only the nearest free police-like looker acts. MILITARY threshold: engine 2000 (original 4000 or 2000);
   the police-like NPCs of the five towns `CrimeInstallTests` loads are MILITARY (**Observed**).
@@ -1349,8 +1357,8 @@ which an order's hold refuses. The chain's rows and states are in [AI tasks](gam
 - **Bail** (DA 43, [economy 11.5](game/economy.md#115-bail-and-sentence); only the Shek bounty desk and the Inquisitor offer it): the conversation
   closes and the window reopens as the bail list (engine stand-in for the trading window): "Pay Bounty", one choice "Name (c.N)" per prisoner of
   `ArrestSystem.BailOffers` (cages within the speaker's town extent, as `InOwnTown`; player-faction or not hostile to the speaker; `BailFor` not
-  null: the cage's owner neither the player's faction nor lawless), `[Leave]`. A click pays (`PayBail(prisoner, payer)`): erases the jail's entry,
-  `Release` (no escape). NPC prisoners are only freed, not recruited. `PayBailOrder` (no UI) is the same bail paid by a player character within 500 of the cage.
+  null: the cage's owner neither the player's faction nor lawless), `[Leave]`. A click pays (`PayBail(prisoner, payer)`, `ArrestSystem.Bail`): erases the jail's
+  entry, splits the prisoner from a squad of others (`DialogueSystem.Separate`, a new player squad for a player's character), unlocks its worn shackles and gives 133 (no escape); the cage stays locked. NPC prisoners are only freed, not recruited. `PayBailOrder` (no UI) is the same bail paid by a player character within 500 of the cage.
 - **Put in Cage / claim** (`PutInCageOrder`, a cage's Put in while a selected character carries someone): the carrier walks to
   that cage, or with none named the best free cage within 1500 (`FindCage`; others' cages reserved), `LetGo` + `Imprison` as an arrest does, then `Claim`
   (11.4 caging tests; the slaver exception never applies): the cage owner's unclaimed entry, halved for a dead captive, is
@@ -1424,11 +1432,18 @@ which an order's hold refuses. The chain's rows and states are in [AI tasks](gam
   slave (state 1), player or NPC, outside every town (its status town, `CharacterCold.StatusTown`, [rule](game/carry-loot.md#the-status-town), as for `Freed`) and farther than about 3 536 from its owner becomes an escaped slave. The owner is the
   master squad's leader (`ObedientSlave.OwnerOf`); without a master squad or pending saved owner handle, a slave becomes escaped even inside town. Not one held in a cage that has an owner (`ArrestSystem.CagedByOwner`): the original's cage entry gives it the cage's owner handle (`FUN_140330600`), and Meitou's stand-in, the resident squad, is missing for a cage with none (Rebirth's Prisoner Poles; **Observed**, #647 save: the start prisoner turned escaped slave in its cage within 30 ticks).
   A master squad or saved owner still waiting to load is kept; measuring to an unloaded platoon's position is not modelled.
+- **Escape from beaten masters** (`Kidnap.SlaveEscape`, on the same cadence after the far rule; facts: [carry-loot](game/carry-loot.md#a-slave-whose-masters-are-beaten-escapes)):
+  a slave (state 1), player or NPC, not caged, not down, with a master squad, escapes (state 2) when every member of that squad is down or not upright,
+  saying event 54 at the owner's defeater (`CharacterCold.DefeatedBy`, set by a melee blow that leaves its victim down) when the slave knows it, else 55; or
+  when the owner (the squad's leader) is down or gone and no effective leader stands, saying 55; or 45 simulation seconds after its master squad left the
+  world (`CharacterCold.MasterLostTick`), saying 55; a stored squad that comes back under a new id takes its slaves with it (`PopulationSystem.RepointSlaves`). The lines' `change AI` gives it an escaping package (`Escaping slave- run away solo`, goal 202).
+  Engine choices: the owner is the squad's leader, so the original's hand-over to the effective leader changes nothing and the savior is always the
+  leader's defeater; the 45 s are simulation seconds, where the original counts wall-clock seconds (unscaled by game speed).
 - **Slave trading** (DA 41 / 42, `CharacterTrading`; facts: [economy 12](game/economy.md#12-slaves-prisoners-animals)): the line ends the conversation and the window
   opens as it closes (a speech-bubble line opens it at once; only for a player-character target). Rows, prices and the confirm's effects as in the original, with these **engine**
-  choices: the buying list (the original's per-owner set, whose owner is a character, is not modelled) is every character in slave state 1, not dead, that obeys the
-  slaver's squad, is caged in a cage of that squad's home building (a shop's stock: Sho-Battai's is owned by the town's faction, not the slavers'), or is owned by the
-  slaver's faction within 300 units of it; a faction-wide list offered other towns' and caravans' slaves and an enslaved shop guard lying in the street (#425); the selling
+  choices: the buying list is every character in slave state 1, not dead, that obeys the slaver's squad (the original's platoon ownership set), and, standing in for the
+  building owner hand a caging gives (Meitou's building owner is a faction), one caged in a cage of that squad's home building (a shop's stock: Sho-Battai's is owned by
+  the town's faction, not the slavers') or owned by the slaver's faction within 300 units of it; a faction-wide list offered other towns' and caravans' slaves and an enslaved shop guard lying in the street (#425); the selling
   buyer's money is the slaver's squad purse (`Squad.Money`, a trader's shop money); the confirm re-checks the window's gate (a row ticked, total within the buyer's money) and
   does nothing otherwise; a slave bought free out of a squad of others leads a new squad of the old one's template with a copy of its memory (`DialogueSystem.Separate`, as DA 28), or a new player
   squad for one of the player's; event 51 fires after it is out of its cage; the window closes when the slaver or the customer is no longer awake. It is neither saved nor hashed.
@@ -1639,7 +1654,7 @@ gather jobs while walking home under 43, and a job that waited on that walk reac
   (`FUN_1408db680` -> `FUN_1408db510`, **Observed**, 1.0.68 decompile); 217 still excludes player occupants (engine choice).
   **Observed** (KenshiOracle hold, Rebirth, 2026-11-09): the original's gathered slaves keep their squads all hour (Pao 40, Mu 44).
   **Observed** (probe): the Slave Farm's workmasters take the caged slaves out by day; at night their slaves' 172 puts them back.
-- **Deliver** (192, the squad leader under a shipping package): its plan's 53 is the travel task (`TownTravel.StepGoal`, [town goals](game/ai-tasks.md#town-goals)): to the squad's town (the shipping package's mission town) by its waypoint at the functor's pace, done once state 36 holds; a walk with no path to the town is a lost walk. **Sell** (194,
+- **Deliver** (192, the squad leader under a shipping package): its plan's 53 is the travel task (`TownTravel.StepGoal`, [town goals](game/ai-tasks.md#town-goals)): to the squad's town (the shipping package's mission town: the nearest slave camp, or for signal 28 a nearer TOWN with slave pens, [packages](game/ai.md#prisoner-and-slaver-packages)) by its waypoint at the functor's pace, done once state 36 holds; a walk with no path to the town is a lost walk. **Sell** (194,
   or 218 in a prison or slave camp): the finder (`FUN_1408ca950`, **Verified**) picks at random a slave pen (a house of designation 10 in the 3x3 zone cells round the
   leader, of the town it stands in, not ignored, of its faction or one it may use, `FUN_1408ca5d0`) and takes its owner squad's effective leader; none, the goal is
   unwanted. The leader walks up and says event 39 SLAVE_DELIVERY (row 159); the job ends once its dialogue is free. The base data answers it (`slave delivery`, package
@@ -1712,8 +1727,8 @@ gather jobs while walking home under 43, and a job that waited on that walk reac
 - **Squad memory**: a caged captive's squad remembers the captor (5, through `FactionDeeds.CagedHook`), a freed prisoner's squad the liberator (3 and TEMP ALLY, event 13), a sold slave's squad the customer
   (5), a bought one's the buyer (3).
 - **Shipping off screen**: the shipping squads are town roaming squads and homeless spawns (base data), so the original despawns them as they leave (Faithful). A kept stand-in
-  (`KeepRoamers`) whose package is a shipping one (TRAVEL_TARGET, [ai](game/ai.md#unknowns)) with a living slave goes on at 25 to the camp its package chose (none chosen: the
-  nearest slave camp not hostile to it) and stays there, the original's TRAVEL_TARGET rule ([off-screen world](game/factions-squads-towns.md#off-screen-world)); the handover
+  (`KeepRoamers`) whose package is a shipping one (TRAVEL_TARGET, [ai](game/ai.md#unknowns)) with a living slave goes on at 25 to the town its package chose (none chosen: the
+  loaded package's rule, `SlaveShipping.Town`: the nearest slave camp not hostile to it, or for signal 28 a nearer TOWN with slave pens) and stays there, the original's TRAVEL_TARGET rule ([off-screen world](game/factions-squads-towns.md#off-screen-world)); the handover
   waits for it to load (`PopulationSystem.ShippingCamp`); a save's travelling platoon not made yet ships too, its slaves read from the save (slave role, `slavestate` 1), to the nearest
   such camp (the save's mission town is not read). Not
   shipped off screen: wild ones (a save's homeless platoons and the squads `KeepWild` keeps), which their sector makes again where they stood, so they stay there as other wild squads.
@@ -2464,8 +2479,7 @@ origin, else the ground there (raised Swamp Houses and Cannibal Shacks: floor 25
 floor near it puts them on the nearest meshed storey below (`PopulationSystem.HomeFloor`, engine choices). **Observed** (headless probe of every
 town, 600 ticks): characters on the ground under a building floor went from 278 to 128 of 9060; ~80 of those are gate guards, the rest mostly
 homeless squads placed under unmeshed platforms. The Storm House's upper storey (+66) is on the navmesh except under its beds, whose
-spots therefore stand on the floor below (Observed, 2026-10-18 probe). Engine choices: a committed goal chosen again after its commitment ran out
-starts over with a new target; shops stand customers at a general
+spots therefore stand on the floor below (Observed, 2026-10-18 probe). Engine choices: shops stand customers at a general
 node, else a guard post, else any node; a home or seat given up
 after three failed walks is tried again when a new goal is taken up, and a member that gave its seat up
 leaves it to the next; a member keeps its seat while it still relaxes or sits (every squad's kept seats are reserved before any claims), so a
