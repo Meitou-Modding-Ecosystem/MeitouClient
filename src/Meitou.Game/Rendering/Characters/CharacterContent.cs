@@ -2163,6 +2163,7 @@ internal sealed class CharacterContent : IDisposable
     /// </summary>
     static bool IsScabbard(CharacterPart part) =>
         part.Slot == AttachSlot.Weapon
+        && part.Mode != AttachMode.SharedSkeleton
         && (part.Field == "sheath" || part.Field.StartsWith("mesh", StringComparison.Ordinal) && part.Record.GetPath("sheath").Length > 0);
 
     /// <summary>
