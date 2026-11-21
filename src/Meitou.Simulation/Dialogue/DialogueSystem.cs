@@ -444,7 +444,7 @@ public sealed partial class DialogueSystem : ITickSystem, IStateHashed, IDialogu
     /// The reach that replaces <see cref="TalkReach"/> for a shopkeeper at its counter while <see cref="World.CounterTalk"/> is on (Meitou): the
     /// customer talks from the counter's front instead of walking round behind it (docs/game/dialogue.md "Player conversation", counter reach).
     /// </summary>
-    public const float CounterTalkReach = 26;
+    public const float CounterTalkReach = 31;
     /// <summary>
     /// The largest height difference to talk across (the original's on the same floor; engine choice, the sim has no floors here).
     /// </summary>
