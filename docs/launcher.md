@@ -24,7 +24,7 @@ items); the launcher never downloads or hosts mods.
   (patch after the newest full release) as a pre-release without a changelog section; its notes list every
   commit since the newest game tag (GitHub's generated notes cover only merged pull requests, so nightlies don't use them). It is skipped when nothing
   outside `news/`, `site/`, `launcher/`, `docs/` and `.github/workflows/` changed since the newest game tag (nightly or full). Only the newest 14
-  nightlies are kept, so the releases page and the launcher's Versions list stay short. Each nightly's commit list, and each full release's changelog section, is posted to Discord
+  nightlies are kept, so the releases page and the launcher's Versions list stay short. Each nightly's commit list, and each full or launcher release's changelog section, is posted to Discord
   as the Tinfist bot (secret `DISCORD_BOT_TOKEN`, repository variable `DISCORD_NIGHTLY_CHANNEL`), else through the `DISCORD_WEBHOOK_URL`
   channel webhook, when set. The launcher shows them with the Nightly builds checkbox beside Play ticked ("Play latest nightly"; ticking it asks first, with Yes under the pointer, warning of crashes and corrupted saves) (GitHub pre-releases; `IncludePrereleases` in `launcher.json`). Installed versions stay listed either way; an update is offered only for a release newer than the newest installed.
 - Game assets: `Meitou-<version>-<rid>.zip`, `<rid>` as .NET's `RuntimeInformation.RuntimeIdentifier` (`win-x64`, `linux-x64`,
@@ -122,7 +122,7 @@ Native dependencies off Windows:
 
 The launcher's data folder (its program, once installed, is Velopack's, e.g. `%LocalAppData%/MeitouLauncher`) is `%LocalAppData%/Meitou`, `~/.local/share/Meitou` or `~/Library/Application Support/Meitou`, the same
 folder as the game's caches (shader cache, LODs, navmesh). Beside them it holds
-`launcher.json` (Kenshi folder, install folder, channel, chosen version, launch arguments, renderer, Metal memory budget, presets, language) and is the game's working directory.
+`launcher.json` (Kenshi folder, install folder, channel, chosen version, launch arguments, renderer, Metal memory budget, presets, language, `ModDetailsShown`, the window's normal size and whether it was maximised or full screen, restored within the primary screen) and is the game's working directory.
 The game runs from that folder, so its `meitou.user.json` (and anything else it writes to the working directory) is shared by all
 versions. The game gets the Kenshi folder through `KENSHI_PATH`. On macOS, **Vulkan** gets `DYLD_LIBRARY_PATH` pointing at the
 launcher's `vulkan/` folder (symlinks to `libvulkan.1.dylib` and `libMoltenVK.dylib`, with the sources found under Homebrew) plus the
@@ -279,6 +279,15 @@ interpolated string, which no translation could match.
   order, CRLF) and `__mods.list` (every listed name, plus old names not on disk). These are the files the original game reads, so the mod list applies to it too.
 - Discovery and the header reads run off the UI thread while the window opens; until they finish (or when they fail) Play and the
   preset buttons refuse, and nothing is saved, so an unloaded list never overwrites `mods.cfg`.
+- The header counts the mods (and, while searching, those shown) and the enabled ones. One button ticks every shown mod, or unticks them
+  all once every one is ticked (Select all / Select none). The list scrolls smoothly with the mouse wheel (`SmoothWheelScroll`).
+- **Details** (the header, kept as `ModDetailsShown`, on by default) lets the side pane right of the list slide open while a mod is
+  selected (shut with none, so not at start): the selected mod's name,
+  source and author, its notes (red when the game would refuse it), its `.mod` header dependencies (each one not enabled above it in red),
+  its description and its folder. The description's Steam BBCode is drawn (`BbCodeView`: headings, bold, italic, underline, strike,
+  links, lists, quotes, code, rules, tables, spoilers, noparse); unknown or unmatched tags stay literal, only http(s) links open and
+  `[img]` is a link, never fetched.
+- The preset row sits above the list: the preset box with Apply and Delete, and the new preset's name with Save as preset.
 - A preset is a named, ordered list of names with enabled flags. Applying one reorders the list. Mods the preset doesn't name go
   to the end, disabled, and mods it names that aren't on disk are reported. Applying saves.
 - From save lists the save folders (with `quick.save`) of Meitou's save root, the install's `save` and the per-user Kenshi save folder,

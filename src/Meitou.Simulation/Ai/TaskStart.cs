@@ -100,6 +100,11 @@ public enum StartResult : byte
     /// ended short.
     /// </summary>
     Inaccessible,
+    /// <summary>
+    /// The character's order holds it (an NPC's, <see cref="DecisionSystem.Ordered"/>): a goal's or reaction's start that is no step of the order is
+    /// refused, as the original's order step comes before every goal (docs/game/ai-tasks.md "Precedence"); nothing changed.
+    /// </summary>
+    Ordered,
 }
 
 /// <summary>
@@ -172,6 +177,11 @@ public readonly record struct TaskRequest(CharacterTask Task, TaskType Row, Task
     /// The speed mode of a walk (null: the character's run speed).
     /// </summary>
     public byte? Mode { get; init; }
+
+    /// <summary>
+    /// The engine sets the task itself, with no plan (the stagger's 147, <see cref="Player.OrderEntry.Forced"/>): the repertoire is not tested.
+    /// </summary>
+    internal bool Forced { get; init; }
 }
 
 /// <summary>
@@ -404,21 +414,24 @@ public static class TaskStart
         && (row is TaskType.Idle or TaskType.Aoeu || !Repertoire.StuckInBed(world, cold));
 
     /// <summary>
-    /// Starts a task (serial phases only): the row must be <see cref="Eligible"/>; then a fight ends (a new task drops the fight task,
+    /// Starts a task (serial phases only): the row must be <see cref="Eligible"/> (unless <see cref="TaskRequest.Forced"/>); then a fight ends (a new task drops the fight task,
     /// docs/game/combat.md "Fight lifecycle and orders"), the task before ends through its handler, the provenance is recorded
     /// (<see cref="CharacterCold.Running"/>) and the act-out starts. A fight the character did not take up by an order or a job, while it runs a
     /// follow row (31, 45, 289), is a step of that row (31 and 45 need state 16, which 13 "Attacking attackers of" gives; docs/game/ai-tasks.md
-    /// "Precedence"): the row's provenance is kept, so the follow is taken up again after it.
+    /// "Precedence"): the row's provenance is kept, so the follow is taken up again after it. An NPC its order holds
+    /// (<see cref="DecisionSystem.Ordered"/>) takes no goal's or reaction's start but such a step (<see cref="StartResult.Ordered"/>).
     /// </summary>
     public static StartResult Start(World world, int slot, in TaskRequest request)
     {
         var table = world.Characters;
         if (table.Phase == TablePhase.Parallel) throw new InvalidOperationException("tasks start in the serial phases only");
         var cold = table.Cold(slot)!;
-        if (!Eligible(world, cold, request.Row)) return StartResult.NotEligible;
+        if (!request.Forced && !Eligible(world, cold, request.Row)) return StartResult.NotEligible;
         var current = (CharacterTask)table.Next[slot].Task;
         var handler = world.Tasks.Of(request.Task, request.Row, request.Site);
         bool step = cold.Running is { } kept && Step(cold, kept, current, request);
+        if (!step && Yields(cold, request.Source)) return StartResult.Ordered;
+
         PlayerOrders.Replacing(world, slot, request, step);
         if (request.Task != CharacterTask.Attack) world.Tasks.Of(CharacterTask.Attack)?.End(world, slot, CharacterTask.Attack, TaskEnd.Replaced);
         if (current != CharacterTask.Attack && world.Tasks.Of(cold, current) is { } before
@@ -446,11 +459,13 @@ public static class TaskStart
 
     /// <summary>
     /// Starts an engine walk to <paramref name="goal"/> at <paramref name="mode"/> as row <paramref name="row"/> (<see cref="Start"/> of a
-    /// <see cref="CharacterTask.GoTo"/> with <see cref="TaskRequest.Goal"/>).
+    /// <see cref="CharacterTask.GoTo"/> with <see cref="TaskRequest.Goal"/>). A goal's or reaction's walk that yields to an order is refused before
+    /// the destination is tested (<see cref="Yields"/>).
     /// </summary>
     public static StartResult Walk(World world, int slot, System.Numerics.Vector2 goal, byte mode, TaskType row, TaskSource source)
     {
         var point = new System.Numerics.Vector3(goal.X, float.NaN, goal.Y);
+        if (Yields(world.Characters.Cold(slot)!, source)) return StartResult.Ordered;   // before a refusal would stand the order's walk
         if (DestinationAccess.WalkRefused(world, slot, row, point)) return Refuse(world, slot);
 
         return Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Goal = goal, Mode = mode });
@@ -462,10 +477,17 @@ public static class TaskStart
     /// </summary>
     public static StartResult Walk(World world, int slot, System.Numerics.Vector3 at, byte mode, TaskType row, TaskSource source)
     {
+        if (Yields(world.Characters.Cold(slot)!, source)) return StartResult.Ordered;   // before a refusal would stand the order's walk
         if (DestinationAccess.WalkRefused(world, slot, row, at)) return Refuse(world, slot);
 
         return Start(world, slot, new TaskRequest(CharacterTask.GoTo, row, source) { Point = at, Mode = mode });
     }
+
+    /// <summary>
+    /// Whether a start from <paramref name="source"/> yields to the character's order (<see cref="StartResult.Ordered"/>): a goal's or a
+    /// reaction's, while an NPC's order holds it (<see cref="DecisionSystem.Ordered"/>). A step of a follow row is decided by the caller.
+    /// </summary>
+    static bool Yields(CharacterCold cold, TaskSource source) => source is TaskSource.Goal or TaskSource.Reaction && DecisionSystem.Ordered(cold);
 
     /// <summary>
     /// An engine walk refused by its destination's doors (docs/game/locks.md "Locked doors on the way"): it counts as a walk that ended short, as one
@@ -493,12 +515,14 @@ public static class TaskStart
     /// <see cref="TaskRequest.Goal"/>, or stops the character on the standing task (its <see cref="CharacterHot.TaskTime"/> restarted); nothing
     /// outside the slot is touched, so no fight or task before it is ended (the AI acts out nothing for a fighting character, and its walks and
     /// standing tasks hold nothing) and no handler runs. The row's repertoire is not tested: the AI's planner chose the row
-    /// (<see cref="Ai.AiSystem"/>).
+    /// (<see cref="Ai.AiSystem"/>). Nothing for an NPC its order holds (<see cref="DecisionSystem.Ordered"/>).
     /// </summary>
     public static void StartOwn(World world, int slot, in TaskRequest request)
     {
         var table = world.Characters;
         var cold = table.Cold(slot)!;
+        if (DecisionSystem.Ordered(cold)) return;   // the order's task is not the AI's to replace
+
         cold.Running = new RunningTask(request.Task, request.Row, request.Source, request.Job, request.Target, request.Site, world.Tick)
         {
             Resume = request.Resume,

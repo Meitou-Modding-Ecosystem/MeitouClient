@@ -485,6 +485,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
     /// The carry orders' checks: the target must still fit the verb (else the order leaves the queue); the character must be able to lift
     /// (<see cref="CanCarry"/>, ordered: a fight ends with the order's task), loot (awake, an inventory, not carried), knock out
     /// (<see cref="CanKnockOut"/>) or put down (awake); the Rescue button needs a rescuer (not fleeing, able to lift, not on Hold) and a free bed.
+    /// The Rescue button and opening an inventory are a player character's only (else the order leaves the queue).
     /// </summary>
     OrderCheck IOrderOwner.CanRun(World world, int slot, OrderEntry order)
     {
@@ -514,7 +515,8 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
                 if (!LiftOf(world, order, slot, target)) return OrderCheck.Gone;
                 return CanCarry(world, cold, order.Row, ordered: true) && cold.Carrying != order.Target ? OrderCheck.Run : OrderCheck.Blocked();
             case TaskType.LootTarget:
-                if (order.Detail == OpenInventory ? !Openable(table, target) : !CanBeLooted(tc)) return OrderCheck.Gone;
+                // Opening an inventory opens the player's loot window (OpenWindow): a player character's order only.
+                if (order.Detail == OpenInventory ? !cold.IsPlayer || !Openable(table, target) : !CanBeLooted(tc)) return OrderCheck.Gone;
                 return cold is { Medical.Incapacitated: false, Inventory: not null } && cold.CarriedBy.IsNone ? OrderCheck.Run : OrderCheck.Blocked();
             case TaskType.StealthKnockout:
                 if (!CanBeKnockedOut(tc)) return OrderCheck.Gone;
@@ -641,8 +643,29 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
     }
 
     /// <summary>
-    /// Lets go of the carried body where the carrier stands, without the put-down knock-out (serial phases; the arrest system's put-in-cage). False
-    /// when it carries nothing.
+    /// Whether the lifter in <paramref name="slot"/>, still walking to its body, holds the answer that no path gets it there: none found, or one
+    /// whose navmesh part ends out of reach of the spot it walks to and goes on provisionally (the walkability's answer for a goal it cannot reach,
+    /// docs/game/pathfinding.md "Own builder"). False while a request is on its way or the path is for an older spot.
+    /// </summary>
+    internal bool LiftWalkFails(World world, int slot)
+    {
+        var table = world.Characters;
+        ref readonly var n = ref table.Next[slot];
+        var cold = table.Cold(slot)!;
+        bool walks = n.Task == (byte)CharacterTask.PickUp && cold.LiftTime < 0;
+        if (!walks || (n.Flags & (ushort)(MoveFlags.NeedPath | MoveFlags.Pending)) != 0) return false;
+        if (cold.PathFailed) return true;
+
+        bool provisional = (n.Flags & (ushort)MoveFlags.HasPath) != 0 && cold.PathExact < cold.Path.Length;
+        if (!provisional || !table.TryResolveNext(cold.CarryTarget, out int t)) return false;
+
+        var end = cold.PathExact > 0 ? cold.Path[cold.PathExact - 1] : n.Position;
+        return Vector2.Distance(new Vector2(end.X, end.Z), n.Goal) > ReachOf(world, table.Cold(t)!);
+    }
+
+    /// <summary>
+    /// Lets go of the carried body where the carrier stands, without the put-down knock-out (serial phases; the arrest system's put-in-cage, the
+    /// carry-out's end). False when it carries nothing.
     /// </summary>
     public bool LetGo(World world, int carrier)
     {
@@ -1084,7 +1107,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         n.Position = table.Next[carrier].Position;
         n.Yaw = table.Next[carrier].Yaw;
         if (b.Animation is { } anim) anim.Action = -1;   // no falling or getting up while held
-        b.Ai?.ResetPlan();   // the carry-mode change wipes the body's planned tasks (FUN_1405ce9c0 -> FUN_1405074a0)
+        PlayerOrders.Wipe(b);   // the carry-mode change wipes the body's orders, plan and goal (FUN_1405ce9c0 -> FUN_1405074a0), not its jobs
     }
 
     /// <summary>

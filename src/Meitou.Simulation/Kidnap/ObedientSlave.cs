@@ -85,15 +85,13 @@ public static class ObedientSlave
     }
 
     /// <summary>
-    /// Destroys the character's perma-jobs and order queue (<c>FUN_140507280</c>, <c>FUN_140507530</c>).
+    /// Destroys the character's perma-jobs and second list (<c>FUN_140507280</c>, <c>FUN_140507530</c>: a loaded queue not restored yet); the order
+    /// queue is kept (docs/game/ai-tasks.md "What clears the queue").
     /// </summary>
     static void Destroy(World world, CharacterCold cold)
     {
-        int slot = SlotOf(world, cold);
-        DestroyJobs(world, cold, slot);
-        cold.OrderQueue.Clear();
-        if (slot >= 0 && cold.OrderMove && world.Characters.Next[slot].Task == (byte)CharacterTask.GoTo)
-            TaskStart.Stand(world.Characters, slot);
+        DestroyJobs(world, cold, SlotOf(world, cold));
+        cold.SavedOrders = null;
     }
 
     /// <summary>
@@ -503,7 +501,7 @@ sealed class ObedientJobs(CaptiveSystem captives) : IJobSource, ITaskHandler
         if (spot.Away is { } away) return task == CharacterTask.GoTo && !AiSystem.AtWork(in n, away.Goal, AiSystem.WorkReach);
 
         var place = spot.Place;
-        if (task == CharacterTask.GoTo) return !AiSystem.AtWork(in n, place.Building.Position, place.Range);
+        if (task == CharacterTask.GoTo) return !AtPlace(world, slot, place);
 
         // Standing at it: 189's plan may now walk away first (an input to fetch, output to put away).
         bool real = cold.Running.Row == TaskType.AutoLabouringMines;
@@ -527,7 +525,7 @@ sealed class ObedientJobs(CaptiveSystem captives) : IJobSource, ITaskHandler
             if (plan == Plan.None) again = false;
         }
 
-        if (again && AiSystem.AtWork(in table.Next[slot], spot!.Place.Building.Position, spot.Place.Range))
+        if (again && AtPlace(world, slot, spot!.Place))
         {
             Work(world, slot, k, type);
             return;
@@ -547,7 +545,7 @@ sealed class ObedientJobs(CaptiveSystem captives) : IJobSource, ITaskHandler
         var picked = _works[id] = new WorkSpot { Place = found, Epoch = epoch };
         if (type == TaskType.AutoLabouringMines && RunErrand(world, slot, cold, k, picked) != Plan.Here) return;
 
-        if (AiSystem.AtWork(in table.Next[slot], found.Building.Position, found.Range)) Work(world, slot, k, type);
+        if (AtPlace(world, slot, found)) Work(world, slot, k, type);
         else Walk(world, slot, k, type, found);
     }
 
@@ -686,11 +684,19 @@ sealed class ObedientJobs(CaptiveSystem captives) : IJobSource, ITaskHandler
     #region Acting out the rest
 
     /// <summary>
-    /// Starts the walk to the workplace.
+    /// Whether the slave is at its workplace, as the AI's workers (<see cref="AiSystem.AtWorkplace"/>).
+    /// </summary>
+    static bool AtPlace(World world, int slot, ObedientWorkplace place) =>
+        world.SystemOf<AiSystem>() is { } ai && ai.AtWorkplace(world, in world.Characters.Next[slot], place.Building);
+
+    /// <summary>
+    /// Starts the walk to the workplace: to its use node nearest the slave, its position without one (<see cref="AiSystem.WorkMarker"/>).
     /// </summary>
     static void Walk(World world, int slot, int k, TaskType type, ObedientWorkplace place)
     {
-        var goal = new Vector2(place.Building.Position.X, place.Building.Position.Z);
+        var from = world.Characters.Next[slot].Position;
+        var marker = world.SystemOf<AiSystem>()?.WorkMarker(world, place.Building, from) ?? place.Building.Position;
+        var goal = new Vector2(marker.X, marker.Z);
         TaskStart.Start(world, slot, new TaskRequest(CharacterTask.GoTo, type, TaskSource.Job) { Job = k, Goal = goal, Mode = SpeedMode.Walk });
     }
 

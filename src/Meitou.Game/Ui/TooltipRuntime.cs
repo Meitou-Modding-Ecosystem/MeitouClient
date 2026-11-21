@@ -559,7 +559,7 @@ sealed class TooltipRuntime(PlayerInterface player)
     /// The bounty panel's tooltip rows (<c>FUN_1405d2da0</c>, docs/game/ui-screens.md section 4): per faction its name and <c>c.{1,num}</c> (Main for
     /// the local faction, else Greyed), <c>-Wanted For: </c> with the first four crimes and a <c> </c> row with the rest; then the imprisonment row,
     /// or a rule, the turn-in line and the local faction's expiry. <paramref name="everyExpiry"/> (Meitou UI): each faction's expiry under its own
-    /// rows instead.
+    /// rows instead, none for a prisoner.
     /// </summary>
     static List<(string Key, string Value)> BountyRows(IReadOnlyList<Simulation.Crime.BountyLine> bounties, PrisonView? prison, bool everyExpiry)
     {
@@ -573,7 +573,10 @@ sealed class TooltipRuntime(PlayerInterface player)
             if (crimes.Length > 0)
                 rows.Add((wanted + Loc.Tr("-Wanted For:") + " ", wanted + string.Join(", ", crimes.Take(4))));
             if (crimes.Length > 4) rows.Add((" ", wanted + string.Join(", ", crimes.Skip(4))));
-            if (everyExpiry) rows.Add((Expiry(bounty), ""));
+
+            // No expiry for a prisoner (#1064): the original's panel prints none then, and the lifetime's sweep is skipped in a cage
+            // (FUN_1405cbb80), so a prisoner's hours left run below zero and read like a sentence that is over.
+            if (everyExpiry && prison is null) rows.Add((Expiry(bounty), ""));
         }
 
         if (prison is { } p)
@@ -772,7 +775,7 @@ sealed class TooltipRuntime(PlayerInterface player)
         float Charges, float MaxCharges, int StolenFrom, TradeItemView? Trade, string? MapNote)
     {
         /// <summary>
-        /// Only the name (the machine slots' items, which the original's tooltip shows the same way).
+        /// Only the name (a cell given no tip).
         /// </summary>
         public bool Brief { get; init; }
 
@@ -1465,11 +1468,13 @@ sealed class TooltipRuntime(PlayerInterface player)
     /// destroyed (h + d - s at or below -m) says so; below 0 a robotic limb "does not degenerate", a vital part above the KO point is "dangerous"
     /// (death at -m; unconscious: regain consciousness before the KO point) and at it "critical", any other part "getting worse"; from 0 a part more
     /// than 20 short of m needs bandaging (robotic: plainly), less than 5 % short (healing and stun within 5) is okay or healing, else bandaging is
-    /// not urgent; okay or healing, wear above 5 adds a wear line. Under 60 left a line on what the damage affects follows. The original's kick line
-    /// and lost-limb line are not modelled.
+    /// not urgent; okay or healing, wear above 5 adds a wear line. Under 60 left a line on what the damage affects follows. A lost limb (a stump)
+    /// says only that it is gone forever. The original's kick line is not modelled.
     /// </summary>
     internal static string PartTip(HealthPartView part, float? koPoint, bool unconscious)
     {
+        if (part.Limb == Simulation.Bodies.LimbState.Stump) return Loc.Tr("This limb is gone forever.");
+
         float h = part.Flesh, d = part.Bandage, s = part.Stun, m = part.Maximum;
         string text;
 
