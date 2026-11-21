@@ -633,6 +633,7 @@ sealed partial class GameHost(
 
         Session.World.BenchFacingFix = Config.FixBenchFacing;
         Session.World.BagSearchFix = Config.FixBagSearch;
+        Session.World.CounterTalk = Config.CounterTalk;
         Session.World.TakeIntoBackpack = Config.TakeIntoBackpack;
         Session.Simulation.SetFastSpeeds(Config.FastSpeed, Config.FastestSpeed);
         if (Gpu.Characters is { } nearChars)
