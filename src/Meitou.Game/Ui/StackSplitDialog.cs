@@ -6,7 +6,7 @@ using Meitou.Simulation.Items;
 namespace Meitou.Game.Ui;
 
 /// <summary>
-/// Meitou's split stack dialog (docs/game/ui-screens.md "Holding an item"): Shift + Ctrl on a stack with stack splitting on opens the message box
+/// Meitou's split stack dialog (docs/game/ui-screens.md "Holding an item"): Shift + Alt on a stack with stack splitting on opens the message box
 /// with a slider from one unit to the whole stack; Take lifts that many onto the mouse, Cancel or Esc lifts nothing.
 /// </summary>
 sealed class StackSplitDialog(PlayerInterface player)
