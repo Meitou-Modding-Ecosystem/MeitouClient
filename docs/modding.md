@@ -945,8 +945,8 @@ holds refuses the second mod.
   neither saves nor hashes `ModJobs`), puts it back after a load (`cold.ModJobs.Add`) and takes it off when the building goes. An id another
   mod took refuses the mod.
 - **Driving NPCs** (engine API; serial phases): `PopulationSystem.HoldPlatoon` stops a roaming platoon's trips and its
-  stand-in's travel and keeps it out of off-screen fights (not saved: find it by its tag and hold again after a load; it still unloads, and
-  despawns as any platoon but a mod's spawn). `PopulationSystem.SendPlatoon` sends a held platoon's stand-in off screen toward a point or a living character (by the roads, at the
+  stand-in's travel (not saved: find it by its tag and hold again after a load; it still unloads, and despawns as any platoon but a mod's
+  spawn). `PopulationSystem.SendPlatoon` sends a held platoon's stand-in off screen toward a point or a living character (by the roads, at the
   stand-in travel speed, stopping within the roam arrival radius; null stops it; not saved, cleared when the hold ends). The hold is off screen
   only (**Observed**, by reading `AiSystem.MindAndCrowd` and `PopulationRoaming.StepTrip`): loaded, a held platoon's members run their package's full minds as any platoon's, and the mod steers them with orders (Ordering
   characters, below; a member whose package follows its leader follows an ordered leader), a chooser goal in the package, or a package change
