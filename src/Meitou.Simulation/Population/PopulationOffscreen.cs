@@ -35,8 +35,7 @@ public sealed partial class PopulationSystem
     readonly Dictionary<string, RaceData?> _recoverRaces = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Settles the meetings of hostile stand-ins (serial phase): every unloaded platoon that is not a town's own, the player's nor held by a code mod
-    /// (<see cref="Platoon.Held"/>: the mod steers it and counts on it arriving), met by an enemy
+    /// Settles the meetings of hostile stand-ins (serial phase): every unloaded platoon that is not a town's own nor the player's, met by an enemy
     /// within <see cref="FightRadius"/>, fights the first one met in id order. The winner is drawn by the square of the strengths (A wins with S_A² /
     /// (S_A² + S_B²)), the loser is wiped out (despawned; a save leaves it out), and the winner loses its weakest members in the share (S_loser /
     /// S_winner)² / 2.
@@ -47,8 +46,7 @@ public sealed partial class PopulationSystem
         foreach (var list in _fightCells.Values) list.Clear();
         foreach (var p in world.Platoons.All)
         {
-            if (p.State != PlatoonState.Unloaded || p.Pinned || p.Held || p.Faction < 0 || p.Faction == _data.PlayerFaction
-                || p.Faction == world.Player.Faction)
+            if (p.State != PlatoonState.Unloaded || p.Pinned || p.Faction < 0 || p.Faction == _data.PlayerFaction || p.Faction == world.Player.Faction)
                 continue;
 
             _fighters.Add(p);
