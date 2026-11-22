@@ -1228,8 +1228,9 @@ public sealed class CharacterCold
     public bool OrderedUp { get; set; }
 
     /// <summary>
-    /// The player's speed group (<c>SpeedGroup</c>, made for the characters given Group speed together: a key from
-    /// <see cref="Meitou.Simulation.Player.PlayerState.NextSpeedGroup"/>; -1 none). Runtime only.
+    /// The player's speed group (<c>SpeedGroup</c>, made for the characters given Group speed together, and again for those given a move order
+    /// together unless they already make up their whole group: a key from <see cref="Meitou.Simulation.Player.PlayerState.NextSpeedGroup"/>; -1
+    /// none). Runtime only.
     /// </summary>
     public int SpeedGroup { get; set; } = -1;
 
@@ -1403,12 +1404,6 @@ public sealed class CharacterCold
     /// The job list (Perma-Jobs, <see cref="Production.PermaJobs"/>), first = highest priority. Serial phases only. Hashed only while not empty.
     /// </summary>
     public List<Production.PermaJob> Jobs { get; } = [];
-
-    /// <summary>
-    /// The code mods' jobs the character holds (<see cref="Production.ModJobs"/>), at most one of a kind. Serial phases only. Neither saved nor hashed
-    /// by the engine: the mod saves and hashes its own.
-    /// </summary>
-    public List<Production.ModJob> ModJobs { get; } = [];
 
     /// <summary>
     /// The provenance of the task (<see cref="TaskStart.Start"/>; null: none recorded): which job of <see cref="Jobs"/> or implicit job it runs
