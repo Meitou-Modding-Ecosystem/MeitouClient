@@ -1505,6 +1505,7 @@ sealed class GameLoop(GameHost host)
         host.UpdateNav();
         host.DebugOverlays.UpdateNavOverlay();
         host.DebugOverlays.UpdateInspectorOverlay();
+        host.TownRangeRing.Update();
         host.BuildingSync.UpdateBuildings();
         host.PlayBench.BenchLap(2);
     }
