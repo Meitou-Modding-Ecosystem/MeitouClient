@@ -5091,3 +5091,9 @@ msgstr "Letti usati come sedili"
 
 msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
 msgstr "Un personaggio che dorme su un mobile che funziona da sedile, come Bed (job), si sdraia lungo il materasso come in un vero letto. Il gioco lo fa sedere al centro del mobile, così si sdraia di traverso ai piedi del letto."
+
+msgid "Unavailable menu rows"
+msgstr "Righe di menu non disponibili"
+
+msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
+msgstr "Disattivate: una riga del menu che la selezione non può eseguire ora, come Primo soccorso senza kit medico, è in grigio; fai Maiusc+clic per impostare comunque il lavoro. Fedele: ogni riga come nel gioco."

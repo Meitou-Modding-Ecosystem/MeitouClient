@@ -4996,3 +4996,9 @@ msgstr "{1} odsmay, {2} enabledway"
 
 msgid "{1} of {2} mods shown, {3} enabled"
 msgstr "{1} ofway {2} odsmay ownshay, {3} enabledway"
+
+msgid "Unavailable menu rows"
+msgstr "Unavailableway enumay owsray"
+
+msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
+msgstr "Eyedgray: away enumay owray ouryay electionsay ancay'tay oday ownay, uchsay asway Irstfay Aidway ithoutway away edkitmay, isway eyedgray; Iftshay-ickclay itway otay etsay upway ethay objay anywayway. Aithfulfay: everyway owray asway inway ethay amegay."
