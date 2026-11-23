@@ -4790,3 +4790,10 @@ msgstr "적응형 노출 강도"
 
 msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
 msgstr "낮의 깊은 그늘을 최대 얼마나 밝게 할지(게임 노출의 배수)."
+
+msgid "Beds used as seats"
+msgstr "좌석으로 쓰이는 침대"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Bed (job)처럼 좌석으로 작동하는 가구에서 자는 캐릭터가 진짜 침대처럼 매트리스를 따라 눕습니다. 원래 게임은 가구 한가운데에 앉히기 때문에 침대 발치에 가로로 눕습니다."
+

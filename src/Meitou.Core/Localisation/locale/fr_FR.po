@@ -4792,3 +4792,10 @@ msgstr "Force de l'exposition adaptative"
 
 msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
 msgstr "De combien l'ombre profonde est éclaircie au plus de jour, en multiple de l'exposition du jeu."
+
+msgid "Beds used as seats"
+msgstr "Lits servant de sièges"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Un personnage qui dort sur un meuble servant de siège, comme Bed (job), s'allonge dans le sens du matelas comme dans un vrai lit. Le jeu l'assoit au milieu du meuble, si bien qu'il se couche en travers au pied du lit."
+

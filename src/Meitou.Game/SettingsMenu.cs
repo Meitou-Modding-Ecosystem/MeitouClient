@@ -440,6 +440,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     public Action<bool>? BenchFacingChanged { get; init; }
 
     /// <summary>
+    /// Applies the seat bed fix (<see cref="UserConfig.FixSeatBeds"/>).
+    /// </summary>
+    public Action<bool>? SeatBedsChanged { get; init; }
+
+    /// <summary>
     /// Applies the prisoner pose fix (<see cref="UserConfig.FixPrisonPose"/>).
     /// </summary>
     public Action<bool>? PrisonPoseChanged { get; init; }
@@ -1573,6 +1578,8 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         AnimalMovesChanged?.Invoke(true);
         Config.FixBenchFacing = true;
         BenchFacingChanged?.Invoke(true);
+        Config.FixSeatBeds = true;
+        SeatBedsChanged?.Invoke(true);
         Config.FixPrisonPose = true;
         PrisonPoseChanged?.Invoke(true);
         Config.FixCagedAnimals = true;
