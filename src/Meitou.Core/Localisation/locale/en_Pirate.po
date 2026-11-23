@@ -4639,3 +4639,360 @@ msgstr "{1}: nay free cage nearby"
 
 msgid "{1}: {2} settings"
 msgstr "{1}: {2} riggin"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "A character sleepin' on furniture that works as a seat, such as Bed (job), lies along th' mattress as in a real bed. Th' voyage seats it on th' furniture's middle, so it lies across th' foot o' th' bed."
+
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "A click on a stack picks up all o' it, Shift+click half, Alt+click one plunder, an' Shift+Alt+click asks how many with a slider. In th' voyage a click picks up one plunder an' Shift or Ctrl th' whole stack."
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "A guard picks up a knocked-out prisoner only when a cage be free fer 'em, an' never takes one from a guard o' his own faction. Th' voyage lets guards lift an' grab prisoners anyway, so at a full prison they hand th' same body round without end."
+
+msgid "A knocked-out character left lying near your squads, such as a guard you carried off and put down, stays when his squad or town unloads far away. In the game he vanishes with them once you look away."
+msgstr "A knocked-out character left lyin' near yer squads, such as a guard ye carried off an' put down, stays when his squad or town unloads far away. In th' voyage he vanishes with 'em once ye spy away."
+
+msgid "A large storage tank for fuel."
+msgstr "A large storage tank fer fuel."
+
+msgid "A larger wind generator with twice the power of the first when the wind is up. Keep batteries as a backup."
+msgstr "A larger wind generator with twice th' power o' th' first when th' wind be up. Keep batteries as a backup."
+
+msgid "A low, crude wall that won't keep enemies out for long."
+msgstr "A low, crude wall that won't keep enemies out fer long."
+
+msgid "A proper defensive wall, taller than a makeshift one."
+msgstr "A proper defensive wall, taller than a makeshift one."
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "A raid under way when ye save goes on where it was when that save be loaded. Th' voyage starts its current stage o'er at every load, so its waits an' time limits begin again."
+
+msgid "A simple round table."
+msgstr "A simple round table."
+
+msgid "A simple stool to sit on."
+msgstr "A simple stool t' sit on."
+
+msgid "A stack of boxes you can store anything in."
+msgstr "A stack o' boxes ye can store anythin' in."
+
+msgid "A storage barrel for cactus."
+msgstr "A storage barrel fer cactus."
+
+msgid "A storage barrel for greenfruit."
+msgstr "A storage barrel fer greenfruit."
+
+msgid "A storage barrel for riceweed."
+msgstr "A storage barrel fer riceweed."
+
+msgid "A sturdy metal table."
+msgstr "A sturdy metal table."
+
+msgid "A tall two-story building shell with stairs inside."
+msgstr "A tall two-story buildin' shell with stairs inside."
+
+msgid "A taller, heavier defensive wall."
+msgstr "A taller, heavier defensive wall."
+
+msgid "A towering fortified wall."
+msgstr "A towerin' fortified wall."
+
+msgid "A wooden shelf, for decoration."
+msgstr "A wooden shelf, fer decoration."
+
+msgid "ASSASSINATION"
+msgstr "ASSASSINATION"
+
+msgid "ATHLETICS"
+msgstr "ATHLETICS"
+
+msgid "Adaptive exposure"
+msgstr "Adaptive exposure"
+
+msgid "Adaptive exposure strength"
+msgstr "Adaptive exposure strength"
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "Adaptive exposure strength (max x)"
+
+msgid "BLUNT"
+msgstr "BLUNT"
+
+msgid "Beds used as seats"
+msgstr "Beds used as seats"
+
+msgid "Bow smith"
+msgstr "Bow smith"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "Brighten th' picture in deep shade by day, such as a canyon at noon; nights an' sunny views stay as they be."
+
+msgid "COOKING"
+msgstr "COOKIN'"
+
+msgid "CROSSBOWS"
+msgstr "CROSSBOWS"
+
+msgid "Clothes keep blood stains"
+msgstr "Clothes keep blood stains"
+
+msgid "Collects water when it rains."
+msgstr "Collects water when it rains."
+
+msgid "DEXTERITY"
+msgstr "DEXTERITY"
+
+msgid "DODGE"
+msgstr "DODGE"
+
+msgid "Date added"
+msgstr "Date added"
+
+msgid "Delete the chosen preset"
+msgstr "Delete th' chosen preset"
+
+msgid "Details"
+msgstr "Details"
+
+msgid "Dodge"
+msgstr "Dodge"
+
+msgid "ENGINEERING"
+msgstr "ENGINEERIN'"
+
+msgid "Enter a hunger value from 1 to 300."
+msgstr "Enter a hunger value from 1 t' 300."
+
+msgid "FARMING"
+msgstr "FARMIN'"
+
+msgid "Faster ground for weak graphics: one biome and two texture layers a pixel, no bump detail. Blends between biomes show harder edges."
+msgstr "Faster ground fer weak graphics: one biome an' two texture layers a pixel, nay bump detail. Blends between biomes show harder edges."
+
+msgid "Grows greenfruit indoors, safe from the weather. Needs power and water."
+msgstr "Grows greenfruit indoors, safe from th' weather. Needs power an' water."
+
+msgid "Grows hemp indoors, safe from the weather. Needs power and water."
+msgstr "Grows hemp indoors, safe from th' weather. Needs power an' water."
+
+msgid "Grows riceweed indoors, safe from the weather. Needs power and water."
+msgstr "Grows riceweed indoors, safe from th' weather. Needs power an' water."
+
+msgid "Guards stop passing bodies"
+msgstr "Guards avast passin' bodies"
+
+msgid "HACKERS"
+msgstr "HACKERS"
+
+msgid "HEAVYWEAPONS"
+msgstr "HEAVYWEAPONS"
+
+msgid "Hide incompatible RE_Kenshi plugins"
+msgstr "Hide incompatible RE_Kenshi plugins"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "Hover outline in th' Advanced settings"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "Hover outline in th' Advanced settings be on"
+
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "How fast yer characters an' th' rest o' yer faction learn: every skill an' stat gain be multiplied by this (th' voyage: 1x). 0 stops it. Click th' number t' type an exact value. A trainin' dummy still stops at its level. Open it t' give single skills their own multiplier."
+
+msgid "Hunger set to {1}."
+msgstr "Hunger set t' {1}."
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Information panel stays open"
+msgstr "Information panel stays open"
+
+msgid "KATANAS"
+msgstr "KATANAS"
+
+msgid "Knocked out stay"
+msgstr "Knocked out stay"
+
+msgid "LABOURING"
+msgstr "LABOURIN'"
+
+msgid "LOCKPICKING"
+msgstr "LOCKPICKIN'"
+
+msgid "Last modified"
+msgstr "Last modified"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "Light th' dust an' spray kicked up by runnin' feet like th' ground around 'em, instead o' glowin' at night."
+
+msgid "Lit dust"
+msgstr "Lit dust"
+
+msgid "Load order"
+msgstr "Load order"
+
+msgid "MARTIALARTS"
+msgstr "MARTIALARTS"
+
+msgid "MEDIC"
+msgstr "MEDIC"
+
+msgid "Makes basic first aid kits and sleeping bags from fabrics. Needs power."
+msgstr "Makes basic first aid kits an' sleepin' bags from fabrics. Needs power."
+
+msgid "Makes first aid kits and splint kits from fabrics and hemp. Needs power."
+msgstr "Makes first aid kits an' splint kits from fabrics an' hemp. Needs power."
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Needs"
+msgstr "Needs"
+
+msgid "No description"
+msgstr "Nay description"
+
+msgid "No mods match the filters."
+msgstr "Nay mods match th' filters."
+
+msgid "Not enabled: the game does not load it"
+msgstr "Not enabled: th' voyage does not load it"
+
+msgid "Outpost:"
+msgstr "Outpost:"
+
+msgid "PERCEPTION"
+msgstr "PERCEPTION"
+
+msgid "POLEARMS"
+msgstr "POLEARMS"
+
+msgid "Polearms"
+msgstr "Polearms"
+
+msgid "ROBOTICS"
+msgstr "ROBOTICS"
+
+msgid "Raids keep their progress"
+msgstr "Raids keep their progress"
+
+msgid "SABRES"
+msgstr "SABRES"
+
+msgid "SCIENCE"
+msgstr "SCIENCE"
+
+msgid "STEALTH"
+msgstr "STEALTH"
+
+msgid "STRENGTH"
+msgstr "STRENGTH"
+
+msgid "SWIMMING"
+msgstr "SWIMMIN'"
+
+msgid "Save current preset"
+msgstr "Save current preset"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "Save th' mod list an' load order as a preset o' this name"
+
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Seen into a buildin' with its roof hidden, nay rain or ash falls o'er th' open room. Th' voyage leaves out only what falls inside it, so with th' camera pulled back th' rain in front still streaks across th' room."
+
+msgid "Set hunger (1-300)"
+msgstr "Set hunger (1-300)"
+
+msgid "Shooting a turret at someone who is not an enemy and not fighting is an assault, as attacking them in person is, and guards who see it put a bounty on you. In the game turret fire is never a crime: the victim's faction only likes you less."
+msgstr "Shootin' a turret at someone who be not an enemy an' not fightin' be an assault, as attackin' 'em in person be, an' guards who see it put a bounty on ye. In th' voyage turret fire be never a crime: th' victim's faction only likes ye less."
+
+msgid "Show Squad XP"
+msgstr "Show Squad XP"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "Show or hide th' selected mod's details beside th' list"
+
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "Shows th' Squad XP multiplier (\"XP x10\") at th' top left o' th' screen durin' play."
+
+msgid "Simple terrain shading"
+msgstr "Simple terrain shadin'"
+
+msgid "Sort by"
+msgstr "Sort by"
+
+msgid "Stores power for when your generators fall short."
+msgstr "Stores power fer when yer generators fall short."
+
+msgid "THIEVING"
+msgstr "THIEVIN'"
+
+msgid "TOUGHNESS"
+msgstr "TOUGHNESS"
+
+msgid "TURRETS"
+msgstr "TURRETS"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "Take th' chosen preset's mod list an' load order"
+
+msgid "The character information panel at the bottom left stays extended or collapsed as you last left it, also after restarting the game. The game starts it collapsed every time."
+msgstr "Th' character information panel at th' bottom left stays extended or collapsed as ye last left it, also after restartin' th' voyage. Th' voyage starts it collapsed every time."
+
+msgid "The gate for Defensive Wall II."
+msgstr "Th' gate fer Defensive Wall II."
+
+msgid "The gate for Defensive Wall III."
+msgstr "Th' gate fer Defensive Wall III."
+
+msgid "The gate for Defensive Wall IV."
+msgstr "Th' gate fer Defensive Wall IV."
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "Th' most deep shade by day be brightened, as a multiple o' th' voyage's exposure."
+
+msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
+msgstr "This buildin' stands outside every outpost's build limit, so nay generator can power it. Dismantle it an' build it again inside th' red ring."
+
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "This skill's own multiplier fer yer faction, in place o' Squad XP. At th' far left (Squad XP) it follows Squad XP."
+
+msgid "Turret fire is a crime"
+msgstr "Turret fire be a crime"
+
+msgid "With Blood on weapons and gear on, blood soaks into worn clothes and armour slowly, stays when the wound heals, and washes out in water and rain or fades with time. Off, the clothes show only the blood of the wound under them."
+msgstr "With Blood on weapons an' gear on, blood soaks into worn clothes an' armour slowly, stays when th' wound heals, an' washes out in water an' rain or fades with time. Off, th' clothes show only th' blood o' th' wound under 'em."
+
+msgid "built for another version of the game"
+msgstr "built fer another version o' th' voyage"
+
+msgid "follows the shade"
+msgstr "follows th' shade"
+
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "its multipliers be now Squad XP in th' Advanced settings (open it fer each skill's own) an' Show Squad XP"
+
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "its per-skill multipliers be now under Squad XP in th' Advanced settings, an' its XP label be Show Squad XP"
+
+msgid "not enabled above it"
+msgstr "not enabled above it"
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "th' voyage draws th' dust an' th' spray a runnin' foot throws up as glowin' sprites, as bright by night as by day an' in shade as in th' sun; Meitou lights 'em as th' ground be lit: th' sun through its shadows, th' sky, th' lamps, th' same as th' voyage's by day (docs/render-post.md \"Lit dust\")"
+
+msgid "the game's band"
+msgstr "th' voyage's band"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "th' voyage's exposure follows th' picture's brightness only down t' a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day t' halfway between th' voyage's day an' night minimums (up t' 1.7 times brighter in deep shade); nights, open sunny views an' rooms be as afore (docs/render-post.md \"Adaptive exposure\")"
+
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1} be built into Meitou now: {2}."
+
+msgid "{1} mods, {2} enabled"
+msgstr "{1} mods, {2} enabled"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "{1} o' {2} mods shown, {3} enabled"

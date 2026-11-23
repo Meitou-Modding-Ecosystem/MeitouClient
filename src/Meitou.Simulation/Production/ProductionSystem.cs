@@ -387,6 +387,9 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         {
             switch (command)
             {
+                case InspectBuildingCommand inspect:
+                    InspectTownWork(world, inspect.Instance);
+                    break;
                 case OperateOrder order:
                     {
                         var site = Site(world, order.Site) ?? TownMachineSite(world, order.Site);
@@ -589,14 +592,13 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     }
 
     /// <summary>
-    /// Sends an operator towards <paramref name="goal"/> (<see cref="GoalOf"/>) on the goal's floor (not a turret's, whose spot may stand above
-    /// it).
+    /// Sends an operator towards <paramref name="goal"/> (<see cref="GoalOf"/>) on the goal's floor (a turret's gunner spot's own).
     /// </summary>
     void WalkToSite(ref CharacterHot n, CharacterCold cold, BuildSite site, Vector3 goal)
     {
         n.Goal = new Vector2(goal.X, goal.Z);
         n.Flags |= (ushort)MoveFlags.NeedPath;
-        (cold.GoalHeight, cold.GoalHeightAt) = _turretSpots.ContainsKey(site.Id) ? (float.NaN, default) : (goal.Y, n.Goal);
+        (cold.GoalHeight, cold.GoalHeightAt) = (goal.Y, n.Goal);
     }
 
     /// <summary>
