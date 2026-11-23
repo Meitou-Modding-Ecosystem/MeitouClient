@@ -5017,3 +5017,11 @@ msgstr "Ворота для защитной стены III."
 #. machine-translated
 msgid "The gate for Defensive Wall IV."
 msgstr "Ворота для защитной стены IV."
+
+#. machine-translated
+msgid "Outpost:"
+msgstr "Аванпост:"
+
+#. machine-translated
+msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
+msgstr "Это здание стоит за пределами границы строительства всех аванпостов, поэтому ни один генератор не может его питать. Разберите его и постройте заново внутри красного кольца."

@@ -1221,7 +1221,19 @@ sealed class ProductionWindows(PlayerInterface player)
             }
 
             stats.Add(ConsumerPowerLine(pw.Granted, pw.Demand));
+            if (pw.NoTown) stats.Add(NoOutpostLine());
         }
+    }
+
+    /// <summary>
+    /// Meitou only: the line under a consumer's Power line when its building belongs to no outpost (NO_TOWN), which gets no power however many
+    /// generators stand nearby (docs/game/buildings-production.md "Power"; the original shows only the 0 power).
+    /// </summary>
+    static PlayerInterface.HudLine NoOutpostLine()
+    {
+        string tip = Loc.Tr(
+            "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring.");
+        return new(Loc.Tr("Outpost:"), Loc.Tr("None"), PlayerInterface.MainColour, PlayerInterface.BadColour, tip);
     }
 
     /// <summary>
