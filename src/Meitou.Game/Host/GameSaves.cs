@@ -493,7 +493,6 @@ sealed class GameSaves(GameHost host)
                 loaded = SaveLoader.Load(world, read.Result, data, loadOptions ?? new SaveLoadOptions { Appearances = data.Appearances });
                 host.Modding.RestoreModData(world, read.Result);
                 host.Modding.DropUnownedAutonomy(world);
-                world.TellReady(fromSave: true);
                 if (world.Squads.Find(world.Player.Squad) is { Members.Count: > 0 } squad)
                 {
                     world.Player.Selection.Clear();
@@ -506,6 +505,10 @@ sealed class GameSaves(GameHost host)
             Console.Error.WriteLine($"load      failed: {e}");
             throw new GameHost.SceneLoadFailed($"Load failed: {e.Message}");
         }
+
+        // After the swap, so a mod's Ready that queues a command or reads the tick reaches this world, not the one it replaced.
+        host.Session.World.TellReady(fromSave: true);
+
         host.PopData = nextData;
         Difficulty = nextDifficulty;
         // The New game window then shows the loaded save's options (the original loads them into its globals).
@@ -734,6 +737,7 @@ sealed class GameSaves(GameHost host)
                 KeepCampaignClocks = host.Config.FixRaidClocks,
                 KeepWild = host.Config.KeepWild,
                 ResidentSchedule = host.Config.ResidentSchedule,
+                KeepDowned = host.Config.KeepDowned,
                 OffscreenOverrides = host.Config.OffscreenOverrides,
                 NestsMultiplier = (settings ?? Difficulty)[6],
                 SquadSizeMultiplier = Gameplay.SquadSize,
@@ -754,7 +758,7 @@ sealed class GameSaves(GameHost host)
             Combat = new Simulation.Combat.CombatOptions { SelfApproach = false, TickMedical = false, RecordLog = host.Duel.IsDuel,
                 AttackSlots = host.Config.AttackSlotsOption, StuckLimit = Gameplay.HarpoonLimit, LateDefences = host.Config.LateDefences,
                 GunnerFacesBarrel = host.Config.FixGunnerFacing, PunchReachFix = host.Config.FixPunchReach,
-                AnimalMovesFix = host.Config.FixAnimalMoves },
+                AnimalMovesFix = host.Config.FixAnimalMoves, TurretAssault = host.Config.FixTurretAssault },
             AnimalsPickUp = host.Config.AnimalsPickUp,
             AnimationLengths = host.AnimationLengths,
             AnimationLibrary = host.AnimationLibrary,

@@ -435,6 +435,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     public Action<bool>? AnimalMovesChanged { get; init; }
 
     /// <summary>
+    /// Applies the turret assault fix (<see cref="UserConfig.FixTurretAssault"/>) to the running combat system.
+    /// </summary>
+    public Action<bool>? TurretAssaultChanged { get; init; }
+
+    /// <summary>
     /// Applies the bench facing fix (<see cref="UserConfig.FixBenchFacing"/>).
     /// </summary>
     public Action<bool>? BenchFacingChanged { get; init; }
@@ -656,7 +661,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
                 or WorldFrame.GiRaysSwitch or WorldFrame.GiCharactersSwitch => "Lighting",
             "Water" or "Water contact foam, wakes and ripples" or "Reflections" => "Water & reflections",
             "Ground parallax" or "Ground displacement (tessellation)" or "Ground trails" or WorldFrame.RockSmoothingSwitch
-                or WorldFrame.OutlineRefineSwitch => "Terrain",
+                or WorldFrame.OutlineRefineSwitch or WorldFrame.SimpleTerrainSwitch => "Terrain",
             "Foliage ranges" or "Foliage levels" or "Far impostors" or WorldFrame.GrassCoverSwitch or WorldFrame.NearTreeFadeSwitch => "Vegetation",
             "Haze" or "Night air" or "Night sky" or "Clouds" or "Cloud shadows" or "Cloud shadows in fog" or "Fog" or "Lit dust"
                 or WorldFrame.WetWorldSwitch => "Sky & weather",
@@ -1561,7 +1566,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.LateDefences = false;
         LateDefencesChanged?.Invoke(false);
         Config.KeepRoamers = Config.OffscreenFights = Config.OffscreenHealing = Config.CampaignAncestorsOnce = Config.KeepWild
-            = Config.ResidentSchedule = Config.OffscreenOverrides = Config.UnloadedProduction = true;
+            = Config.ResidentSchedule = Config.OffscreenOverrides = Config.UnloadedProduction = Config.KeepDowned = true;
         Config.Decapitation = true;
         Config.AdvancedRagdolls = true;
         Config.PauseOnLoad = true;
@@ -1581,6 +1586,8 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         PunchReachChanged?.Invoke(true);
         Config.FixAnimalMoves = true;
         AnimalMovesChanged?.Invoke(true);
+        Config.FixTurretAssault = true;
+        TurretAssaultChanged?.Invoke(true);
         Config.FixBenchFacing = true;
         BenchFacingChanged?.Invoke(true);
         Config.FixSeatBeds = true;
@@ -1594,6 +1601,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.FixAnimalTarget = true;
         AnimalTargetChanged?.Invoke(true);
         Config.FixHeadTurnBack = false;
+        Config.KeepInfoPanel = true;
         Config.FixRaidClocks = true;
         Config.FixArrestLifts = true;
         Config.FixGround = true;

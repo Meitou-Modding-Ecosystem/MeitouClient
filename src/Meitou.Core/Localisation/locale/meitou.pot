@@ -195,6 +195,10 @@ msgstr ""
 msgid "A key of the mod {1}: {2}."
 msgstr ""
 
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "A knocked-out character left lying near your squads, such as a guard you carried off and put down, stays when his squad or town unloads far away. In the game he vanishes with them once you look away."
+msgstr ""
+
 #: src/Meitou.Game/Building/BuildingDescriptions.cs
 msgid "A large storage tank for fuel."
 msgstr ""
@@ -1229,6 +1233,10 @@ msgstr ""
 msgid "Data folder"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Date added"
+msgstr ""
+
 #: src/Meitou.Game/Title/TitleMenu.cs
 msgid "Day {1,num}"
 msgstr ""
@@ -1469,6 +1477,10 @@ msgstr ""
 msgid "Enhanced hardware mouse"
 msgstr ""
 
+#: src/Meitou.Game/DevTools/DebugMenu.cs
+msgid "Enter a hunger value from 1 to 300."
+msgstr ""
+
 #: src/Meitou.Game/SettingsMenu.cs
 msgid "Enter a valid number, or press Esc to cancel."
 msgstr ""
@@ -1611,6 +1623,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Fast speed"
+msgstr ""
+
+#: src/Meitou.Game/Settings/SettingHints.cs
+msgid "Faster ground for weak graphics: one biome and two texture layers a pixel, no bump detail. Blends between biomes show harder edges."
 msgstr ""
 
 #: src/Meitou.Game/Settings/LookPresets.cs
@@ -2093,6 +2109,10 @@ msgstr ""
 msgid "Hide hats"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Hide incompatible RE_Kenshi plugins"
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Hide or show the whole interface."
 msgstr ""
@@ -2269,6 +2289,10 @@ msgstr ""
 msgid "How?"
 msgstr ""
 
+#: src/Meitou.Game/DevTools/DebugMenu.cs
+msgid "Hunger set to {1}."
+msgstr ""
+
 #: src/Meitou.Game/Settings/LauncherSchema.cs src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/SettingsMenu.cs
 msgid "Hybrid"
 msgstr ""
@@ -2351,6 +2375,10 @@ msgstr ""
 
 #: src/Meitou.Game/Building/BuildMode.cs
 msgid "Indoors"
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Information panel stays open"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml launcher/Meitou.Launcher/MainWindow.axaml.cs
@@ -2485,6 +2513,10 @@ msgstr ""
 msgid "Kind"
 msgstr ""
 
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Knocked out stay"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Korean"
 msgstr ""
@@ -2555,6 +2587,10 @@ msgstr ""
 
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs src/Meitou.Game/Settings/FeatureGrouping.cs src/Meitou.Game/Settings/LookPresets.cs
 msgid "Large impostor distance (F7 Meitou)"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Last modified"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -2691,6 +2727,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Load button"
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Load order"
 msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
@@ -3150,6 +3190,10 @@ msgstr ""
 msgid "NONE"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml src/Meitou.Game/Host/Photo/PhotoPanel.cs src/Meitou.Game/Settings/PresetNamingDialog.cs src/Meitou.Game/Title/FrontendScreens.cs
+msgid "Name"
+msgstr ""
+
 #: src/Meitou.Game/Rendering/Frame/WorldFrame.cs
 msgid "Near tree fade"
 msgstr ""
@@ -3241,7 +3285,7 @@ msgid ""
 "Continue with nightly builds?"
 msgstr ""
 
-#: src/Meitou.Game/PlayerInterface.Ui.cs
+#: src/Meitou.Game/DevTools/DebugMenu.cs src/Meitou.Game/PlayerInterface.Ui.cs
 msgid "No character selected"
 msgstr ""
 
@@ -3263,6 +3307,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "No mods found in Kenshi's mods folder or among its Steam workshop items."
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml.cs
+msgid "No mods match the filters."
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
@@ -4101,6 +4149,10 @@ msgstr ""
 msgid "Save as preset"
 msgstr ""
 
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Save current preset"
+msgstr ""
+
 #: src/Meitou.Game/Host/GameSaves.cs
 msgid "Save failed: {1}"
 msgstr ""
@@ -4273,6 +4325,10 @@ msgstr ""
 msgid "Set foliage visibility by mesh size rather than layer."
 msgstr ""
 
+#: src/Meitou.Game/DevTools/DebugMenu.cs
+msgid "Set hunger (1-300)"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs launcher/Meitou.Launcher/ModsFromSave.cs
 msgid "Set the Kenshi folder first (Settings)."
 msgstr ""
@@ -4365,6 +4421,10 @@ msgstr ""
 msgid "Shift pan speed"
 msgstr ""
 
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Shooting a turret at someone who is not an enemy and not fighting is an assault, as attacking them in person is, and guards who see it put a bounty on you. In the game turret fire is never a crime: the victim's faction only likes you less."
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Short sharp sun shadows where small things touch a surface."
 msgstr ""
@@ -4407,6 +4467,10 @@ msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoMode.cs
 msgid "Sideways"
+msgstr ""
+
+#: src/Meitou.Game/Rendering/Frame/WorldFrame.cs
+msgid "Simple terrain shading"
 msgstr ""
 
 #: src/Meitou.Game/Host/Photo/PhotoMode.cs
@@ -4503,6 +4567,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Soften dust and fog where they meet the ground, and light them by the sun and its shadows."
+msgstr ""
+
+#: launcher/Meitou.Launcher/MainWindow.axaml
+msgid "Sort by"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -4865,6 +4933,10 @@ msgstr ""
 msgid "The camera's turn and tilt ease in and out (the game: always on). Off: they follow the mouse and the keys at once."
 msgstr ""
 
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "The character information panel at the bottom left stays extended or collapsed as you last left it, also after restarting the game. The game starts it collapsed every time."
+msgstr ""
+
 #: launcher/Meitou.Launcher/GraphicsPage.cs
 msgid "The clipboard holds no preset code (MT1:...). Copy one with Share first."
 msgstr ""
@@ -5199,6 +5271,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Turns the inventory item on the mouse, or the one under the pointer, a quarter (needs Item rotation on the Advanced page)."
+msgstr ""
+
+#: src/Meitou.Game/Settings/GamePages.cs
+msgid "Turret fire is a crime"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs

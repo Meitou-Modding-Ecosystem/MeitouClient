@@ -4639,3 +4639,360 @@ msgstr "{1}: onay eefray agecay earbynay"
 
 msgid "{1}: {2} settings"
 msgstr "{1}: {2} ettingssay"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Away aracterchay eepingslay onway urniturefay atthay orksway asway away eatsay, uchsay asway Edbay (objay), ieslay alongway ethay attressmay asway inway away ealray edbay. Ethay amegay eatssay itway onway ethay urniturefay'say iddlemay, osay itway ieslay acrossway ethay ootfay ofway ethay edbay."
+
+msgid "A click on a stack picks up all of it, Shift+click half, Alt+click one item, and Shift+Alt+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
+msgstr "Away ickclay onway away ackstay ickspay upway allway ofway itway, Iftshay+ickclay alfhay, Altway+ickclay oneway itemway, andway Iftshay+Altway+ickclay asksway owhay anymay ithway away iderslay. Inway ethay amegay away ickclay ickspay upway oneway itemway andway Iftshay orway Ctrlay ethay olewhay ackstay."
+
+msgid "A guard picks up a knocked-out prisoner only when a cage is free for them, and never takes one from a guard of his own faction. The game lets guards lift and grab prisoners anyway, so at a full prison they hand the same body round without end."
+msgstr "Away uardgay ickspay upway away ockedknay-out isonerpray onlyway enwhay away agecay isway eefray orfay emthay, andway evernay akestay oneway omfray away uardgay ofway ishay ownway actionfay. Ethay amegay etslay uardsgay iftlay andway abgray isonerspray anywayway, osay atway away ullfay isonpray eythay andhay ethay amesay odybay oundray ithoutway endway."
+
+msgid "A knocked-out character left lying near your squads, such as a guard you carried off and put down, stays when his squad or town unloads far away. In the game he vanishes with them once you look away."
+msgstr "Away ockedknay-out aracterchay eftlay yinglay earnay youray uadssqay, uchsay asway away uardgay youay arriedcay offway andway utpay ownday, aysstay enwhay ishay uadsqay orway owntay unloadsway arfay awayway. Inway ethay amegay ehay anishesvay ithway emthay onceway youay ooklay awayway."
+
+msgid "A large storage tank for fuel."
+msgstr "Away argelay oragestay anktay orfay uelfay."
+
+msgid "A larger wind generator with twice the power of the first when the wind is up. Keep batteries as a backup."
+msgstr "Away argerlay indway eneratorgay ithway icetway ethay owerpay ofway ethay irstfay enwhay ethay indway isway upway. Eepkay atteriesbay asway away ackupbay."
+
+msgid "A low, crude wall that won't keep enemies out for long."
+msgstr "Away owlay, udecray allway atthay onway'tay eepkay enemiesway outway orfay onglay."
+
+msgid "A proper defensive wall, taller than a makeshift one."
+msgstr "Away operpray efensiveday allway, allertay anthay away akeshiftmay oneway."
+
+msgid "A raid under way when you save goes on where it was when that save is loaded. The game starts its current stage over at every load, so its waits and time limits begin again."
+msgstr "Away aidray underway ayway enwhay youay avesay oesgay onway erewhay itway asway enwhay atthay avesay isway oadedlay. Ethay amegay artsstay itsway urrentcay agestay overway atway everyway oadlay, osay itsway aitsway andway imetay imitslay eginbay againway."
+
+msgid "A simple round table."
+msgstr "Away implesay oundray abletay."
+
+msgid "A simple stool to sit on."
+msgstr "Away implesay oolstay otay itsay onway."
+
+msgid "A stack of boxes you can store anything in."
+msgstr "Away ackstay ofway oxesbay youay ancay orestay anythingway inway."
+
+msgid "A storage barrel for cactus."
+msgstr "Away oragestay arrelbay orfay actuscay."
+
+msgid "A storage barrel for greenfruit."
+msgstr "Away oragestay arrelbay orfay eenfruitgray."
+
+msgid "A storage barrel for riceweed."
+msgstr "Away oragestay arrelbay orfay iceweedray."
+
+msgid "A sturdy metal table."
+msgstr "Away urdystay etalmay abletay."
+
+msgid "A tall two-story building shell with stairs inside."
+msgstr "Away alltay otway-story uildingbay ellshay ithway airsstay insideway."
+
+msgid "A taller, heavier defensive wall."
+msgstr "Away allertay, eavierhay efensiveday allway."
+
+msgid "A towering fortified wall."
+msgstr "Away oweringtay ortifiedfay allway."
+
+msgid "A wooden shelf, for decoration."
+msgstr "Away oodenway elfshay, orfay ecorationday."
+
+msgid "ASSASSINATION"
+msgstr "ASSASSINATIONWAY"
+
+msgid "ATHLETICS"
+msgstr "ATHLETICSWAY"
+
+msgid "Adaptive exposure"
+msgstr "Adaptiveway exposureway"
+
+msgid "Adaptive exposure strength"
+msgstr "Adaptiveway exposureway engthstray"
+
+msgid "Adaptive exposure strength (max x)"
+msgstr "Adaptiveway exposureway engthstray (axmay xay)"
+
+msgid "BLUNT"
+msgstr "UNTBLAY"
+
+msgid "Beds used as seats"
+msgstr "Edsbay usedway asway eatssay"
+
+msgid "Bow smith"
+msgstr "Owbay ithsmay"
+
+msgid "Brighten the picture in deep shade by day, such as a canyon at noon; nights and sunny views stay as they are."
+msgstr "Ightenbray ethay icturepay inway eepday adeshay ybay ayday, uchsay asway away anyoncay atway oonnay; ightsnay andway unnysay iewsvay aystay asway eythay areway."
+
+msgid "COOKING"
+msgstr "OOKINGCAY"
+
+msgid "CROSSBOWS"
+msgstr "OSSBOWSCRAY"
+
+msgid "Clothes keep blood stains"
+msgstr "Othesclay eepkay oodblay ainsstay"
+
+msgid "Collects water when it rains."
+msgstr "Ollectscay aterway enwhay itway ainsray."
+
+msgid "DEXTERITY"
+msgstr "EXTERITYDAY"
+
+msgid "DODGE"
+msgstr "ODGEDAY"
+
+msgid "Date added"
+msgstr "Ateday addedway"
+
+msgid "Delete the chosen preset"
+msgstr "Eleteday ethay osenchay esetpray"
+
+msgid "Details"
+msgstr "Etailsday"
+
+msgid "Dodge"
+msgstr "Odgeday"
+
+msgid "ENGINEERING"
+msgstr "ENGINEERINGWAY"
+
+msgid "Enter a hunger value from 1 to 300."
+msgstr "Enterway away ungerhay aluevay omfray 1 otay 300."
+
+msgid "FARMING"
+msgstr "ARMINGFAY"
+
+msgid "Faster ground for weak graphics: one biome and two texture layers a pixel, no bump detail. Blends between biomes show harder edges."
+msgstr "Asterfay oundgray orfay eakway aphicsgray: oneway iomebay andway otway exturetay ayerslay away ixelpay, onay umpbay etailday. Endsblay etweenbay iomesbay owshay arderhay edgesway."
+
+msgid "Grows greenfruit indoors, safe from the weather. Needs power and water."
+msgstr "Owsgray eenfruitgray indoorsway, afesay omfray ethay eatherway. Eedsnay owerpay andway aterway."
+
+msgid "Grows hemp indoors, safe from the weather. Needs power and water."
+msgstr "Owsgray emphay indoorsway, afesay omfray ethay eatherway. Eedsnay owerpay andway aterway."
+
+msgid "Grows riceweed indoors, safe from the weather. Needs power and water."
+msgstr "Owsgray iceweedray indoorsway, afesay omfray ethay eatherway. Eedsnay owerpay andway aterway."
+
+msgid "Guards stop passing bodies"
+msgstr "Uardsgay opstay assingpay odiesbay"
+
+msgid "HACKERS"
+msgstr "ACKERSHAY"
+
+msgid "HEAVYWEAPONS"
+msgstr "EAVYWEAPONSHAY"
+
+msgid "Hide incompatible RE_Kenshi plugins"
+msgstr "Idehay incompatibleway ERAY_Enshikay uginsplay"
+
+msgid "Hover outline in the Advanced settings"
+msgstr "Overhay outlineway inway ethay Advancedway ettingssay"
+
+msgid "Hover outline in the Advanced settings is on"
+msgstr "Overhay outlineway inway ethay Advancedway ettingssay isway onway"
+
+msgid "How fast your characters and the rest of your faction learn: every skill and stat gain is multiplied by this (the game: 1x). 0 stops it. Click the number to type an exact value. A training dummy still stops at its level. Open it to give single skills their own multiplier."
+msgstr "Owhay astfay youray aracterschay andway ethay estray ofway youray actionfay earnlay: everyway illskay andway atstay aingay isway ultipliedmay ybay isthay (ethay amegay: 1xay). 0 opsstay itway. Ickclay ethay umbernay otay ypetay anway exactway aluevay. Away ainingtray ummyday illstay opsstay atway itsway evellay. Openway itway otay ivegay inglesay illsskay eirthay ownway ultipliermay."
+
+msgid "Hunger set to {1}."
+msgstr "Ungerhay etsay otay {1}."
+
+msgid "Image"
+msgstr "Imageway"
+
+msgid "Information panel stays open"
+msgstr "Informationway anelpay aysstay openway"
+
+msgid "KATANAS"
+msgstr "ATANASKAY"
+
+msgid "Knocked out stay"
+msgstr "Ockedknay outway aystay"
+
+msgid "LABOURING"
+msgstr "ABOURINGLAY"
+
+msgid "LOCKPICKING"
+msgstr "OCKPICKINGLAY"
+
+msgid "Last modified"
+msgstr "Astlay odifiedmay"
+
+msgid "Light the dust and spray kicked up by running feet like the ground around them, instead of glowing at night."
+msgstr "Ightlay ethay ustday andway ayspray ickedkay upway ybay unningray eetfay ikelay ethay oundgray aroundway emthay, insteadway ofway owingglay atway ightnay."
+
+msgid "Lit dust"
+msgstr "Itlay ustday"
+
+msgid "Load order"
+msgstr "Oadlay orderway"
+
+msgid "MARTIALARTS"
+msgstr "ARTIALARTSMAY"
+
+msgid "MEDIC"
+msgstr "EDICMAY"
+
+msgid "Makes basic first aid kits and sleeping bags from fabrics. Needs power."
+msgstr "Akesmay asicbay irstfay aidway itskay andway eepingslay agsbay omfray abricsfay. Eedsnay owerpay."
+
+msgid "Makes first aid kits and splint kits from fabrics and hemp. Needs power."
+msgstr "Akesmay irstfay aidway itskay andway intsplay itskay omfray abricsfay andway emphay. Eedsnay owerpay."
+
+msgid "Name"
+msgstr "Amenay"
+
+msgid "Needs"
+msgstr "Eedsnay"
+
+msgid "No description"
+msgstr "Onay escriptionday"
+
+msgid "No mods match the filters."
+msgstr "Onay odsmay atchmay ethay iltersfay."
+
+msgid "Not enabled: the game does not load it"
+msgstr "Otnay enabledway: ethay amegay oesday otnay oadlay itway"
+
+msgid "Outpost:"
+msgstr "Outpostway:"
+
+msgid "PERCEPTION"
+msgstr "ERCEPTIONPAY"
+
+msgid "POLEARMS"
+msgstr "OLEARMSPAY"
+
+msgid "Polearms"
+msgstr "Olearmspay"
+
+msgid "ROBOTICS"
+msgstr "OBOTICSRAY"
+
+msgid "Raids keep their progress"
+msgstr "Aidsray eepkay eirthay ogresspray"
+
+msgid "SABRES"
+msgstr "ABRESSAY"
+
+msgid "SCIENCE"
+msgstr "IENCESCAY"
+
+msgid "STEALTH"
+msgstr "EALTHSTAY"
+
+msgid "STRENGTH"
+msgstr "ENGTHSTRAY"
+
+msgid "SWIMMING"
+msgstr "IMMINGSWAY"
+
+msgid "Save current preset"
+msgstr "Avesay urrentcay esetpray"
+
+msgid "Save the mod list and load order as a preset of this name"
+msgstr "Avesay ethay odmay istlay andway oadlay orderway asway away esetpray ofway isthay amenay"
+
+msgid "Seen into a building with its roof hidden, no rain or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
+msgstr "Eensay intoway away uildingbay ithway itsway oofray iddenhay, onay ainray orway ashway allsfay overway ethay openway oomray. Ethay amegay eaveslay outway onlyway atwhay allsfay insideway itway, osay ithway ethay ameracay ulledpay ackbay ethay ainray inway ontfray illstay eaksstray acrossway ethay oomray."
+
+msgid "Set hunger (1-300)"
+msgstr "Etsay ungerhay (1-300)"
+
+msgid "Shooting a turret at someone who is not an enemy and not fighting is an assault, as attacking them in person is, and guards who see it put a bounty on you. In the game turret fire is never a crime: the victim's faction only likes you less."
+msgstr "Ootingshay away urrettay atway omeonesay owhay isway otnay anway enemyway andway otnay ightingfay isway anway assaultway, asway attackingway emthay inway ersonpay isway, andway uardsgay owhay eesay itway utpay away ountybay onway youay. Inway ethay amegay urrettay irefay isway evernay away imecray: ethay ictimvay'say actionfay onlyway ikeslay youay esslay."
+
+msgid "Show Squad XP"
+msgstr "Owshay Uadsqay XPAY"
+
+msgid "Show or hide the selected mod's details beside the list"
+msgstr "Owshay orway idehay ethay electedsay odmay'say etailsday esidebay ethay istlay"
+
+msgid "Shows the Squad XP multiplier (\"XP x10\") at the top left of the screen during play."
+msgstr "Owsshay ethay Uadsqay XPAY ultipliermay (\"XPAY xay10\") atway ethay optay eftlay ofway ethay eenscray uringday ayplay."
+
+msgid "Simple terrain shading"
+msgstr "Implesay erraintay adingshay"
+
+msgid "Sort by"
+msgstr "Ortsay ybay"
+
+msgid "Stores power for when your generators fall short."
+msgstr "Oresstay owerpay orfay enwhay youray eneratorsgay allfay ortshay."
+
+msgid "THIEVING"
+msgstr "IEVINGTHAY"
+
+msgid "TOUGHNESS"
+msgstr "OUGHNESSTAY"
+
+msgid "TURRETS"
+msgstr "URRETSTAY"
+
+msgid "Take the chosen preset's mod list and load order"
+msgstr "Aketay ethay osenchay esetpray'say odmay istlay andway oadlay orderway"
+
+msgid "The character information panel at the bottom left stays extended or collapsed as you last left it, also after restarting the game. The game starts it collapsed every time."
+msgstr "Ethay aracterchay informationway anelpay atway ethay ottombay eftlay aysstay extendedway orway ollapsedcay asway youay astlay eftlay itway, alsoway afterway estartingray ethay amegay. Ethay amegay artsstay itway ollapsedcay everyway imetay."
+
+msgid "The gate for Defensive Wall II."
+msgstr "Ethay ategay orfay Efensiveday Allway IIWAY."
+
+msgid "The gate for Defensive Wall III."
+msgstr "Ethay ategay orfay Efensiveday Allway IIIWAY."
+
+msgid "The gate for Defensive Wall IV."
+msgstr "Ethay ategay orfay Efensiveday Allway IVWAY."
+
+msgid "The most deep shade by day is brightened, as a multiple of the game's exposure."
+msgstr "Ethay ostmay eepday adeshay ybay ayday isway ightenedbray, asway away ultiplemay ofway ethay amegay'say exposureway."
+
+msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
+msgstr "Isthay uildingbay andsstay outsideway everyway outpostway'say uildbay imitlay, osay onay eneratorgay ancay owerpay itway. Ismantleday itway andway uildbay itway againway insideway ethay edray ingray."
+
+msgid "This skill's own multiplier for your faction, in place of Squad XP. At the far left (Squad XP) it follows Squad XP."
+msgstr "Isthay illskay'say ownway ultipliermay orfay youray actionfay, inway aceplay ofway Uadsqay XPAY. Atway ethay arfay eftlay (Uadsqay XPAY) itway ollowsfay Uadsqay XPAY."
+
+msgid "Turret fire is a crime"
+msgstr "Urrettay irefay isway away imecray"
+
+msgid "With Blood on weapons and gear on, blood soaks into worn clothes and armour slowly, stays when the wound heals, and washes out in water and rain or fades with time. Off, the clothes show only the blood of the wound under them."
+msgstr "Ithway Oodblay onway eaponsway andway eargay onway, oodblay oakssay intoway ornway othesclay andway armourway owlyslay, aysstay enwhay ethay oundway ealshay, andway ashesway outway inway aterway andway ainray orway adesfay ithway imetay. Offway, ethay othesclay owshay onlyway ethay oodblay ofway ethay oundway underway emthay."
+
+msgid "built for another version of the game"
+msgstr "uiltbay orfay anotherway ersionvay ofway ethay amegay"
+
+msgid "follows the shade"
+msgstr "ollowsfay ethay adeshay"
+
+msgid "its multipliers are now Squad XP in the Advanced settings (open it for each skill's own) and Show Squad XP"
+msgstr "itsway ultipliersmay areway ownay Uadsqay XPAY inway ethay Advancedway ettingssay (openway itway orfay eachway illskay'say ownway) andway Owshay Uadsqay XPAY"
+
+msgid "its per-skill multipliers are now under Squad XP in the Advanced settings, and its XP label is Show Squad XP"
+msgstr "itsway erpay-skill ultipliersmay areway ownay underway Uadsqay XPAY inway ethay Advancedway ettingssay, andway itsway XPAY abellay isway Owshay Uadsqay XPAY"
+
+msgid "not enabled above it"
+msgstr "otnay enabledway aboveway itway"
+
+msgid "the game draws the dust and the spray a running foot throws up as glowing sprites, as bright by night as by day and in shade as in the sun; Meitou lights them as the ground is lit: the sun through its shadows, the sky, the lamps, the same as the game's by day (docs/render-post.md \"Lit dust\")"
+msgstr "ethay amegay awsdray ethay ustday andway ethay ayspray away unningray ootfay owsthray upway asway owingglay itesspray, asway ightbray ybay ightnay asway ybay ayday andway inway adeshay asway inway ethay unsay; Eitoumay ightslay emthay asway ethay oundgray isway itlay: ethay unsay oughthray itsway adowsshay, ethay yskay, ethay ampslay, ethay amesay asway ethay amegay'say ybay ayday (docs/render-post.md \"Itlay ustday\")"
+
+msgid "the game's band"
+msgstr "ethay amegay'say andbay"
+
+msgid "the game's exposure follows the picture's brightness only down to a daytime minimum, so a canyon or a street in a cliff's shadow at noon stays dark; Meitou lets it adapt by day to halfway between the game's day and night minimums (up to 1.7 times brighter in deep shade); nights, open sunny views and rooms are as before (docs/render-post.md \"Adaptive exposure\")"
+msgstr "ethay amegay'say exposureway ollowsfay ethay icturepay'say ightnessbray onlyway ownday otay away aytimeday inimummay, osay away anyoncay orway away eetstray inway away iffclay'say adowshay atway oonnay aysstay arkday; Eitoumay etslay itway adaptway ybay ayday otay alfwayhay etweenbay ethay amegay'say ayday andway ightnay inimumsmay (upway otay 1.7 imestay ighterbray inway eepday adeshay); ightsnay, openway unnysay iewsvay andway oomsray areway asway eforebay (docs/render-post.md \"Adaptiveway exposureway\")"
+
+msgid "{1} is built into Meitou now: {2}."
+msgstr "{1} isway uiltbay intoway Eitoumay ownay: {2}."
+
+msgid "{1} mods, {2} enabled"
+msgstr "{1} odsmay, {2} enabledway"
+
+msgid "{1} of {2} mods shown, {3} enabled"
+msgstr "{1} ofway {2} odsmay ownshay, {3} enabledway"
