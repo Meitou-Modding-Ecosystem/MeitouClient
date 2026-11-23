@@ -5021,3 +5021,9 @@ msgstr "Avant-poste :"
 #. machine-translated
 msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
 msgstr "Ce bâtiment se trouve hors de la limite de construction de tout avant-poste : aucun générateur ne peut l'alimenter. Démontez-le et reconstruisez-le à l'intérieur de l'anneau rouge."
+
+msgid "Beds used as seats"
+msgstr "Lits servant de sièges"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Un personnage qui dort sur un meuble servant de siège, comme Bed (job), s'allonge dans le sens du matelas comme dans un vrai lit. Le jeu l'assoit au milieu du meuble, si bien qu'il se couche en travers au pied du lit."
