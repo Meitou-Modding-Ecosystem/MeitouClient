@@ -5021,3 +5021,9 @@ msgstr "Außenposten:"
 #. machine-translated
 msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
 msgstr "Dieses Gebäude steht außerhalb der Baugrenze jedes Außenpostens, daher kann kein Generator es mit Strom versorgen. Baue es ab und errichte es innerhalb des roten Rings neu."
+
+msgid "Beds used as seats"
+msgstr "Betten als Sitzmöbel"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Eine Figur, die auf einem Möbelstück schläft, das als Sitz dient, etwa Bed (job), liegt wie in einem echten Bett längs auf der Matratze. Das Spiel setzt sie in die Mitte des Möbelstücks, sodass sie quer am Fußende des Bettes liegt."

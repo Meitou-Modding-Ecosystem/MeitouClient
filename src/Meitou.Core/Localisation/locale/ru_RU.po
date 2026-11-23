@@ -5025,3 +5025,9 @@ msgstr "Аванпост:"
 #. machine-translated
 msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
 msgstr "Это здание стоит за пределами границы строительства всех аванпостов, поэтому ни один генератор не может его питать. Разберите его и постройте заново внутри красного кольца."
+
+msgid "Beds used as seats"
+msgstr "Кровати-сиденья"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Персонаж, спящий на мебели, которая работает как сиденье, например Bed (job), ложится вдоль матраса, как на настоящей кровати. Игра усаживает его в середину мебели, и он лежит поперёк в ногах кровати."

@@ -129,6 +129,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         _craftOptions = new CraftOptionsCache(BuildCraftOptions);
         _smiths = new SmithViewCache(db);
         _useSpots = new UseSpots(db);
+        _seatBeds = new SeatBeds(db);
         UnloadedProduction = Settings.UnloadedProduction;
     }
 
@@ -360,6 +361,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// The machines' use nodes and position markers, where operators walk to and are measured from.
     /// </summary>
     readonly UseSpots _useSpots;
+
+    /// <summary>
+    /// The seats that play a bed's clip, lain on at their use nodes with <see cref="World.SeatBedFix"/>.
+    /// </summary>
+    readonly SeatBeds _seatBeds;
 
     /// <summary>
     /// The clip a turret's gunner holds.

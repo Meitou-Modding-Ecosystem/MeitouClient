@@ -5021,3 +5021,9 @@ msgstr "Puesto avanzado:"
 #. machine-translated
 msgid "This building stands outside every outpost's build limit, so no generator can power it. Dismantle it and build it again inside the red ring."
 msgstr "Este edificio está fuera del límite de construcción de todos los puestos avanzados, así que ningún generador puede alimentarlo. Desmantélalo y vuelve a construirlo dentro del anillo rojo."
+
+msgid "Beds used as seats"
+msgstr "Camas usadas como asientos"
+
+msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
+msgstr "Un personaje que duerme en un mueble que funciona como asiento, como Bed (job), se tumba a lo largo del colchón como en una cama de verdad. El juego lo sienta en el centro del mueble, así que queda tumbado de través a los pies de la cama."

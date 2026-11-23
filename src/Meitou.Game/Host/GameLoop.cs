@@ -514,6 +514,7 @@ sealed class GameLoop(GameHost host)
             PunchReachChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.PunchReachFix = on),
             AnimalMovesChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.AnimalMovesFix = on),
             BenchFacingChanged = on => host.Session.World.BenchFacingFix = on,
+            SeatBedsChanged = on => host.Session.World.SeatBedFix = on,
             PrisonPoseChanged = on => host.Session.World.PrisonPoseFix = on,
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
