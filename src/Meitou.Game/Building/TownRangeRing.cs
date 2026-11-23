@@ -15,7 +15,7 @@ sealed class TownRangeRing(GameHost host)
     /// <summary>
     /// The band's width inward from the radius, and how far above the terrain it is drawn so the ground does not swallow it.
     /// </summary>
-    const float BandWidth = 6, Lift = 3;
+    const float BandWidth = 10, Lift = 3;
 
     /// <summary>
     /// The longest segment of the circle.

@@ -1221,13 +1221,15 @@ sealed class ProductionWindows(PlayerInterface player)
             }
 
             stats.Add(ConsumerPowerLine(pw.Granted, pw.Demand));
-            if (pw.NoTown) stats.Add(NoOutpostLine());
         }
+
+        // A machine in no town is on no frame, so its demand stays 0 and the Power line above is not drawn.
+        if (pw.Kind == PowerKind.Consumer && pw.NoTown) stats.Add(NoOutpostLine());
     }
 
     /// <summary>
-    /// Meitou only: the line under a consumer's Power line when its building belongs to no outpost (NO_TOWN), which gets no power however many
-    /// generators stand nearby (docs/game/buildings-production.md "Power"; the original shows only the 0 power).
+    /// Meitou only: a consumer's line when its building belongs to no outpost (NO_TOWN), which gets no power however many generators stand nearby
+    /// (docs/game/buildings-production.md "Power"; the original gives no hint).
     /// </summary>
     static PlayerInterface.HudLine NoOutpostLine()
     {
