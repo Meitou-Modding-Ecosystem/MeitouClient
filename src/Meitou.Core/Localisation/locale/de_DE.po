@@ -5091,3 +5091,9 @@ msgstr "Betten als Sitzmöbel"
 
 msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
 msgstr "Eine Figur, die auf einem Möbelstück schläft, das als Sitz dient, etwa Bed (job), liegt wie in einem echten Bett längs auf der Matratze. Das Spiel setzt sie in die Mitte des Möbelstücks, sodass sie quer am Fußende des Bettes liegt."
+
+msgid "Unavailable menu rows"
+msgstr "Nicht verfügbare Menüzeilen"
+
+msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
+msgstr "Ausgegraut: Eine Menüzeile, die deine Auswahl gerade nicht ausführen kann, etwa Erste Hilfe ohne Medikit, wird ausgegraut; mit Umschalt-Klick richtest du die Aufgabe trotzdem ein. Originalgetreu: jede Zeile wie im Spiel."

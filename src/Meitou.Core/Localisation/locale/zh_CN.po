@@ -5932,3 +5932,9 @@ msgstr "当作座位的床"
 
 msgid "A character sleeping on furniture that works as a seat, such as Bed (job), lies along the mattress as in a real bed. The game seats it on the furniture's middle, so it lies across the foot of the bed."
 msgstr "在作为座位使用的家具（如 Bed (job)）上睡觉的角色会像在真正的床上一样顺着床垫躺下。原版游戏让角色坐在家具正中，于是会横躺在床尾。"
+
+msgid "Unavailable menu rows"
+msgstr "不可用的菜单项"
+
+msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
+msgstr "灰显：所选角色当前无法执行的菜单项（例如没有急救包时的急救）会灰显；按住 Shift 点击仍可设为工作。原版：所有菜单项与游戏一致。"
