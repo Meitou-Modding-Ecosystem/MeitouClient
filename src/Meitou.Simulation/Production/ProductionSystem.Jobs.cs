@@ -393,15 +393,17 @@ public sealed partial class ProductionSystem
             if (on == TaskType.DitchAllResources && cold.HaulTo is { } keep && !PlayerOrders.Holds(world, slot) && cold.Inventory is { } held
                 && Site(world, keep) is { Complete: true } keptSite && keptSite.Owner == world.Player.Faction
                 && Ensure(world, keptSite) is { } keptStore && keptStore.Data.IsStorage && keptStore.Storage is not null
-                && Ditchable(held).Any(item => Stores(keptStore, item)) && world.StorageAllows(cold, keep, StorageUse.Put, DitchRecord(world, held)))
+                && Ditchable(held).Any(item => Stores(keptStore, item))
+                && world.StorageRank(cold, keep, StorageUse.Put, DitchRecord(world, held)) != StoragePriority.Forbidden)
                 return (TaskType.DitchAllResources, keep);
 
             bool ditching = !PlayerOrders.Holds(world, slot) && cold.Inventory is { } carried && Ditchable(carried).Any();
-            if (ditching && NearestSite(world, at, float.MaxValue, IsStore, Ditches) is { } store)
+            if (ditching && BestStore(world, at, IsStore, Ditches) is { } store)
                 return (TaskType.DitchAllResources, store);
 
-            bool Ditches(BuildSite s, Machine m) => InFinderRange(s.Position, at) && TakesDitched(m, cold.Inventory!)
-                && world.StorageAllows(cold, s.Id, StorageUse.Put, DitchRecord(world, cold.Inventory!));
+            StoragePriority Ditches(BuildSite s, Machine m) => InFinderRange(s.Position, at) && TakesDitched(m, cold.Inventory!)
+                ? world.StorageRank(cold, s.Id, StorageUse.Put, DitchRecord(world, cold.Inventory!))
+                : StoragePriority.Forbidden;
         }
 
         // Sleep and Sit not while holding position (FUN_1402b2b90), carrying someone (+0x348) or selected by the player (FUN_1407f4d20, the
@@ -579,6 +581,36 @@ public sealed partial class ProductionSystem
             if (gap > range || gap > bestGap || (gap == bestGap && string.CompareOrdinal(m.Site, best) > 0) || !ok(site, m)) continue;
             best = m.Site;
             bestGap = gap;
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// <see cref="NearestSite"/> for a storage search: the player's complete building whose machine passes <paramref name="kind"/> and whose
+    /// <paramref name="rank"/> (a test of the site and machine that answers <see cref="StoragePriority.Forbidden"/> for one that fails, else its
+    /// storage priority, <see cref="World.StorageRank(CharacterCold, string, StorageUse, string?)"/>) is highest; among equals the nearest
+    /// (ties: the lower site id). With no priority system every rank is Normal or Forbidden, so it is the nearest that passes.
+    /// </summary>
+    string? BestStore(World world, Vector3 at, Func<Machine, bool> kind, Func<BuildSite, Machine, StoragePriority> rank)
+    {
+        string? best = null;
+        float bestGap = float.MaxValue;
+        var bestRank = StoragePriority.Forbidden;
+        var all = world.Machines.All;
+        for (int k = 0; k < all.Count; k++)
+        {
+            var m = all[k];
+            if (!kind(m) || Site(world, m.Site) is not { Complete: true } site || site.Owner != world.Player.Faction) continue;
+
+            float gap = Gap(site.Position, at);
+            bool nearer = gap < bestGap || gap == bestGap && string.CompareOrdinal(m.Site, best) < 0;
+            if (!nearer && !world.StorageMayOutrank(bestRank)) continue;
+
+            var r = rank(site, m);
+            if (r == StoragePriority.Forbidden || r < bestRank || r == bestRank && !nearer) continue;
+
+            (best, bestGap, bestRank) = (m.Site, gap, r);
         }
 
         return best;
@@ -845,7 +877,9 @@ public sealed partial class ProductionSystem
     /// The record the storage filters are asked about for a ditch trip: the one every ditchable item shares, else null; none without a filter.
     /// </summary>
     static string? DitchRecord(World world, Items.Inventory inv) =>
-        world.StorageFilters.Active ? Meitou.Simulation.Items.StorageFilters.OneRecord(Ditchable(inv)) : null;
+        world.StorageFilters.Active || world.StoragePriorities.Active
+            ? Meitou.Simulation.Items.StorageFilters.OneRecord(Ditchable(inv))
+            : null;
 
     /// <summary>
     /// A storage machine with its grid (what <see cref="TakesDitched"/> asks first).
