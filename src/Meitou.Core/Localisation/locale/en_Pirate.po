@@ -5002,3 +5002,35 @@ msgstr "Menu rows ye can't use"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "Greyed: a menu row yer crew can't do now, such as First Aid without a medkit, be greyed; Shift-click it to set up the job anyway, matey. Faithful: every row as in the game."
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "Stowin' priority:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "Plunderin' priority:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Haulers an' deckhands stow loot in the hold o' the highest stowin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, Shift+click to lower."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Deckhands an' builders plunder from the hold o' the highest plunderin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, Shift+click to lower."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "Forbidden"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "Put off"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "Favoured"
+
+#. machine-translated
+msgid "Important"
+msgstr "Mighty important"

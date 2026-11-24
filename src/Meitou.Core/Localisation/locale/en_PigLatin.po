@@ -5002,3 +5002,35 @@ msgstr "Unavailableway enumay owsray"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "Eyedgray: away enumay owray ouryay electionsay ancay'tay oday ownay, uchsay asway Irstfay Aidway ithoutway away edkitmay, isway eyedgray; Iftshay-ickclay itway otay etsay upway ethay objay anywayway. Aithfulfay: everyway owray asway inway ethay amegay."
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "Utpay ioritypray:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "Aketay ioritypray:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Aulershay andway orkersway utpay ingsthay intoway ethay oragestay ofway ethay ighesthay utpay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, Iftshay+ickclay otay owerlay."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Orkersway andway uildersbay aketay ingsthay omfray ethay oragestay ofway ethay ighesthay aketay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, Iftshay+ickclay otay owerlay."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "Orbiddenfay"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "Eferredday"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "Eferredpray"
+
+#. machine-translated
+msgid "Important"
+msgstr "Importantway"

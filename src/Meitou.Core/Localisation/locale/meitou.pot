@@ -1253,6 +1253,10 @@ msgstr ""
 msgid "Default settings restored."
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Deferred"
+msgstr ""
+
 #: launcher/Meitou.Launcher/GraphicsPage.cs launcher/Meitou.Launcher/MainWindow.axaml src/Meitou.Game/Settings/LookBar.cs
 msgid "Delete"
 msgstr ""
@@ -1765,6 +1769,10 @@ msgstr ""
 msgid "For a window: on renders in its real pixels. Off renders in virtual Retina pixels, one per point (a quarter of the pixels on a 2x display) and stretches to the window. No effect on a display without Retina. Full screen has Render resolution."
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Forbidden"
+msgstr ""
+
 #: src/Meitou.Game/Host/Photo/PhotoMode.cs
 msgid "Forward"
 msgstr ""
@@ -2053,6 +2061,10 @@ msgstr ""
 msgid "Hardware mouse"
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr ""
+
 #: src/Meitou.Game/Ui/HudPanels.cs
 msgid "Hauling"
 msgstr ""
@@ -2327,6 +2339,10 @@ msgstr ""
 
 #: src/Meitou.Game/Title/FrontendScreens.cs
 msgid "Import this save into a new game? Unsaved progress will be lost."
+msgstr ""
+
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Important"
 msgstr ""
 
 #: src/Meitou.Game/Settings/LookPresets.cs src/Meitou.Game/SettingsMenu.cs
@@ -3741,6 +3757,10 @@ msgstr ""
 msgid "Post FX"
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Preferred"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs
 msgid "Preset '{1}' applied."
 msgstr ""
@@ -3811,6 +3831,10 @@ msgstr ""
 
 #: src/Meitou.Game/Ui/ContextMenuWindow.cs
 msgid "Put on Shackles"
+msgstr ""
+
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Put priority:"
 msgstr ""
 
 #: src/Meitou.Game/Title/FrontendScreens.cs
@@ -4801,6 +4825,10 @@ msgstr ""
 msgid "Take picture"
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Take priority:"
+msgstr ""
+
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "Take the chosen preset's mod list and load order"
 msgstr ""
@@ -5699,6 +5727,10 @@ msgstr ""
 
 #: src/Meitou.Game/Tutorials/TutorialPanel.cs
 msgid "Workers"
+msgstr ""
+
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml.cs

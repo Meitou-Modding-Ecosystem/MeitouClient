@@ -5093,3 +5093,35 @@ msgstr "使用できないメニュー項目"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "グレー表示：選択中のキャラクターが今は実行できない項目（救急キットなしの応急手当など）はグレーで表示されます。Shift+クリックで仕事として設定できます。原作どおり：すべての項目をゲームと同じく表示します。"
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "搬入優先度:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "搬出優先度:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "運搬係と作業者は、搬入優先度が最も高い倉庫に先に物を入れます。同じ優先度なら最も近い倉庫です。禁止：使わない。クリックで上げ、Shift+クリックで下げます。"
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "作業者と建築者は、搬出優先度が最も高い倉庫から先に物を取ります。同じ優先度なら最も近い倉庫です。禁止：使わない。クリックで上げ、Shift+クリックで下げます。"
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "禁止"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "後回し"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "優先"
+
+#. machine-translated
+msgid "Important"
+msgstr "重要"
