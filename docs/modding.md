@@ -353,6 +353,17 @@ holds refuses the second mod.
   (a build order's materials) asks it between ticks on the host's thread, with the coming tick's number. One that throws is answered as allowing
   for the rest of that tick and is not asked from the next tick on; the fault enters the state hash. Without a filter nothing is asked. Engine
   API, not in the original.
+- **Storage priority:** a registered system implementing `IStoragePriority` (`Meitou.Simulation.Items`) is asked `Priority(World, CharacterId who,
+  string storage, StorageUse use, string? record)` at the same searches as `IStorageFilter`, for each storage the filters allow, and answers a
+  `StoragePriority`: `Forbidden`, `Low`, `Deferred`, `Normal` (the default), `Preferred`, `Important`, `High`, `Critical`. The search takes the
+  highest priority and, among equals, the storage it takes without one (the nearest, its own tie rule); `Forbidden` passes the storage over as a
+  refusal does. Take and put are asked apart, so a store can be the last place things are put and the first they are taken from (put `Low`, take
+  `Critical`: an overstock store). Systems combine as: any `Forbidden` wins, else the first answer other than `Normal` in system order (mods in
+  load order); an answer outside the levels counts as `Normal`. A squad's kept ditch trip keeps its storage while it still takes something (only
+  `Forbidden` ends it). `world.StorageRank(who, storage, use, record)` gives the filters' and priority systems' combined answer (`Forbidden` for
+  a refusal), so a mod ranks its own storage picks as the game's searches do. Same threading, paused-order and fault rules as `IStorageFilter`;
+  one that throws answers `Normal`. Without a priority system nothing is asked and every search is the original's. Engine API, not in the
+  original.
 - **World ready:** a registered system implementing `IWorldReady` receives `Ready(World, bool fromSave)` once, between ticks before the first:
   after a save has loaded (`IModSaveData.Read` done and settings of mods no longer running dropped; an import counts as a save) or a new game has
   placed the player's characters (`fromSave` false), once that world is the running one, so the context's `Enqueue`, `Tick` and `PostSound` reach
