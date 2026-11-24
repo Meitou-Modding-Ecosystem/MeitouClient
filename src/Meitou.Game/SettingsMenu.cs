@@ -48,6 +48,10 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     /// </summary>
     internal const int GraphicsPageIndex = 1;
     /// <summary>
+    /// The Advanced page (its Squad XP folds the skills' own multipliers).
+    /// </summary>
+    internal const int AdvancedPageIndex = 4;
+    /// <summary>
     /// The MODS page (<see cref="Settings.ModsPage"/>): the loaded mods, each with the settings its code registered.
     /// </summary>
     internal const int ModsPageIndex = 8;
@@ -431,9 +435,19 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     public Action<bool>? AnimalMovesChanged { get; init; }
 
     /// <summary>
+    /// Applies the turret assault fix (<see cref="UserConfig.FixTurretAssault"/>) to the running combat system.
+    /// </summary>
+    public Action<bool>? TurretAssaultChanged { get; init; }
+
+    /// <summary>
     /// Applies the bench facing fix (<see cref="UserConfig.FixBenchFacing"/>).
     /// </summary>
     public Action<bool>? BenchFacingChanged { get; init; }
+
+    /// <summary>
+    /// Applies the seat bed fix (<see cref="UserConfig.FixSeatBeds"/>).
+    /// </summary>
+    public Action<bool>? SeatBedsChanged { get; init; }
 
     /// <summary>
     /// Applies the prisoner pose fix (<see cref="UserConfig.FixPrisonPose"/>).
@@ -449,6 +463,16 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     /// Applies the bag search fix (<see cref="UserConfig.FixBagSearch"/>).
     /// </summary>
     public Action<bool>? BagSearchChanged { get; init; }
+
+    /// <summary>
+    /// Applies the shop counter talk reach (<see cref="UserConfig.CounterTalk"/>).
+    /// </summary>
+    public Action<bool>? CounterTalkChanged { get; init; }
+
+    /// <summary>
+    /// Applies the animal target fix (<see cref="UserConfig.FixAnimalTarget"/>).
+    /// </summary>
+    public Action<bool>? AnimalTargetChanged { get; init; }
 
     /// <summary>
     /// Called when an off-screen switch changes (the config holds the new values).
@@ -637,11 +661,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
                 or WorldFrame.GiRaysSwitch or WorldFrame.GiCharactersSwitch => "Lighting",
             "Water" or "Water contact foam, wakes and ripples" or "Reflections" => "Water & reflections",
             "Ground parallax" or "Ground displacement (tessellation)" or "Ground trails" or WorldFrame.RockSmoothingSwitch
-                or WorldFrame.OutlineRefineSwitch => "Terrain",
+                or WorldFrame.OutlineRefineSwitch or WorldFrame.SimpleTerrainSwitch => "Terrain",
             "Foliage ranges" or "Foliage levels" or "Far impostors" or WorldFrame.GrassCoverSwitch or WorldFrame.NearTreeFadeSwitch => "Vegetation",
-            "Haze" or "Night air" or "Night sky" or "Clouds" or "Cloud shadows" or "Cloud shadows in fog" or "Fog"
+            "Haze" or "Night air" or "Night sky" or "Clouds" or "Cloud shadows" or "Cloud shadows in fog" or "Fog" or "Lit dust"
                 or WorldFrame.WetWorldSwitch => "Sky & weather",
-            "Tone map and grade" or "Night grading" or "Dithering" => "Colour",
+            "Tone map and grade" or "Adaptive exposure" or "Night grading" or "Dithering" => "Colour",
             "Heat haze" or WorldFrame.BloomSwitch or WorldFrame.DepthOfFieldSwitch or WorldFrame.CameraEffectsSwitch or WorldFrame.VignetteSwitch
                 or WorldFrame.FilmGrainSwitch => "Post FX",
             "Skin" or "Character levels" or "Advanced materials" or "Blood on weapons and gear" or "Blood cells" or "Blood on surfaces"
@@ -670,7 +694,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
             return "Vegetation";
         if (S("Haze") || label == WorldFrame.HazeDistanceSlider || label == WorldFrame.CloudHeightSlider || WorldFrame.ParticleSliders.Contains(label))
             return "Sky & weather";
-        if (S("Tone map") || S("Hybrid") || S("Grading") || S("Night grading")) return "Colour";
+        if (S("Tone map") || S("Hybrid") || S("Grading") || S("Night grading") || S("Adaptive exposure")) return "Colour";
         if (S("Bloom") || S("Depth of field") || S("Heat haze") || S("Vignette") || S("Film grain")) return "Post FX";
         if (label == WorldFrame.CharacterDistanceSlider) return "Characters";
 
@@ -843,6 +867,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
                 or WorldFrame.MaterialMetalSwitch or WorldFrame.MaterialBeadsSwitch => SwitchOn("Advanced materials"),
             WorldFrame.MaterialPolishSwitch => SwitchOn("Advanced materials") && SwitchOn(WorldFrame.MaterialMetalSwitch),
             WorldFrame.NightGradeStrengthSlider => SwitchOn("Night grading"),
+            WorldFrame.AdaptiveExposureSlider => SwitchOn("Adaptive exposure"),
             WorldFrame.BloomStrengthSlider => SwitchOn(WorldFrame.BloomSwitch),
             WorldFrame.DofApertureSlider or WorldFrame.CameraEffectsSwitch => SwitchOn(WorldFrame.DepthOfFieldSwitch),
             WorldFrame.VignetteStrengthSlider => SwitchOn(WorldFrame.VignetteSwitch),
@@ -918,7 +943,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     }
 
     /// <summary>
-    /// The rows shown: the search's results while it has a query, else the page's, the Display and Graphics ones folded into features
+    /// The rows shown: the search's results while it has a query, else the page's, the Display, Graphics and Advanced ones folded into features
     /// (on Display, the upscaler's and the HDR output's settings under their rows).
     /// </summary>
     internal List<Entry> Entries()
@@ -927,7 +952,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
 
         var rows = PageRows(Page, GraphicsPage);
 
-        return Page is 0 or GraphicsPageIndex ? Grouping.Grouped(rows) : rows;
+        return Page is 0 or GraphicsPageIndex or AdvancedPageIndex ? Grouping.Grouped(rows) : rows;
     }
 
     /// <summary>
@@ -1093,7 +1118,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
     /// </summary>
     string HdrPaperText(float v) =>
         v < UserConfig.HdrPaperAuto
-            ? Loc.Tr("Automatic ({0})", Config.HdrPaperNitsNow.ToString("0", CultureInfo.InvariantCulture))
+            ? Loc.Tr("Automatic ({1})", Config.HdrPaperNitsNow.ToString("0", CultureInfo.InvariantCulture))
             : v.ToString("0", CultureInfo.InvariantCulture);
 
     /// <summary>
@@ -1541,14 +1566,17 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.LateDefences = false;
         LateDefencesChanged?.Invoke(false);
         Config.KeepRoamers = Config.OffscreenFights = Config.OffscreenHealing = Config.CampaignAncestorsOnce = Config.KeepWild
-            = Config.ResidentSchedule = Config.OffscreenOverrides = Config.UnloadedProduction = true;
+            = Config.ResidentSchedule = Config.OffscreenOverrides = Config.UnloadedProduction = Config.KeepDowned = true;
         Config.Decapitation = true;
         Config.AdvancedRagdolls = true;
         Config.PauseOnLoad = true;
         Config.LoadingPause = false;
         Player.InventoryWindows.AutoOpenBags = Config.AutoOpenBags = true;
+        Player.InventoryWindows.SplitStacks = Config.SplitStacks = true;
         Config.AnimalsPickUp = false;
         AnimalsPickUpChanged?.Invoke(false);
+        Config.CounterTalk = true;
+        CounterTalkChanged?.Invoke(true);
         Config.CagesSpareOwn = false;
         Config.FixDoorBreak = Config.FixAmbienceSuffix = Config.FixWindStop = true;
         Player.Frontend.FixLoadButton = Config.FixLoadButton = true;
@@ -1558,15 +1586,24 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         PunchReachChanged?.Invoke(true);
         Config.FixAnimalMoves = true;
         AnimalMovesChanged?.Invoke(true);
+        Config.FixTurretAssault = true;
+        TurretAssaultChanged?.Invoke(true);
         Config.FixBenchFacing = true;
         BenchFacingChanged?.Invoke(true);
+        Config.FixSeatBeds = true;
+        SeatBedsChanged?.Invoke(true);
         Config.FixPrisonPose = true;
         PrisonPoseChanged?.Invoke(true);
         Config.FixCagedAnimals = true;
         CagedAnimalsChanged?.Invoke(true);
         Config.FixBagSearch = true;
         BagSearchChanged?.Invoke(true);
+        Config.FixAnimalTarget = true;
+        AnimalTargetChanged?.Invoke(true);
         Config.FixHeadTurnBack = false;
+        Config.KeepInfoPanel = true;
+        Config.FixRaidClocks = true;
+        Config.FixArrestLifts = true;
         Config.FixGround = true;
         OffscreenChanged?.Invoke();
         Config.Audio = new();
@@ -1594,6 +1631,7 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Config.BuildingOutline = true;
         Player.BuildingSelection.DeselectBuildings = Config.DeselectBuildings = true;
         Config.LuckyrenMode = false;
+        Rendering.Characters.GearBlood.KeptStains = Config.KeptStains = true;
         Config.CameraLeash = true;
         GamePages.ResetOptional();
         Config.GroundItemLimit = Simulation.Items.GroundItems.DefaultLimit;
@@ -1603,10 +1641,11 @@ sealed class SettingsMenu(PlayerInterface player, SettingsPanel values, InputBin
         Player.MeitouMainMenu = Config.MeitouMainMenu = true;
         Player.SpeedUnit = Config.SpeedUnit = SpeedUnit.Mph;
         Player.Floaters = Config.Floaters = FloaterMode.Simple;
+        Player.GreyUnavailableVerbs = Config.GreyUnavailableVerbs = true;
         Player.InterfaceScale = Config.InterfaceScale = 1;
         Player.ShowNames = Config.ShowNames = true;
         Player.FeedbackButtonInPlay = Config.FeedbackButton = true;
-        Config.TickAhead = TickAheadMode.Dynamic;
+        Config.TickAhead = TickAheadMode.Always;
         Bindings.ResetToDefaults();
         Config.LookPreset = null;
         Config.FaithfulLook = false;

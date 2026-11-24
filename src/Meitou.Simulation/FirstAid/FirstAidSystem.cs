@@ -21,7 +21,7 @@ namespace Meitou.Simulation.FirstAid;
 /// <item><b>Treat</b> (<see cref="CharacterTask.Treat"/>): <see cref="TreatOrder"/> (the player), the medic job and the NPC rule start it.
 /// <c>Schedule</c> walks the medic to the patient
 /// (the pursuit system's pattern: a path at free speed, asked again when the patient has moved) and, in reach, asks the patient to stand still
-/// (<see cref="CharacterCold.StandStillUntil"/>); <c>Act</c> (own slot, read-only on the patient) emits one effect per tick while the medic is in
+/// (a request of 62 on its platoon's blackboard, <see cref="Ai.BoardRequests"/>); <c>Act</c> (own slot, read-only on the patient) emits one effect per tick while the medic is in
 /// reach, awake, not fighting and still, and the patient is still or down; <c>Apply</c> (serial commit, in target / source order) picks the kit,
 /// bandages the patient, drains the kit and trains the medic. So nothing on another character is written in a parallel phase.</item>
 /// <item><b>Rate</b> (<b>Observed</b>, character-stats.md): <c>lerp(1, 15, min(skill, kit quality) x 0.01) x medic speed mult</c> (x <c>robot medic
@@ -50,9 +50,14 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     /// </summary>
     public const int EffectTreat = 1;
     /// <summary>
-    /// Untreated damage (HP) under which a treatment in progress counts as finished.
+    /// Untreated damage (HP) under which a treatment in progress counts as finished (<see cref="RoomLeft"/>).
     /// </summary>
     const float Done = 1e-3f;
+    /// <summary>
+    /// The share of each part's maximum that <see cref="RoomLeft"/> leaves out (engine choice): a growing Skin Spider's parts gain about 2.5e-6 of
+    /// their maximum a tick (its size, docs/game/animals.md), and only float dust is smaller.
+    /// </summary>
+    const float GrowthShare = 1e-4f;
     /// <summary>
     /// The kit quality closing a wound without a kit (<c>FUN_14064d800</c>).
     /// </summary>
@@ -158,7 +163,7 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         bool robotics = SquadNeedsRobotics(world);
         foreach (var id in Who(world, job.Characters))
         {
-            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot) is not { IsPlayer: true } cold) continue;
+            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot) is not { } cold) continue;
             if (!job.Job)
             {
                 var detail = robotics ? RoboticsButton : MedicButton;
@@ -197,16 +202,18 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     /// <summary>
     /// First aid 25 and Splint 249 need the patient alive (else the order leaves the queue) and an able medic with a kit (a medkit or a robot kit
     /// anyone of its squad near it carries; its own splint kit) with a working arm (<see cref="HasWorkingArm"/>), Rest an able character; the Medic
-    /// button an able player character. The failure texts are the orders' refusals.
+    /// button's look anyone's (the button's 58 / 57 is a plain order in the queue: <c>FUN_1405d20d0</c> tests the faction only on its permanent path;
+    /// the finder decides).
+    /// The failure texts are the orders' refusals.
     /// </summary>
     OrderCheck IOrderOwner.CanRun(World world, int slot, OrderEntry order)
     {
         var table = world.Characters;
         var cold = table.Cold(slot)!;
-        if (order.Detail == MedicButton || order.Detail == RoboticsButton)
-            return cold.IsPlayer ? OrderCheck.Run : OrderCheck.Gone;
+        if (order.Detail == MedicButton || order.Detail == RoboticsButton) return OrderCheck.Run;
 
         if (order.Row == TaskType.Rest) return CanAct(cold) ? OrderCheck.Run : OrderCheck.Blocked();
+        if (IsJobEntry(order.Row)) return JobEntryCheck(world, slot, cold, order.Row);
         if (!table.TryResolveNext(order.Target, out int patient) || table.Cold(patient)!.Medical is not { Dead: false })
             return OrderCheck.Gone;
 
@@ -235,6 +242,12 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         if (order.Row == TaskType.Rest)
         {
             TaskStart.Start(world, slot, new TaskRequest(CharacterTask.Rest, TaskType.Rest, TaskSource.Order));
+            return;
+        }
+
+        if (IsJobEntry(order.Row))
+        {
+            StartJobEntry(world, slot, order.Row);
             return;
         }
 
@@ -449,9 +462,9 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     #region Walking to the patient
 
     /// <summary>
-    /// How long a medic's ask to stand still lasts after its last renewal: the request's time to live (3 s, <c>FUN_140269ff0</c>).
+    /// The weight of the request to stand still a treating medic files (<c>DAT_14169bb48</c>, <b>Verified</b>).
     /// </summary>
-    const float StandStillSeconds = 3;
+    const float StandStillWeight = 1.4f;
 
     /// <summary>
     /// The walk to the patient: each medic on a treatment walks to the treatment spot, or stands still in reach; a hopeless way ends the treatment.
@@ -487,8 +500,8 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
                 // In reach (or treating itself): stand still and let the Act step work, and ask the patient to stand still too. The medic kneels only
                 // while the patient keeps still (the original plays the clip in the first aid task's update, which runs once the target stands still,
                 // row 25's state 42).
-                if (t != i) AskToStandStill(world, table.Cold(t)!);
                 bool patientStill = Speed2(table.Previous[t].Velocity) <= Settings.StillSpeed * Settings.StillSpeed;
+                if (t != i) AskToStandStill(world, i, t, patientStill);
                 cold.TreatKneels = !cold.Medical!.PlayingDead && (t == i || table.Cold(t)!.Medical!.Incapacitated || patientStill);
                 if ((n.Flags & path) != 0)
                 {
@@ -548,12 +561,28 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     }
 
     /// <summary>
-    /// The first aid task's every update asks the patient to stand still (<c>Task_FirstAid</c> / <c>Task_FirstAidRig</c> call <c>FUN_1403346d0</c>,
-    /// docs/game/ai-tasks.md "Medic jobs"): a crawling or walking patient stops, so the treatment can run (<see cref="Act"/> treats only a patient
-    /// standing still). Without it a medic knelt, stood to follow, knelt again (issue #232).
+    /// The first aid task's every update asks the patient to stand still (<c>Task_FirstAid</c> / <c>Task_FirstAidRig</c> /
+    /// <c>Task_MakeTargetStandStill</c> slot 5 <c>FUN_1403346d0</c>, <b>Verified</b>; docs/game/ai-tasks.md "Medic jobs"): it files 62 Standing still at
+    /// priority 3, weight 1.4, on the patient's platoon blackboard, for the patient, or for its carrier while it is carried (the call takes the
+    /// carrier then). The splint's own update, which runs once the patient stands still (<paramref name="still"/>; before, row 64 asks as above),
+    /// files it on the medic's own platoon blackboard for the patient, no carrier swap (<c>Task_FirstAidRig</c>'s update <c>FUN_14034ef20</c>,
+    /// <b>Verified</b>), so a patient of another squad never reads it. The request competes in that character's priority-3 pick (<see cref="Ai.TierRungs"/>), so a patient stands still unless an
+    /// order, an urgent job or a goal that scores higher wins, and not under a threat within 40 (62's list B <c>!39</c>). <see cref="Act"/> treats
+    /// only a patient standing still.
     /// </summary>
-    static void AskToStandStill(World world, CharacterCold patient) =>
-        patient.StandStillUntil = world.Tick + (long)MathF.Ceiling(StandStillSeconds / world.TickSeconds);
+    static void AskToStandStill(World world, int medic, int patient, bool still)
+    {
+        var table = world.Characters;
+        var asker = table.IdOf(medic);
+        if (still && table.Cold(medic)!.TreatSplint)
+        {
+            Ai.BoardRequests.FileOn(world, asker, asker, table.IdOf(patient), TaskType.StandStill, TaskPriority.Urgent, StandStillWeight);
+            return;
+        }
+
+        var subject = table.Cold(patient)!.CarriedBy is { IsNone: false } carrier ? carrier : table.IdOf(patient);
+        Ai.BoardRequests.FileOn(world, asker, subject, TaskType.StandStill, TaskPriority.Urgent, StandStillWeight);
+    }
 
     /// <summary>
     /// A path whose last waypoint is farther than the reach from the goal on X/Z, or off the treatment spot's floor: the patient cannot be got to.
@@ -654,9 +683,9 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         // The first aid kit phase while an organic part has room and a first aid kit is found, else the robot repair kit phase (Task_FirstAid
         // FUN_1403563a0: a search that finds no first aid kit goes on to the robot phase, #884). Treatment runs until the last bit is bandaged (the
         // start threshold is MedicalState.FirstAidThreshold).
-        bool organic = body.BandageRoom(race, false) > Done;
+        bool organic = RoomLeft(body, race, false) > Done;
         bool robot = !organic || KitOf(world, m, medicCold, FunctionOf(false)) is null;
-        if (robot && body.BandageRoom(race, true) <= Done)
+        if (robot && RoomLeft(body, race, true) <= Done)
         {
             if (organic) Say(world, m, medicCold.TreatTarget, KitEmpty);   // organic parts left, no first aid kit
             else Say(world, m, medicCold.TreatTarget, HealingOtherFinished, BeingHealedFinished);
@@ -705,6 +734,23 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     static float SkillOf(CharacterStats stats, bool self, bool robotKit) => stats[StatOf(robotKit)] * (self ? 0.8f : 1);
 
     /// <summary>
+    /// What a kit of this kind still has to bandage: <see cref="MedicalState.BandageRoom"/> less <see cref="GrowthShare"/> of each part's
+    /// maximum. A growing animal's parts gain HP every tick, so the whole room always held a new sliver over <see cref="Done"/> and its medic
+    /// treated it for ever, draining kit after kit.
+    /// </summary>
+    static float RoomLeft(MedicalState body, RaceData race, bool robotKit)
+    {
+        float total = 0;
+        foreach (var p in body.Parts)
+        {
+            if (p.IsRobotic(race) != robotKit) continue;
+            total += MathF.Max(0, p.MaxHp * (1 - GrowthShare) - p.Flesh - p.Bandage);
+        }
+
+        return total;
+    }
+
+    /// <summary>
     /// One update of an open wound: closed with a kit matching the patient's race (none: quality 5), the kit drained, the medic's skill and XP.
     /// </summary>
     void CloseWound(World world, int m, int p, CharacterCold medicCold, CharacterStats stats, RaceData medicRace, MedicalState body, RaceData race,
@@ -737,7 +783,7 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         // Without a kit 1 HP a second goes to the parts, organic or robotic alike, in part order as with a kit, and nothing drains (FUN_140649a00).
         // Done as with a kit: once the parts are bandaged up, healing turns bandage into flesh and float dust leaves a sliver of room every update,
         // which would keep the treatment going for ever.
-        if (body.BandageRoom(race, false) + body.BandageRoom(race, true) <= Done || body.Bandage(dt, null, race, out _) <= 0)
+        if (RoomLeft(body, race, false) + RoomLeft(body, race, true) <= Done || body.Bandage(dt, null, race, out _) <= 0)
         {
             Say(world, m, medicCold.TreatTarget, HealingOtherFinished, BeingHealedFinished);
             End(world, m);
@@ -795,7 +841,13 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         float spent = MathF.Min(amount, MathF.Max(kit.Item.Charges, 0));
         kit.Item.Charges -= amount;
         bool finished = kit.Item.Charges <= 0;
-        if (finished) kit.Owner.RemoveOne(kit.Item);
+        if (finished)
+        {
+            // A stack loses the used-up unit; the next one starts full, as an eaten stack's does (FeedSystem.Eat).
+            bool more = kit.Item.Quantity > 1;
+            kit.Owner.RemoveOne(kit.Item);
+            if (more) kit.Item.Charges = kit.Item.MaxCharges;
+        }
 
         ItemUseObservers.Report(world, ItemUseKind.FirstAid, kit.Item.Record, world.Characters.IdOf(m), null, spent, finished);
     }
@@ -871,6 +923,18 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     }
 
     /// <summary>
+    /// Whether First Aid (25) or Repairs (60) would find a kit for the character now: a first aid or robot kit by <see cref="FindKit"/>, as
+    /// <see cref="IOrderOwner.CanRun"/> asks before the medic moves. For the context menu's unavailable rows.
+    /// </summary>
+    internal bool MedkitAtHand(World world, int slot, CharacterCold cold) =>
+        FindKit(world, slot, cold, ItemInfo.FirstAidKitFunction) is not null || FindKit(world, slot, cold, ItemInfo.RobotKitFunction) is not null;
+
+    /// <summary>
+    /// Whether Splint Injuries (249) would find the character's own splint kit now (<see cref="OwnKit"/>). For the context menu's unavailable rows.
+    /// </summary>
+    internal static bool SplintKitAtHand(CharacterCold cold) => OwnKit(cold, ItemInfo.SplintKitFunction) is not null;
+
+    /// <summary>
     /// The medic's own kit of an <c>item function</c> by the original's search (<see cref="OwnKit"/>: main grid, then the worn backpack; fewest
     /// charges above zero), else a squad mate's within <see cref="FirstAidSettings.KitReach"/> by the same rule (an engine choice: the original
     /// searches only the medic's own).
@@ -929,7 +993,7 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
         var table = world.Characters;
         var next = table.Next;
 
-        // The treated list and the sweep are made on the turn's first idle NPC (a turn with none, most of them in a quiet world, makes neither).
+        // The treated list and the sweep are made on the turn's first NPC that weighs the Medic goal (a turn with none makes neither).
         SquadGoals? taken = null;
         try
         {
@@ -938,41 +1002,23 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
                 if (!next[i].Alive || !world.Turn(i, every)) continue;   // its turn (the far cadence, World.Turn)
                 var cold = table.Cold(i)!;
                 if (cold.IsPlayer || !Settings.AutoNpcs) continue;   // a player's medic jobs are the decision step's (MedicJobs)
-                if (cold.Ai is { Engine: false } mind)
+
+                // The AI's own: its Medic goal weighs the patient found here (AiBehaviour.Medic). One whose lists hold no Medic goal does not treat,
+                // nor does a character without a full mind: in the original a character treats only through goal 58, a job or an order.
+                if (cold.Ai is not { } mind) continue;
+                if ((_ai ??= world.SystemOf<AiSystem>())?.ListsGoal(world, i, TaskType.JobMedic) != true)
                 {
-                    // The AI's own: its Medic goal weighs the patient found here (AiBehaviour.Medic); one whose lists hold no Medic goal does not
-                    // treat.
-                    if ((_ai ??= world.SystemOf<AiSystem>())?.ListsGoal(world, i, TaskType.JobMedic) != true)
-                        mind.MedicScore = 0;
-                    else
-                    {
-                        if (taken is null)
-                        {
-                            taken = SquadGoals.Of(world);
-                            BeginSweep(world);
-                        }
-
-                        KeepPick(world, i, mind, taken);
-                    }
-
+                    mind.MedicScore = 0;
                     continue;
                 }
 
-                // A character whose mind the AI is about to make (none yet, in a squad the AI runs: after a join, a recruit or a lift from a
-                // cage) waits for it: its goal lists decide whether it treats.
-                if (MindPending(world, cold)) continue;
-
-                // An NPC the AI does not run (an engine mind, or none) treats when idle: no task, following, wandering or an implicit job.
-                bool idle = next[i].Task is (byte)CharacterTask.Idle or (byte)CharacterTask.Wander or (byte)CharacterTask.Follow
-                        || Production.PermaJobs.ListJob(cold, (CharacterTask)next[i].Task) is { Implicit: true };
-                if (!idle) continue;
                 if (taken is null)
                 {
                     taken = SquadGoals.Of(world);
                     BeginSweep(world);
                 }
 
-                HealSomeone(world, i, taken, robotics: false, TaskSource.Npc);
+                KeepPick(world, i, mind, taken);
             }
         }
         finally
@@ -982,11 +1028,66 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     }
 
     /// <summary>
-    /// Whether the AI makes this character's mind on its squad's next package step: it has none and its squad runs a blackboard (the AI gives every
-    /// member of such a squad a mind, a full one or an engine one, <see cref="AiSystem"/>). A slave lifted from a cage is one: in the original it
-    /// plans with its master's slave list and never treats on its own.
+    /// The second-list entries a load makes of a saved treatment (<c>FUN_1405086d0</c>'s job remap): 25 as 58 Medic, 60 as 57 Robotics, 249 as 250
+    /// Splint Rigging.
     /// </summary>
-    static bool MindPending(World world, CharacterCold cold) => cold.Ai is null && world.Squads.Find(cold.SquadId) is { Ai: not null };
+    internal static bool IsJobEntry(TaskType row) => row is TaskType.JobMedic or TaskType.JobRepairRobot or TaskType.SplintJob;
+
+    /// <summary>
+    /// Whether a loaded 58, 57 or 250 entry can start: an able medic with a working arm whose finder (<see cref="JobEntryPick"/>) finds a patient, as
+    /// the row's plan treats the finder's pick (its effect, provided on the found hand by <see cref="ProviderOf"/>), not the saved one.
+    /// </summary>
+    OrderCheck JobEntryCheck(World world, int slot, CharacterCold cold, TaskType row)
+    {
+        if (!CanAct(cold) || !HasWorkingArm(cold)) return OrderCheck.Blocked();
+
+        return JobEntryPick(world, slot, SquadGoals.Of(world), row).Slot >= 0 ? OrderCheck.Run : OrderCheck.Blocked();
+    }
+
+    /// <summary>
+    /// Starts a loaded 58, 57 or 250 entry: its effect's provider on the patient its finder picks now (serial).
+    /// </summary>
+    void StartJobEntry(World world, int slot, TaskType row)
+    {
+        var taken = SquadGoals.Of(world);
+        var (patient, _) = JobEntryPick(world, slot, taken, row);
+        if (patient < 0) return;
+
+        StartJob(world, slot, patient, taken, new TaskRequest(CharacterTask.Treat, ProviderOf(row), TaskSource.Order));
+    }
+
+    /// <summary>
+    /// A loaded 58, 57 or 250 entry's score in the second list (<c>FUN_14060fd80</c>, <b>Verified</b>): the rows' shared desire
+    /// (<see cref="AiSystem.MedicDesire"/>, <c>FUN_140998410</c>) times the finder's value (<see cref="JobEntryPick"/>) while the desire is above 0
+    /// (<c>DAT_141681b38</c> = 0.0).
+    /// </summary>
+    internal float JobEntryScore(World world, int slot, TaskType row)
+    {
+        float desire = AiSystem.MedicDesire(world, slot);
+        if (desire <= 0) return desire;
+
+        return desire * JobEntryPick(world, slot, SquadGoals.Of(world), row).Score;
+    }
+
+    /// <summary>
+    /// The finder of a 58, 57 or 250 entry and its value: <c>FUN_14099f690</c> with flag 0 or 1 (<see cref="FindPatient"/>), the splint finder
+    /// <c>FUN_14099e240</c> (<see cref="SplintPick"/>).
+    /// </summary>
+    (int Slot, float Score) JobEntryPick(World world, int slot, SquadGoals taken, TaskType row) =>
+        row == TaskType.SplintJob
+            ? SplintPick(world, slot, taken)
+            : FindPatient(world, slot, taken, robotics: row == TaskType.JobRepairRobot);
+
+    /// <summary>
+    /// The row providing a medic job row's effect (TaskData lists, <c>FUN_140319a60</c>): 58's <c>!22</c> is 25 First aid's, 57's <c>!133</c> 60
+    /// Repairing's, 250's <c>!152</c> 249 Splinting's.
+    /// </summary>
+    static TaskType ProviderOf(TaskType row) => row switch
+    {
+        TaskType.JobRepairRobot => TaskType.FirstAidRobot,
+        TaskType.SplintJob => TaskType.SplintOrder,
+        _ => TaskType.FirstAidOrder,
+    };
 
     /// <summary>
     /// The Medic goal's finder result for the think (<see cref="AiMind.MedicPatient"/>, <see cref="AiMind.MedicScore"/>; none and 0 without a
@@ -1080,7 +1181,7 @@ public sealed partial class FirstAidSystem(GameConstants constants, BodyOptions 
     /// finder (<see cref="FindPatient"/>) finds a patient, Splint Rigging 250 while its finder does (<see cref="FindSplint"/>); all three run with
     /// the jobs switch off. A job's treatment runs until it ends by itself.
     /// </summary>
-    public void RegisterSources(DecisionSystem decisions)
+    void IDecisionOwner.RegisterSources(DecisionSystem decisions)
     {
         var jobs = new MedicJobs(this);
         foreach (var type in (ReadOnlySpan<TaskType>)[TaskType.JobMedic, TaskType.JobRepairRobot, TaskType.SplintJob])

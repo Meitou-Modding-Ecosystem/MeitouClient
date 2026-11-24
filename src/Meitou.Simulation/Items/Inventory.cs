@@ -69,15 +69,38 @@ public sealed class Inventory(int width, int height)
     }
 
     /// <summary>
-    /// First cell where a w x h footprint fits among the items of <paramref name="section"/>, or false.
+    /// First cell where a w x h footprint fits among the items of <paramref name="section"/>, or false. A cell some item overlaps skips on past
+    /// that item's right edge: every cell before it overlaps the item too, so the first free cell is the same.
     /// </summary>
     public bool FindCell(string section, int w, int h, out int x, out int y)
     {
         for (y = 0; y + h <= Height; y++)
-            for (x = 0; x + w <= Width; x++)
-                if (IsFree(section, x, y, w, h)) return true;
+        {
+            for (x = 0; x + w <= Width;)
+            {
+                int blocked = BlockedTo(section, x, y, w, h);
+                if (blocked < 0) return true;
+
+                x = Math.Max(blocked, x + 1);
+            }
+        }
+
         x = y = 0;
         return false;
+    }
+
+    /// <summary>
+    /// The right edge of the first item of <paramref name="section"/> a w x h footprint at (x, y) overlaps; -1 when it overlaps none.
+    /// </summary>
+    int BlockedTo(string section, int x, int y, int w, int h)
+    {
+        foreach (var i in Items)
+        {
+            if (i.Section != section) continue;
+            if (x < i.X + i.Width && i.X < x + w && y < i.Y + i.Height && i.Y < y + h) return i.X + i.Width;
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -180,8 +203,8 @@ public sealed class Inventory(int width, int height)
 
     /// <summary>
     /// Whether two items may share a stack: same record, company and material (as <see cref="InventoryCommands.Stackable"/>, <c>FUN_14075d510</c>),
-    /// stolen mark, death and unique flags, mod tag. The material keeps blueprints of different researches apart: they share their look record
-    /// (#354).
+    /// stolen mark (the original's owner hands, <c>FUN_14075d470</c>: goods stolen from two owners stay apart, and apart from clean ones, #1053),
+    /// death and unique flags, mod tag. The material keeps blueprints of different researches apart: they share their look record (#354).
     /// </summary>
     internal static bool SameStack(ItemInstance a, ItemInstance b) => a.Record == b.Record && a.MaterialId == b.MaterialId
             && a.CompanyId == b.CompanyId && a.ModTag == b.ModTag && a.Mark == b.Mark

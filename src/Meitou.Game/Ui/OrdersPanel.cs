@@ -50,6 +50,11 @@ sealed class OrdersPanel(PlayerInterface player)
     /// </summary>
     internal int? JobDrag;
 
+    /// <summary>
+    /// The code mods' buttons beside the jobs list (docs/modding.md "Character panel lines and job panel buttons").
+    /// </summary>
+    internal JobModButtons ModButtons { get; } = new(player);
+
     #endregion
 
     #region Order toggles
@@ -90,6 +95,24 @@ sealed class OrdersPanel(PlayerInterface player)
     #region Jobs list
 
     /// <summary>
+    /// The jobs rows' parts by what they are made from (<see cref="JobRowParts"/> depends on nothing else), kept from one arrangement to the next:
+    /// the parts only change when the jobs, the window or the language do.
+    /// </summary>
+    Dictionary<JobRowKey, List<UiControl>> _jobRowParts = [];
+
+    /// <summary>
+    /// The parts the arrangement under way uses; they become <see cref="_jobRowParts"/> once it is done, so rows gone are dropped.
+    /// </summary>
+    Dictionary<JobRowKey, List<UiControl>> _jobRowPartsNext = [];
+
+    /// <summary>
+    /// What a jobs row's parts are made from: the row's name, place, clip, caption and argument, whether it is dimmed, the row layout and the
+    /// layers it is arranged with, and the language its captions are translated into.
+    /// </summary>
+    readonly record struct JobRowKey(string Name, UiRect Bounds, UiRect? Clip, string Caption, string Argument, bool Dimmed, MyGuiLayout Layout,
+        IReadOnlyList<string> Layers, GameLanguage Language);
+
+    /// <summary>
     /// The jobs list (<c>JobsPanel</c>, docs/game/ui-screens.md section 4): the lead's jobs, one <c>Kenshi_OrdersPanelOrder</c> row each, int(24 x
     /// height / 1080) tall (<see cref="AddJobRowParts"/>), numbered from 1, with an X that removes it from that character; with none, the layout's
     /// hint. Rows are dragged to reorder.
@@ -111,8 +134,6 @@ sealed class OrdersPanel(PlayerInterface player)
             jobs.Add(new(id, (i + 1).ToString(CultureInfo.InvariantCulture) + ": " + JobRowText(job)));
         }
 
-        AddModJobRows(jobs, lead);
-
         b.Lists["JobsPanel"] = jobs;
         b.Properties["JobsPanel"] = new Dictionary<string, string>
         {
@@ -120,6 +141,7 @@ sealed class OrdersPanel(PlayerInterface player)
             ["LineHeight"] = ((int)(24 * player.UiScale)).ToString(CultureInfo.InvariantCulture),
         };
         b.ScrollOffsets["JobsPanel"] = player.ScrollBars.InventoryScroll.GetValueOrDefault("JobsPanel");
+        ModButtons.Bind(b, lead);
 
         // The brackets are the panel's, not the catalog's (its keys have none: "No jobs assigned", "To add jobs, hold shift key when giving an
         // order").
@@ -131,22 +153,6 @@ sealed class OrdersPanel(PlayerInterface player)
 
         b.Text["JobsPanelInfo"] = "[" + Loc.Tr("No jobs assigned") + "]\n["
             + Loc.Tr("To add jobs, hold shift key when giving an order") + "]";
-    }
-
-    /// <summary>
-    /// The code mods' jobs (docs/modding.md "Mod jobs") after the lead's own, numbered on, as "Text: building"; their row id is <c>modjob:</c> and the
-    /// kind, so they take the X but no drag.
-    /// </summary>
-    void AddModJobRows(List<UiListItem> jobs, Simulation.CharacterSnapshot? lead)
-    {
-        foreach (var job in lead?.ModJobs ?? [])
-        {
-            if (Simulation.Production.ModJobs.Of(job.Kind) is not { } kind) continue;
-
-            string text = Loc.Tr(kind.Text);
-            if (player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == job.Site) is { } site) text += ": " + player.Build.SiteName(site);
-            jobs.Add(new("modjob:" + kind.Id, (jobs.Count + 1).ToString(CultureInfo.InvariantCulture) + ": " + text));
-        }
     }
 
     /// <summary>
@@ -216,8 +222,8 @@ sealed class OrdersPanel(PlayerInterface player)
         .FirstOrDefault()?.Extensions?.JobTypes.GetValueOrDefault(type);
 
     /// <summary>
-    /// A jobs row: the type's text (a mod's job: the name it registered) and the building, rock, training dummy or character it targets. The engineer
-    /// works every site, not the one it was ordered on, so its row is plain "Engineer" (<b>Observed</b> in the original by players, #348/#353).
+    /// A jobs row: the type's text (a mod's job: the name it registered) and the building, town machine, rock, training dummy or character it
+    /// targets. The engineer works every site, not the one it was ordered on, so its row is plain "Engineer" (<b>Observed</b> in the original by players, #348/#353).
     /// </summary>
     string JobRowText(Simulation.Production.PermaJob job)
     {
@@ -231,6 +237,10 @@ sealed class OrdersPanel(PlayerInterface player)
         // A rock is no registry building: its id names its BUILDING (an Iron Ore deposit, a Stone outcrop).
         if (job.Site is { } rockId && Simulation.Production.ProductionSystem.NaturalRecord(rockId) is { } rock)
             return text + ": " + (player.Build.Services?.ItemName(rock) ?? rock);
+
+        // A town building's machine (a well, a farm: townwork:<key>) is no registry building either: its machine names its BUILDING (#1039).
+        if (player.Production.Machine(job.Site) is { IsContainer: false } machine)
+            return text + ": " + (player.Build.Services?.ItemName(machine.Record) ?? machine.Record);
 
         if (job.Site is { } dummyId && player.Session.CurrentSnapshot.Dummies.FirstOrDefault(d => d.Id == dummyId) is { } dummy)
             return text + ": " + (player.Build.Services?.ItemName(dummy.Record) ?? dummy.Record);
@@ -260,8 +270,24 @@ sealed class OrdersPanel(PlayerInterface player)
 
             bool dimmed = _dimmedJobs.Contains(row.Argument);
             controls[i] = row with { Caption = "", Properties = Dimmed(row.Properties, dimmed) };
-            controls.InsertRange(i + 1, JobRowParts(row, dimmed));
+            controls.InsertRange(i + 1, KeptJobRowParts(row, dimmed));
         }
+
+        (_jobRowParts, _jobRowPartsNext) = (_jobRowPartsNext, _jobRowParts);
+        _jobRowPartsNext.Clear();
+    }
+
+    /// <summary>
+    /// <see cref="JobRowParts"/> of <paramref name="row"/>, reused while the row is made from the same things.
+    /// </summary>
+    List<UiControl> KeptJobRowParts(UiControl row, bool dimmed)
+    {
+        var key = new JobRowKey(row.Name, row.Bounds, row.Clip, row.Caption, row.Argument, dimmed, OrdersRowLayout!, player.UiResources.Layers,
+            Loc.Language);
+        if (!_jobRowParts.TryGetValue(key, out var parts)) parts = JobRowParts(row, dimmed);
+
+        _jobRowPartsNext[key] = parts;
+        return parts;
     }
 
     /// <summary>
@@ -356,11 +382,6 @@ sealed class OrdersPanel(PlayerInterface player)
     internal void RemoveJob(string job)
     {
         if ((player.Selected().FirstOrDefault() ?? player.Lead()) is not { IsPlayer: true } lead) return;
-        if (job.StartsWith("modjob:", StringComparison.Ordinal))
-        {
-            player.Say(new Simulation.Production.RemoveModJob(lead.Id, job["modjob:".Length..]) { Tick = player.Session.World.Tick });
-            return;
-        }
         if (!job.StartsWith("job:", StringComparison.Ordinal)) return;
         if (!int.TryParse(job.AsSpan(4), NumberStyles.None, CultureInfo.InvariantCulture, out int index)) return;
 

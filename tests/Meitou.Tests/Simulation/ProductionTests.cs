@@ -29,7 +29,7 @@ public class ProductionTests
 {
     const string Water = "50-t", Crop = "51-t", Book = "52-t", Gadget = "53-t", Well = "60-t", Farm = "61-t", Bench = "62-t", Workshop = "63-t",
         Study = "70-t", Fuel = "54-t", Generator = "64-t", Battery = "65-t", Lamp = "66-t", BigLamp = "67-t", PoweredWorkshop = "68-t",
-        Tank = "69-t";
+        Tank = "69-t", Mill = "90-t", Bin = "91-t";
     /// <summary>
     /// The stat that gives skill factor 1: lerp(0.5, 1.4, x/100) = 1.
     /// </summary>
@@ -242,6 +242,27 @@ public class ProductionTests
     }
 
     /// <summary>
+    /// A refinery taking crops then water (10 of each, rate 1) and a 4 x 4 resource storage that keeps books, crops and water, its stacks x 10.
+    /// </summary>
+    static GameDatabase MillDatabase()
+    {
+        var db = Database();
+        var mill = Function("89-t", MachineData.RefineryFunction, 0);
+        mill.References["consumes"] = [new FcsReference(Crop, 10, 100, 0), new FcsReference(Water, 10, 100, 0)];
+        mill.References["produces"] = [new FcsReference(Gadget, 10, 0, 0)];
+        var bin = Building(Bin, "Test Bin", "88-t");
+        bin.Bools["has inventory"] = true;
+        bin.Ints["storage size width"] = 4;
+        bin.Ints["storage size height"] = 4;
+        bin.Floats["stackable bonus mult"] = 10;
+        bin.References["limit inventory"] = [new FcsReference(Book, 0, 0, 0), new FcsReference(Crop, 0, 0, 0), new FcsReference(Water, 0, 0, 0)];
+        var file = new FcsFile();
+        file.Records.AddRange([mill, Building(Mill, "Test Mill", "89-t"), bin]);
+        db.Apply(file, "mill.mod");
+        return db;
+    }
+
+    /// <summary>
     /// The record of the installed Wind Generator, by name; null when the data set has none.
     /// </summary>
     static string? WindGeneratorId(GameDatabase db) => db.OfType(FcsRecordType.Building).FirstOrDefault(r => r.Name == "Wind Generator")?.StringId;
@@ -254,18 +275,24 @@ public class ProductionTests
         public List<string> Sites { get; } = [];
 
         /// <summary>
+        /// The id of the workers' squad (<see cref="PlayerSquad"/>), -1 before the first worker.
+        /// </summary>
+        int _squad = -1;
+
+        /// <summary>
         /// Creates machines on town 1 so power fixtures use a shared grid; town 0 models furniture without a player outpost.
         /// </summary>
         public Rig(GameDatabase db, GameConstants constants, string[] records, int threads = 1, bool snapshots = false, int town = 1,
-            PopulationData? population = null, float spacing = 30)
+            PopulationData? population = null, float spacing = 30, ITickSystem[]? extra = null)
         {
             Items = new ItemFactory(db, constants);
             var walk = new OpenGroundWalkability(SyntheticTown.Ground);
             Production = new ProductionSystem(db, constants, BodyOptions.Default, Items, null);
+            List<ITickSystem> systems = [new PlayerSystem(), new MovementSystem(new PathService(walk, true)), Production];
+            if (population is not null) systems.Add(new PopulationSystem(population));
+            systems.AddRange(extra ?? []);
             World = new SimWorld(new WorldSettings { Seed = 5, Threads = threads, PublishSnapshots = snapshots, MinPartitionSize = 1 }, walk,
-                population is null
-                    ? [new PlayerSystem(), new MovementSystem(new PathService(walk, true)), Production]
-                    : [new PlayerSystem(), new MovementSystem(new PathService(walk, true)), Production, new PopulationSystem(population)]);
+                systems);
             World.Player.Faction = PlayerFaction;
             World.Research.Set(db, []);
             for (int i = 0; i < records.Length; i++)
@@ -296,7 +323,28 @@ public class ProductionTests
             var cold = new CharacterCold { Name = "worker" + site, Race = Human, Stats = stats, Medical = MedicalState.Create(Human, 50),
                     Inventory = inventory, IsPlayer = true, Faction = PlayerFaction };
             var p = World.Buildings.Find(Sites[site])!.Position + new Vector3(0, 0, 10) + offset;
-            return World.Characters.Spawn(new CharacterHot { Position = p, MaxSpeed = 40, WalkSpeed = 15, Task = (byte)CharacterTask.Idle }, cold, 0);
+
+            // A character with no squad runs no chooser, so it would take no job or order (OrderStep.Runs).
+            var squad = PlayerSquad();
+            cold.SquadId = squad.Id;
+            var hot = new CharacterHot { Position = p, MaxSpeed = 40, WalkSpeed = 15, Task = (byte)CharacterTask.Idle };
+            var id = World.Characters.Spawn(hot, cold, 0);
+            squad.Members.Add(id);
+            if (squad.Leader.IsNone) squad.Leader = id;
+            return id;
+        }
+
+        /// <summary>
+        /// The workers' squad, of the player's faction, made with the first worker.
+        /// </summary>
+        Squad PlayerSquad()
+        {
+            if (World.Squads.Find(_squad) is { } squad) return squad;
+
+            squad = new Squad { Id = World.Squads.NextId(), TemplateId = "t", Faction = PlayerFaction };
+            World.Squads.Add(squad);
+            _squad = squad.Id;
+            return squad;
         }
 
         public Inventory Carried(CharacterId id) => World.Characters.Cold(id.Slot)!.Inventory!;
@@ -382,12 +430,13 @@ public class ProductionTests
     /// <summary>
     /// A town building an NPC worker of goal 189 stands at is a machine of the town's faction, made when it arrives
     /// (docs/game/buildings-production.md "NPC town machines"): with row 87 first in its plan it operates it and the output grows; with row 92 first
-    /// it empties the output into its inventory (<c>Task_EmptyMachine</c>) and a full output (status 1) goes back to 2.
+    /// it takes from the output into its inventory what the town wants (<c>Task_EmptyMachine</c> with flag 0, <c>FUN_14033cd10</c>: up to its slot 5
+    /// count <c>FUN_140356db0</c>, here the farm's water room) once, and a full output (status 1) goes back to 2.
     /// </summary>
     [Fact]
     public void An_npc_worker_operates_its_town_buildings_machine_and_then_empties_its_output()
     {
-        using var rig = new Rig(Database(), Constants, []);
+        using var rig = new Rig(Database(), Constants, [Farm]);
         const int town = 7;
         var building = new TownBuilding("well", Well, "Well", At, 0, false, false, []);
         var stats = new CharacterStats();
@@ -407,14 +456,91 @@ public class ProductionTests
 
         int made = machine.Output.Count;
 
+        // The farm's water input has room for 2 of the well's 4 or more: the take stops at 2.
+        var farmWater = rig.Machine(0).Inputs[0];
+        farmWater.Count = farmWater.Recipe.Capacity - 2;
+        const int wanted = 2;
+
+        Assert.True(made > wanted);
+
         machine.Status = 1;
         cold.Ai.WorkOperate = null;
         cold.Ai.CollectFrom = building;
         rig.World.RunTicks(2);
 
-        Assert.Equal(0, machine.Output.Count);
+        Assert.Equal(made - wanted, machine.Output.Count);
         Assert.Equal(2, machine.Status);
-        Assert.Equal(made, cold.Inventory!.All().Where(i => i.Record == Water).Sum(i => i.Quantity));
+        Assert.Equal(wanted, cold.Inventory!.All().Where(i => i.Record == Water).Sum(i => i.Quantity));
+    }
+
+    /// <summary>
+    /// An NPC worker's 92 at a producer whose output nothing in the town wants takes nothing (<c>Task_EmptyMachine</c> with flag 0,
+    /// <c>FUN_14033cd10</c>: its slot 5 count <c>FUN_140356db0</c> is 0 with the farm's water input full; cf736b2ac): the output stays, the worker
+    /// carries no water, and the task is over (its collect target cleared). Catches the take that emptied the whole output whatever the town
+    /// wanted.
+    /// </summary>
+    [Fact]
+    public void An_npc_worker_takes_nothing_from_an_output_nothing_in_the_town_wants()
+    {
+        using var rig = new Rig(Database(), Constants, [Farm]);
+        const int town = 7;
+        var building = new TownBuilding("well", Well, "Well", At, 0, false, false, []);
+        var stats = new CharacterStats();
+        stats[StatsEnumerated.Labouring] = Unit;
+        var squad = new Squad { Id = 1, TemplateId = "t", Faction = town };
+        var cold = new CharacterCold { Name = "miner", Race = Human, Stats = stats, Medical = MedicalState.Create(Human, 50),
+                Inventory = new Inventory(), Faction = town };
+        cold.Ai = new Meitou.Simulation.Ai.AiMind { Squad = squad, Behaviour = Meitou.Simulation.Ai.AiBehaviour.Work, WorkOperate = building,
+                WorkOwner = town };
+        rig.World.Characters.Spawn(new CharacterHot { Position = At + new Vector3(0, 0, 10), MaxSpeed = 40, WalkSpeed = 15,
+                Task = (byte)CharacterTask.Idle }, cold, 0);
+        rig.World.RunTicks(600);
+        var machine = rig.World.Machines.Find(ProductionSystem.TownWorkId(building))!;
+        int made = machine.Output!.Count;
+
+        Assert.True(made > 0);
+
+        var farmWater = rig.Machine(0).Inputs[0];
+        farmWater.Count = farmWater.Recipe.Capacity;
+        machine.Status = 1;
+        cold.Ai.WorkOperate = null;
+        cold.Ai.CollectFrom = building;
+        rig.World.RunTicks(2);
+
+        Assert.Null(cold.Ai.CollectFrom);
+        Assert.Equal(made, machine.Output.Count);
+        Assert.Equal(0, cold.Inventory!.All().Where(i => i.Record == Water).Sum(i => i.Quantity));
+    }
+
+    /// <summary>
+    /// The fill fetch (row 94's finder <c>FUN_14059d9b0</c>, 6f851ab42; docs/game/buildings-production.md "NPC town machines"): for a mill with
+    /// crops in its first input and its second empty, the finder walks the empty input first, so it fetches water. At the storage, which lists
+    /// books, crops and water in that order, the take (<c>Task_EmptyMachine</c> flag 0, <c>FUN_140356db0</c>) is the first record the town wants:
+    /// the crops the mill's first input has room for (7), not the water looked for and not the books nobody wants. Catches the finder that took the
+    /// inputs in list order and the take bounded to the looked-for record.
+    /// </summary>
+    [Fact]
+    public void A_fill_fetch_walks_the_empty_input_first_and_takes_the_storages_first_wanted_record()
+    {
+        using var rig = new Rig(MillDatabase(), Constants, [Mill, Bin]);
+        var worker = rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        var (mill, bin) = (rig.Machine(0), rig.Machine(1).Storage!);
+        mill.Inputs[0].Count = 3;
+        foreach (string item in new[] { Book, Crop, Water }) Assert.True(bin.Add(rig.Items.Create(item, 20)!));
+        var cold = rig.World.Characters.Cold(worker.Slot)!;
+        var at = rig.World.Characters.Next[worker.Slot].Position;
+
+        Assert.Equal([Book, Crop, Water], bin.Items.Select(i => i.Record).Distinct());
+
+        var source = FillSources.Find(rig.World, null, mill, cold, at, []);
+
+        Assert.Equal((FillSourceKind.Storage, Water, rig.Sites[1]), (source?.Kind, source?.Record, source?.Store));
+
+        int taken = FillDemand.TakeStored(rig.World, null, cold, at, bin, rig.Sites[1], Bin, cold.Inventory!);
+
+        Assert.Equal(7, taken);
+        Assert.Equal((0, 7, 0), (rig.Count(worker, Book), rig.Count(worker, Crop), rig.Count(worker, Water)));
     }
 
     // ------------------------------------------------------------------ items and research costs
@@ -1067,6 +1193,237 @@ public class ProductionTests
 
         Assert.True(stored && farm.Inputs[0].Count > 0, $"tank {tank.Items.Count}, farm {farm.Inputs[0].Count}");
         Assert.Equal((1, 0), (rig.Count(farmer, Crop), tank.Items.Count(i => i.Record == Crop)));
+    }
+
+    // ------------------------------------------------------------------ storage priorities
+
+    /// <summary>
+    /// A storage priority system answering from a function of the storage and the use.
+    /// </summary>
+    sealed class Ranks(Func<string, StorageUse, StoragePriority> rank) : IStoragePriority
+    {
+        public StoragePriority Priority(SimWorld world, CharacterId who, string storage, StorageUse use, string? record) => rank(storage, use);
+    }
+
+    /// <summary>
+    /// A storage filter refusing one storage.
+    /// </summary>
+    sealed class Refuses(string storage) : IStorageFilter
+    {
+        public bool Allows(SimWorld world, CharacterId who, string storage1, StorageUse use, string? record) => storage1 != storage;
+    }
+
+    /// <summary>
+    /// <see cref="SimWorld.StorageRank(CharacterId, string, StorageUse, string?)"/> (docs/modding.md "Storage priority"): a filter's refusal is
+    /// Forbidden, any system's Forbidden wins, else the first answer other than Normal in system order, so take and put rank apart (an overstock
+    /// store: put low, take critical); a system that throws answers Normal. Catches a priority that ignored the filters, let a later system's
+    /// Forbidden be overruled or let a throwing system break the search.
+    /// </summary>
+    [Fact]
+    public void A_storage_rank_combines_filters_and_priority_systems()
+    {
+        StoragePriority First(string s, StorageUse use) => s switch
+        {
+            "over" => use == StorageUse.Put ? StoragePriority.Low : StoragePriority.Critical,
+            "boom" => throw new InvalidOperationException("test"),
+            _ => StoragePriority.Normal,
+        };
+        StoragePriority Second(string s, StorageUse use) => s is "over" or "pref" ? StoragePriority.Preferred
+            : s == "shut" ? StoragePriority.Forbidden
+            : StoragePriority.Normal;
+        using var rig = new Rig(Database(), Constants, [Tank], extra: [new Refuses("refused"), new Ranks(First), new Ranks(Second)]);
+        var who = rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        StoragePriority Rank(string s, StorageUse use) => rig.World.StorageRank(who, s, use, Water);
+
+        Assert.Equal(StoragePriority.Forbidden, Rank("refused", StorageUse.Take));
+        Assert.Equal((StoragePriority.Low, StoragePriority.Critical), (Rank("over", StorageUse.Put), Rank("over", StorageUse.Take)));
+        Assert.Equal(StoragePriority.Preferred, Rank("pref", StorageUse.Put));
+        Assert.Equal(StoragePriority.Forbidden, Rank("shut", StorageUse.Put));
+        Assert.Equal(StoragePriority.Normal, Rank("boom", StorageUse.Take));
+        Assert.Equal(StoragePriority.Normal, Rank("plain", StorageUse.Take));
+    }
+
+    /// <summary>
+    /// The town fill fetch (<see cref="FillSources"/>) takes from the storage of the highest take priority, the nearest among equals: without a
+    /// priority system the nearer bin, with the farther bin ranked Critical for taking (the nearer Low) the farther one, and with the nearer one
+    /// Forbidden the farther one. Catches a finder that kept nearest-first or asked the priority only for nearer storages.
+    /// </summary>
+    [Theory]
+    [InlineData(StoragePriority.Normal, StoragePriority.Normal, 1)]
+    [InlineData(StoragePriority.Low, StoragePriority.Critical, 2)]
+    [InlineData(StoragePriority.Forbidden, StoragePriority.Normal, 2)]
+    [InlineData(StoragePriority.Preferred, StoragePriority.Preferred, 1)]
+    public void A_fill_fetch_takes_from_the_storage_of_the_highest_take_priority(StoragePriority near, StoragePriority far, int expected)
+    {
+        Rig? built = null;
+        StoragePriority Rank(string s, StorageUse use) => use != StorageUse.Take ? StoragePriority.Normal
+            : s == built!.Sites[1] ? near
+            : s == built.Sites[2] ? far
+            : StoragePriority.Normal;
+        using var rig = built = new Rig(MillDatabase(), Constants, [Mill, Bin, Bin], extra: [new Ranks(Rank)]);
+        var worker = rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        rig.Machine(0).Inputs[0].Count = 3;
+        foreach (int bin in new[] { 1, 2 }) Assert.True(rig.Machine(bin).Storage!.Add(rig.Items.Create(Water, 20)!));
+        var cold = rig.World.Characters.Cold(worker.Slot)!;
+        var at = rig.World.Characters.Next[worker.Slot].Position;
+
+        var source = FillSources.Find(rig.World, null, rig.Machine(0), cold, at, []);
+
+        Assert.Equal(rig.Sites[expected], source?.Store);
+    }
+
+    /// <summary>
+    /// An operator hauls a full well's water to the storage of the highest put priority, the nearest among equals: without a priority system the
+    /// nearer tank, with the farther tank Preferred for putting (the nearer an overstock store: put Low, take Critical) the farther one. Catches
+    /// the operator's output finder (<c>NearestStorage</c>) keeping nearest-first or reading the take priority.
+    /// </summary>
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 2)]
+    public void An_operator_hauls_output_to_the_storage_of_the_highest_put_priority(bool ranked, int expected)
+    {
+        Rig? built = null;
+        StoragePriority Rank(string s, StorageUse use) => !ranked ? StoragePriority.Normal
+            : s == built!.Sites[1] ? (use == StorageUse.Put ? StoragePriority.Low : StoragePriority.Critical)
+            : s == built.Sites[2] && use == StorageUse.Put ? StoragePriority.Preferred
+            : StoragePriority.Normal;
+        using var rig = built = new Rig(Database(), Constants, [Well, Tank, Tank], extra: [new Ranks(Rank)]);
+        var labourer = rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        var well = rig.Machine(0);
+        well.Output!.Count = 10;
+        well.Yield = 0;
+        rig.World.Commands.Enqueue(new OperateOrder([labourer], rig.Sites[0]) { Tick = rig.World.Tick });
+        int Stored(int site) => rig.Machine(site).Storage!.Items.Where(i => i.Record == Water).Sum(i => i.Quantity);
+        for (int t = 0; t < 30000 && Stored(1) + Stored(2) == 0; t++) rig.World.RunTick();
+
+        Assert.True(Stored(expected) > 0 && Stored(3 - expected) == 0, $"near {Stored(1)}, far {Stored(2)}");
+    }
+
+    /// <summary>
+    /// A storage's own priorities, set from its panel (<see cref="SetStoragePriority"/>): applied to a complete storage of the player's and not to
+    /// a machine that is no storage, ranked by <see cref="SimWorld.StorageRank(CharacterId, string, StorageUse, string?)"/> (a level other than
+    /// Normal before a priority system's answer, a Forbidden one always), and an operator hauls a full well's water to the farther tank the
+    /// player set Preferred for putting. Catches a setting that reached no search or was taken for a non-storage.
+    /// </summary>
+    [Fact]
+    public void A_storages_own_priority_is_set_from_its_panel_and_ranks_the_searches()
+    {
+        Rig? built = null;
+        StoragePriority Modded(string s, StorageUse use) => s == built!.Sites[1] && use == StorageUse.Put ? StoragePriority.Critical
+            : StoragePriority.Normal;
+        using var rig = built = new Rig(Database(), Constants, [Well, Tank, Tank], extra: [new Ranks(Modded)]);
+        var labourer = rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        void Set(int site, StorageUse use, StoragePriority level) =>
+            rig.World.Commands.Enqueue(new SetStoragePriority(rig.Sites[site], use, level) { Tick = rig.World.Tick });
+        Set(0, StorageUse.Put, StoragePriority.High);
+        Set(1, StorageUse.Put, StoragePriority.Low);
+        Set(2, StorageUse.Put, StoragePriority.Preferred);
+        Set(2, StorageUse.Take, StoragePriority.Forbidden);
+        rig.World.RunTick();
+        StoragePriority Rank(int site, StorageUse use) => rig.World.StorageRank(labourer, rig.Sites[site], use, Water);
+
+        Assert.Equal(StoragePriority.Normal, rig.Machine(0).PutPriority);
+        Assert.Equal((StoragePriority.Preferred, StoragePriority.Forbidden), (rig.Machine(2).PutPriority, rig.Machine(2).TakePriority));
+        Assert.Equal((StoragePriority.Low, StoragePriority.Preferred), (Rank(1, StorageUse.Put), Rank(2, StorageUse.Put)));
+        Assert.Equal((StoragePriority.Normal, StoragePriority.Forbidden), (Rank(1, StorageUse.Take), Rank(2, StorageUse.Take)));
+
+        var well = rig.Machine(0);
+        well.Output!.Count = 10;
+        well.Yield = 0;
+        rig.World.Commands.Enqueue(new OperateOrder([labourer], rig.Sites[0]) { Tick = rig.World.Tick });
+        int Stored(int site) => rig.Machine(site).Storage!.Items.Where(i => i.Record == Water).Sum(i => i.Quantity);
+        for (int t = 0; t < 30000 && Stored(1) + Stored(2) == 0; t++) rig.World.RunTick();
+
+        Assert.True(Stored(2) > 0 && Stored(1) == 0, $"near {Stored(1)}, far {Stored(2)}");
+    }
+
+    /// <summary>
+    /// A storage's own priorities survive a save round-trip as <c>meitou put priority</c> / <c>meitou take priority</c>, a Normal level writes no
+    /// key. Catches a setting lost on reload, or a key written into every saved building.
+    /// </summary>
+    [Fact]
+    public void A_storages_own_priority_saves_and_reads_back()
+    {
+        const string playerFactionId = "204-gamedata.base";
+        var db = Database();
+        using var rig = new Rig(db, Constants, [Tank, Tank]);
+        rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        rig.World.Commands.Enqueue(new SetStoragePriority(rig.Sites[0], StorageUse.Put, StoragePriority.Low) { Tick = rig.World.Tick });
+        rig.World.Commands.Enqueue(new SetStoragePriority(rig.Sites[0], StorageUse.Take, StoragePriority.Critical) { Tick = rig.World.Tick });
+        rig.World.RunTick();
+
+        var builder = new Meitou.Data.Save.SaveBuilder(1);
+        builder.AddFaction(playerFactionId, "Nameless", true, 1000, []);
+        builder.AddEmptyWorldState();
+        Meitou.Simulation.Saving.BuildingSave.Write(builder.Game, rig.World, playerFactionId, 5);
+        Meitou.Simulation.Saving.MachineSave.Write(builder.Game, rig.World);
+        string dir = Path.Combine(Path.GetTempPath(), "meitou-priority-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            builder.Game.Write(dir);
+            var save = Data.Save.SaveGame.Load(dir);
+            var states = Meitou.Simulation.Saving.HeldSave.BuildingStates(save);
+            bool Keyed(int site) => states.Values.Any(r => r.StringId.StartsWith(rig.Sites[site], StringComparison.Ordinal)
+                && r.Ints.ContainsKey(Meitou.Simulation.Saving.MachineSave.PutPriorityKey));
+            using var back = new Rig(db, Constants, []);
+            Meitou.Simulation.Saving.BuildingSave.Read(save, back.World, db, playerFactionId, PlayerFaction);
+            Meitou.Simulation.Saving.MachineSave.Read(save, back.World, back.Production, back.Items);
+            var read = back.World.Machines.Find(rig.Sites[0])!;
+            var plain = back.World.Machines.Find(rig.Sites[1])!;
+
+            Assert.Equal((StoragePriority.Low, StoragePriority.Critical), (read.PutPriority, read.TakePriority));
+            Assert.Equal((StoragePriority.Normal, StoragePriority.Normal), (plain.PutPriority, plain.TakePriority));
+            Assert.True(back.World.Machines.AnyStoragePriority);
+            Assert.True(Keyed(0) && !Keyed(1));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>
+    /// A custom name survives a save round-trip as <c>meitou custom name</c>; a building without one writes no key. Catches a name lost on reload,
+    /// or the key written into every saved building.
+    /// </summary>
+    [Fact]
+    public void A_buildings_custom_name_saves_and_reads_back()
+    {
+        const string playerFactionId = "204-gamedata.base";
+        var db = Database();
+        using var rig = new Rig(db, Constants, [Tank, Tank]);
+        rig.Add(0, StatsEnumerated.Labouring, Unit);
+        rig.World.RunTick();
+        rig.World.Buildings.Find(rig.Sites[0])!.CustomName = "Overstock";
+
+        var builder = new Meitou.Data.Save.SaveBuilder(1);
+        builder.AddFaction(playerFactionId, "Nameless", true, 1000, []);
+        builder.AddEmptyWorldState();
+        Meitou.Simulation.Saving.BuildingSave.Write(builder.Game, rig.World, playerFactionId, 5);
+        string dir = Path.Combine(Path.GetTempPath(), "meitou-name-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            builder.Game.Write(dir);
+            var save = Data.Save.SaveGame.Load(dir);
+            var states = Meitou.Simulation.Saving.HeldSave.BuildingStates(save);
+            bool Keyed(int site) => states.Values.Any(r => r.StringId.StartsWith(rig.Sites[site], StringComparison.Ordinal)
+                && r.Strings.ContainsKey(Meitou.Simulation.Saving.BuildingSave.CustomNameKey));
+            using var back = new Rig(db, Constants, []);
+            Meitou.Simulation.Saving.BuildingSave.Read(save, back.World, db, playerFactionId, PlayerFaction);
+
+            Assert.Equal("Overstock", back.World.Buildings.Find(rig.Sites[0])!.CustomName);
+            Assert.Null(back.World.Buildings.Find(rig.Sites[1])!.CustomName);
+            Assert.True(Keyed(0) && !Keyed(1));
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
     }
 
     // ------------------------------------------------------------------ job lists

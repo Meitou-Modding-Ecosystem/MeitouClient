@@ -2,8 +2,11 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using Meitou.Data.Ui;
+using Meitou.Game.Rendering.Gpu;
 using Meitou.Game.Rendering.Overlays;
 using Meitou.Game.Rendering.Ui;
+using Meitou.Game.Title;
+using Meitou.Localisation;
 
 namespace Meitou.Game.Host;
 
@@ -24,9 +27,14 @@ sealed class LoadingScreen : IDisposable
     /// </summary>
     readonly DebugOverlay _overlay;
     /// <summary>
-    /// The original's LOADING... face (Kenshi_UI_Messages: MailartRubberstamp-Regular.ttf); null without the font.
+    /// The original's LOADING... face: the source of the font resource Kenshi_UI_Messages (MailartRubberstamp-Regular.ttf in English, Mount.ttf
+    /// in the Russian overlay's kenshi_fonts.xml, so every language has its letters); null without the font.
     /// </summary>
     DebugOverlay? _stamp;
+    /// <summary>
+    /// The caption beside the spinner, in upper case; the active language's through the game's own "Loading..." (<see cref="TitleMenu.UpperTr"/>).
+    /// </summary>
+    const string LoadingCaption = "LOADING...";
     /// <summary>
     /// Paints the layout's controls; null when the original's layout did not load (the spinner only).
     /// </summary>
@@ -131,13 +139,33 @@ sealed class LoadingScreen : IDisposable
             string[] groups = resources.Resources.TryGetValue(ImageSet, out var set)
                 ? [.. set.Elements("Group").Select(g => (string?)g.Attribute("name")).OfType<string>()] : [];
             var painter = new UiPainter(overlay, resources, resolve);
-            var stamp = resolve("MailartRubberstamp-Regular.ttf") is { } stampFile ? DebugOverlay.FromFont(overlay.Gpu, stampFile, 64) : null;
+            var stamp = StampFace(overlay.Gpu, resources, resolve);
             return new(overlay, painter, resources, layout, tips, pictures, groups) { _stamp = stamp, Faithful = faithful };
         }
         catch (Exception e) when (e is IOException or InvalidDataException or System.Xml.XmlException)
         {
             Console.Error.WriteLine($"loading   the original loading screen did not load ({e.Message}); spinner only");
             return new(overlay, null, null, null, tips, [], []) { Faithful = faithful };
+        }
+    }
+
+    /// <summary>
+    /// The LOADING... face: the font file of the resource Kenshi_UI_Messages (MailartRubberstamp-Regular.ttf without it), with FreeType glyphs for any
+    /// letter; the Latin-only stb face when FreeType cannot be used. Null without the file.
+    /// </summary>
+    static DebugOverlay? StampFace(IGpuContext gpu, MyGuiResources resources, Func<string, string?> resolve)
+    {
+        var spec = resources.Resources.TryGetValue("Kenshi_UI_Messages", out var resource) ? MyGuiTrueTypeFont.Read(resource) : null;
+        if (resolve(spec?.Source ?? "MailartRubberstamp-Regular.ttf") is not { } file) return null;
+
+        try
+        {
+            return DebugOverlay.FromUiFont(gpu, new UiFont(gpu, new UiFontOptions(file, 64 * 64, 72, false, false, null)));
+        }
+        catch (Exception e) when (e is DllNotFoundException or FileLoadException or BadImageFormatException or EntryPointNotFoundException
+            or InvalidOperationException or InvalidDataException)
+        {
+            return DebugOverlay.FromFont(gpu, file, 64);
         }
     }
 
@@ -298,24 +326,47 @@ sealed class LoadingScreen : IDisposable
         float x0 = box.X + pad, x1 = box.X + box.Width - pad, barTop = box.Y + box.Height - pad - barHeight;
         float rowTop = box.Y + pad * 0.75f, rowHeight = barTop - pad * 0.5f - rowTop, cy = rowTop + rowHeight / 2;
         float textEnd = x0;
+        string caption = TitleMenu.UpperTr(LoadingCaption);
         if (_stamp is not null)
         {
             float scale = rowHeight * 0.52f / _stamp.LineHeight, textTop = cy - _stamp.LineHeight * scale / 2;
             _stamp.Target = _overlay.Target;
-            _stamp.TextScaled("LOADING...", x0 + 2, textTop + 2, new Vector4(0, 0, 0, 0.8f), scale);
-            textEnd = x0 + _stamp.TextScaled("LOADING...", x0, textTop, new Vector4(0.87f, 0.85f, 0.81f, 1), scale);
+            _stamp.TextScaled(caption, x0 + 2, textTop + 2, new Vector4(0, 0, 0, 0.8f), scale);
+            textEnd = x0 + _stamp.TextScaled(caption, x0, textTop, new Vector4(0.87f, 0.85f, 0.81f, 1), scale);
             _stamp.Flush(width, height);
         }
-        else textEnd = x0 + _overlay.Text("LOADING...", x0, cy - _overlay.LineHeight / 2, DebugOverlay.TextColour);
+        else textEnd = x0 + _overlay.Text(caption, x0, cy - _overlay.LineHeight / 2, DebugOverlay.TextColour);
 
         float outer = Math.Min(rowHeight * 0.45f, 22 * s), inner = outer * 0.45f, cx = x1 - outer;
         DrawSpinner(cx, cy, outer, inner, s);
-        if (_label.Length > 0 && textEnd + 12 * s + _label.Length * _overlay.CharWidth <= cx - outer - 12 * s)
-            _overlay.Text(_label, textEnd + 12 * s, cy - _overlay.LineHeight / 2, new Vector4(0.62f, 0.6f, 0.52f, 1));
+        DrawLabel(width, height, textEnd + 12 * s, cx - outer - 12 * s, cy);
         _overlay.Rect(x0 - 2, barTop - 2, x1 + 2, barTop + barHeight + 2, new Vector4(0.35f, 0.31f, 0.24f, 1));
         _overlay.Rect(x0, barTop, x1, barTop + barHeight, new Vector4(0.08f, 0.07f, 0.06f, 1));
         _overlay.Rect(x0, barTop, x0 + (x1 - x0) * progress, barTop + barHeight, new Vector4(0.78f, 0.66f, 0.42f, 1));
         _overlay.Flush(width, height);
+    }
+
+    /// <summary>
+    /// The running step's name, translated, between <paramref name="left"/> and <paramref name="right"/> when it fits: in the overlay's face when
+    /// its baked range has every letter, else in the LOADING... face (FreeType, every letter), at the overlay's height.
+    /// </summary>
+    void DrawLabel(int width, int height, float left, float right, float cy)
+    {
+        if (_label.Length == 0) return;
+
+        string label = Loc.Tr(_label);
+        var colour = new Vector4(0.62f, 0.6f, 0.52f, 1);
+        if (_stamp is null || label.All(c => c < DebugOverlay.LastBakedChar))
+        {
+            if (left + _overlay.MeasureText(label) <= right) _overlay.Text(label, left, cy - _overlay.LineHeight / 2, colour);
+            return;
+        }
+
+        float scale = _overlay.LineHeight / _stamp.LineHeight;
+        if (left + _stamp.MeasureText(label, scale) > right) return;
+        _stamp.Target = _overlay.Target;
+        _stamp.TextScaled(label, left, cy - _stamp.LineHeight * scale / 2, colour, scale);
+        _stamp.Flush(width, height);
     }
 
     /// <summary>

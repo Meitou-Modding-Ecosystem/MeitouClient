@@ -11,7 +11,8 @@ public sealed record OperateOrder(IReadOnlyList<CharacterId> Characters, string 
 
 /// <summary>
 /// Gives characters (the selection when empty) the job an order of <paramref name="Type"/> on a player building becomes, at the end of their job
-/// lists (the original's Shift with an order; <see cref="PermaJobs.Add"/>).
+/// lists (the original's Shift with an order; <see cref="PermaJobs.Add"/>). A job type a code mod offers on buildings is given by its offer
+/// (<see cref="ModJobOffer"/>, <see cref="PermaJobs.GiveOffered"/>).
 /// </summary>
 public sealed record AddJob(IReadOnlyList<CharacterId> Characters, Meitou.Data.Gameplay.Ai.TaskType Type, string Site) : SimCommand;
 
@@ -30,9 +31,9 @@ public sealed record AddOrderJob(IReadOnlyList<CharacterId> Characters, Meitou.D
 public sealed record UseTurretOrder(IReadOnlyList<CharacterId> Characters, string Site) : OrderCommand;
 
 /// <summary>
-/// The original's order 136 FEED_CORPSE_INTO_MACHINE without Shift (Corpse Disposal on a corpse machine): each of the characters carrying a dead body
-/// takes it to an incinerator as the corpse disposal job does. <b>Engine reading</b>: the order's condition 99 is taken as carrying a dead body, and
-/// the body goes to the nearest free incinerator, as the job's.
+/// The original's order 136 FEED_CORPSE_INTO_MACHINE without Shift (Corpse Disposal on a corpse machine): each character listed (the selection when
+/// empty) gets order 136 on <see cref="Site"/> through its queue; one carrying a dead body takes it to that machine and feeds it in, one carrying
+/// nothing is done at once.
 /// </summary>
 public sealed record DisposeCorpseOrder(IReadOnlyList<CharacterId> Characters, string Site) : OrderCommand;
 
@@ -105,6 +106,12 @@ public sealed record RepeatCrafts(string Site, bool Repeat) : SimCommand;
 /// A machine's Power toggle (<c>power on</c>) or, for a consumer, its Battery toggle (<c>gets battery</c>); null leaves one as it is.
 /// </summary>
 public sealed record SetMachinePower(string Site, bool? PowerOn = null, bool? GetsBattery = null) : SimCommand;
+
+/// <summary>
+/// A storage's put or take priority, from its panel (<see cref="Machine.PutPriority"/>, <see cref="Machine.TakePriority"/>): applied to a complete
+/// storage of the player's faction. Engine setting, not in the original.
+/// </summary>
+public sealed record SetStoragePriority(string Site, Items.StorageUse Use, Items.StoragePriority Level) : SimCommand;
 
 /// <summary>
 /// An item furnace's Active button: starts burning its grid, or stops it (<c>FurnaceBuilding::incinerate</c>).

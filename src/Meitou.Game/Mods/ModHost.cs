@@ -71,6 +71,12 @@ public sealed record ModHostOptions(
 public sealed class ModHost
 {
     /// <summary>
+    /// The reason of a mod refused as one built for another version of the game (<see cref="CodeModFaults.BuiltForAnother"/>), whose notice is
+    /// <see cref="CodeModFaults.Notice"/>.
+    /// </summary>
+    const string Outdated = "built for another version of the game";
+
+    /// <summary>
     /// Every loaded mod's committed registrations.
     /// </summary>
     readonly ModRegistry _registry = new();
@@ -165,9 +171,20 @@ public sealed class ModHost
             {
                 feed.Faulted = true;
                 Console.Error.WriteLine($"mod       {feed.Owner}: combat hit feed disabled: {e.GetType().Name}: {e.Message}");
+                CodeModFaults.Tell(feed.Owner, e);
             }
         }
     }
+
+    /// <summary>
+    /// The mods' display-only effects (docs/modding.md "Visual effects"), played by the host once a frame.
+    /// </summary>
+    internal ModEffects Effects => _registry.Effects;
+
+    /// <summary>
+    /// The mods' display-only glows (docs/modding.md "Glow"), handed to the renderer by the host once a frame.
+    /// </summary>
+    internal ModGlows Glows => _registry.Glows;
 
     /// <summary>
     /// Whether a mod arranges the faction tab's list.
@@ -192,6 +209,7 @@ public sealed class ModHost
             {
                 list.Faulted = true;
                 Console.Error.WriteLine($"mod       {list.Owner}: faction list arranger disabled: {e.GetType().Name}: {e.Message}");
+                CodeModFaults.Tell(list.Owner, e);
             }
         }
         return rows;
@@ -286,7 +304,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {info.Name}: {e}");
-            RefuseEarly(info.Name, $"failed to start: {e.GetBaseException().Message}");
+            RefuseEarly(info.Name, CodeModFaults.BuiltForAnother(e) ? Outdated : $"failed to start: {e.GetBaseException().Message}");
         }
     }
 
@@ -376,7 +394,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod.Info.Name}: {e}");
-            failure = $"failed to change the game data: {e.GetBaseException().Message}";
+            failure = CodeModFaults.BuiltForAnother(e) ? Outdated : $"failed to change the game data: {e.GetBaseException().Message}";
         }
         finally
         {
@@ -444,7 +462,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod.Info.Name}: {e}");
-            Refuse(mod.Info.Name, $"failed to start: {e.GetBaseException().Message}");
+            Refuse(mod.Info.Name, CodeModFaults.BuiltForAnother(e) ? Outdated : $"failed to start: {e.GetBaseException().Message}");
         }
     }
 
@@ -478,7 +496,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {info.Name}: {e}");
-            Refuse(info.Name, $"failed to start: {e.GetBaseException().Message}");
+            Refuse(info.Name, CodeModFaults.BuiltForAnother(e) ? Outdated : $"failed to start: {e.GetBaseException().Message}");
         }
     }
 
@@ -494,12 +512,13 @@ public sealed class ModHost
     }
 
     /// <summary>
-    /// Leaves a mod out: a log line, a notice, and its reason for the dependency checks.
+    /// Leaves a mod out: a log line, a notice (for one built for another version of the game, <see cref="CodeModFaults.Notice"/>), and its reason
+    /// for the dependency checks.
     /// </summary>
     void Refuse(string mod, string reason)
     {
         Console.Error.WriteLine($"mod       {mod}: not loaded: {reason}");
-        _notices.Add($"Mod {mod} not loaded: {reason}");
+        _notices.Add(reason == Outdated ? CodeModFaults.Notice(mod) : $"Mod {mod} not loaded: {reason}");
         _pass.Refused(mod, reason);
     }
 
@@ -598,12 +617,34 @@ public sealed class ModHost
     static IMod CreateEntry(LoadedMod mod)
     {
         var type = mod.Assemblies.Select(a => a.GetType(mod.Manifest.Entry, throwOnError: false)).FirstOrDefault(t => t is not null)
-            ?? throw new ModLoadException($"entry type {mod.Manifest.Entry} is not in its assemblies");
+            ?? throw EntryMissing(mod);
         if (!typeof(IMod).IsAssignableFrom(type))
             throw new ModLoadException($"entry type {type.FullName} does not implement {typeof(IMod).FullName}");
         if (type.GetConstructor(Type.EmptyTypes) is null)
             throw new ModLoadException($"entry type {type.FullName} has no public parameterless constructor");
         return (IMod)Activator.CreateInstance(type)!;
+    }
+
+    /// <summary>
+    /// Why the mod's entry type was not found: an assembly whose types cannot load as built for another version of the game (an entry that
+    /// implements a type the game no longer has or no longer shows is not found by name; <see cref="CodeModFaults.BuiltForAnother"/>), else that it
+    /// is not in the assemblies.
+    /// </summary>
+    static Exception EntryMissing(LoadedMod mod)
+    {
+        foreach (var assembly in mod.Assemblies)
+        {
+            try
+            {
+                assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException e) when (CodeModFaults.BuiltForAnother(e))
+            {
+                return e;
+            }
+        }
+
+        return new ModLoadException($"entry type {mod.Manifest.Entry} is not in its assemblies");
     }
 
     /// <summary>
@@ -619,6 +660,8 @@ public sealed class ModHost
         catch
         {
             if (context.HasHarmony) context.Harmony.UnpatchAll(context.Id);
+            _registry.Effects.Drop(context.Id);
+            _registry.Glows.Drop(context.Id);
             TellDependenciesItFailed(mod);
             throw;
         }
@@ -645,6 +688,7 @@ public sealed class ModHost
             catch (Exception e)
             {
                 Console.Error.WriteLine($"mod       {dependency.Manifest.Id}: cleanup after {mod.Manifest.Id} failed: {e}");
+                CodeModFaults.Tell(dependency.Manifest.Id, e);
             }
         }
     }
@@ -707,6 +751,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod}: save data not written: {e}");
+            CodeModFaults.Tell(mod, e);
             return null;
         }
     }
@@ -751,6 +796,7 @@ public sealed class ModHost
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {mod}: save data not read: {e}");
+            CodeModFaults.Tell(mod, e);
         }
     }
 
@@ -864,6 +910,7 @@ public sealed class ModHost
             catch (Exception e)
             {
                 Console.Error.WriteLine($"mod       interface extension {extension.Id} not registered: {e}");
+                if (_registry.UiOwners.GetValueOrDefault(extension) is { } owner) CodeModFaults.Tell(owner, e);
             }
         }
         return registrations;

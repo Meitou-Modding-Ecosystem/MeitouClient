@@ -361,33 +361,49 @@ public sealed partial class CombatSystem : IProjectileSource
     /// recomputed by <c>FUN_1404378f0</c> over the threats list, <b>Verified</b>; docs/game/combat.md "Fight lifecycle and orders"): one of the
     /// senses' threats (<see cref="SenseBlock.Threats"/>) by full 3D squared distance (strictly under the reach squared), not down (staying low or
     /// crawling still count), not in a bed or cage, not carried, not getting up, and not behind a gate that is not open between them
-    /// (<c>FUN_140598450</c>, <see cref="Locks.LockSystem.NotBlocked"/>).
+    /// (<c>FUN_140598450</c>, <see cref="Locks.LockSystem.NotBlocked"/>). The threats a <c>FUN_1405cb0a0</c> push put there count until the think
+    /// after it (<see cref="SenseBlock.Pushes"/>).
     /// </summary>
     internal bool ImmediateThreat(World world, int self)
     {
-        var table = world.Characters;
-        var prev = table.Previous;
         if (CharacterFacts.Senses(world, self) is not { } senses) return false;
 
-        var here = prev[self].Position;
-        foreach (var id in senses.Threats)
-        {
-            int a = id.Slot;
-            if ((uint)a >= (uint)prev.Length || !prev[a].Alive || prev[a].Generation != id.Generation || _read[a].Down) continue;
-            if (table.Cold(a) is not { } c || c.InSomething != global::Meitou.Simulation.Locks.HeldState.None || !c.CarriedBy.IsNone
-                || CharacterFacts.GettingUp(c, world.Tick))
-                continue;
+        return AnyImmediate(world, self, senses.Threats) || AnyImmediate(world, self, senses.Pushes(world.Tick));
+    }
 
-            var at = prev[a].Position;
-
-            // Full 3D squared distance, strictly under the reach squared (FUN_1404378f0).
-            if (Vector3.DistanceSquared(at, here) >= RetaliationSystem.ImmediateReach * RetaliationSystem.ImmediateReach) continue;
-            if (Locks is { } locks && !locks.NotBlocked(world, here, at)) continue;
-
-            return true;
-        }
+    /// <summary>
+    /// Whether one of <paramref name="threats"/> is an immediate threat to <paramref name="self"/> (<see cref="ImmediateThreat"/>).
+    /// </summary>
+    bool AnyImmediate(World world, int self, IReadOnlyList<CharacterId> threats)
+    {
+        foreach (var id in threats)
+            if (IsImmediate(world, self, id)) return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="id"/> stands as an immediate threat to <paramref name="self"/> (<c>FUN_1404378f0</c>): alive, not down, free (not in
+    /// a bed or cage, not carried), not getting up, strictly within <see cref="RetaliationSystem.ImmediateReach"/> by full 3D distance and not
+    /// behind a closed gate. Reads the last tick's state.
+    /// </summary>
+    bool IsImmediate(World world, int self, CharacterId id)
+    {
+        var table = world.Characters;
+        var prev = table.Previous;
+        int a = id.Slot;
+        if ((uint)a >= (uint)prev.Length || !prev[a].Alive || prev[a].Generation != id.Generation || _read[a].Down) return false;
+        if (table.Cold(a) is not { } c || c.InSomething != global::Meitou.Simulation.Locks.HeldState.None || !c.CarriedBy.IsNone
+            || CharacterFacts.GettingUp(c, world.Tick))
+            return false;
+
+        var here = prev[self].Position;
+        var at = prev[a].Position;
+
+        // Full 3D squared distance, strictly under the reach squared (FUN_1404378f0).
+        if (Vector3.DistanceSquared(at, here) >= RetaliationSystem.ImmediateReach * RetaliationSystem.ImmediateReach) return false;
+
+        return Locks is not { } locks || locks.NotBlocked(world, here, at);
     }
 
     /// <summary>
@@ -819,7 +835,7 @@ public sealed partial class CombatSystem : IProjectileSource
         var events = _hitEvents;
         events.Clear();
         float toughness = dc.Stats is { } ds ? ds[StatsEnumerated.Toughness] * dc.Medical.StatMultiplier(StatsEnumerated.Toughness) : 0;
-        ReadOnlySpan<ArmourPiece> armour = dc.Fighter is { } df ? df.Armour : default;
+        var armour = world.ArmourFilters.Pieces(world, CombatHitSource.Projectile, table.IdOf(v), dc.Fighter);
         var cover = new BoltCover(world.Seed, Rng.Key(table.IdOf(v)), p.Id);
         bool observe = world.WantsCombatHits;
         bool wasAlive = observe && !dc.Medical.Dead, wasIncapacitated = observe && dc.Medical.Incapacitated;
@@ -905,6 +921,10 @@ public sealed partial class CombatSystem : IProjectileSource
         // shooter's aimed hit still renews its Assault, as its landed blow does (CrimeSystem.Hit; an engine choice).
         if (shooterAlive && intended && world.Characters.Cold(p.Shooter) is { IsPlayer: false })
             Crimes?.Assault(world, p.Shooter, v);
+
+        // Meitou (TurretAssault): a player gunner's turret harpoon is an assault, as Attack Unprovoked is; the original books none.
+        if (shooterAlive && intended && p.Turret && p.ShooterIsPlayer && TurretAssault)
+            Crimes?.Assault(world, p.Shooter, v, VictimFighting(world.Characters, world.Characters.IdOf(v)));
 
         if (shooterAlive && !medical.Incapacitated)
         {

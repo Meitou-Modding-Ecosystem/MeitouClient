@@ -15,6 +15,8 @@ sealed class ScreenRouter(PlayerInterface player)
     /// </summary>
     internal void FaithfulAction(MyGuiEvent e)
     {
+        if (player.OverlayText(e)) return;
+
         player.InterfaceSounds.SoundForScreen(e);
 
         if (e.Action.StartsWith("inventory-scroll:", StringComparison.Ordinal))
@@ -326,10 +328,16 @@ sealed class ScreenRouter(PlayerInterface player)
     }
 
     /// <summary>
-    /// The build, dialogue, character trade, prospecting and machine windows' content; false for any other screen.
+    /// The build, dialogue, character trade, prospecting and machine windows' content and the town panel's mod lines; false for any other screen.
     /// </summary>
     bool AddFeatureContent(string id, List<UiControl> controls)
     {
+        if (id == TownPanel.TownScreen)
+        {
+            player.TownPanel.AddModLines(controls);
+            return true;
+        }
+
         if (id == "build")
         {
             player.Build.AddBuildContent(controls);

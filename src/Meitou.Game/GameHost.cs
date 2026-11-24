@@ -210,6 +210,10 @@ sealed partial class GameHost(
     /// </summary>
     internal DebugOverlays DebugOverlays = null!;
     /// <summary>
+    /// The outposts' build limit rings in build mode.
+    /// </summary>
+    internal Building.TownRangeRing TownRangeRing = null!;
+    /// <summary>
     /// The dev console.
     /// </summary>
     internal DevConsoleHost DevConsoleHost = null!;
@@ -278,6 +282,7 @@ sealed partial class GameHost(
 
         DebugMenu = new(this);
         DebugOverlays = new(this);
+        TownRangeRing = new(this);
         DevConsoleHost = new(this);
         AgentChannel = new(this);
         AgentPlay = new(this);
@@ -648,9 +653,12 @@ sealed partial class GameHost(
             clock: clock, simulation: settings, systems: systems, walkability: walkability);
 
         Session.World.BenchFacingFix = Config.FixBenchFacing;
+        Session.World.SeatBedFix = Config.FixSeatBeds;
         Session.World.PrisonPoseFix = Config.FixPrisonPose;
         Session.World.CagedAnimalFix = Config.FixCagedAnimals;
         Session.World.BagSearchFix = Config.FixBagSearch;
+        Session.World.CounterTalk = Config.CounterTalk;
+        Session.World.AnimalTargetFix = Config.FixAnimalTarget;
         Session.World.TakeIntoBackpack = Config.TakeIntoBackpack;
         Session.World.ActionLog = ActionLogs.Log;
         Session.Simulation.SetFastSpeeds(Config.FastSpeed, Config.FastestSpeed);
@@ -724,6 +732,7 @@ sealed partial class GameHost(
                 Decapitation = Config.Decapitation,
                 AdvancedRagdolls = Config.AdvancedRagdolls,
                 SquadXp = Config.SquadXp,
+                SquadSkillXp = SkillXp.Rates(Config.SquadSkillXp),
                 OthersXp = Config.OthersXp,
             },
             ZoneReady = ready =>
@@ -846,11 +855,14 @@ sealed partial class GameHost(
         Player.SpeedUnit = Config.SpeedUnit;
         Player.ShowNames = Config.ShowNames;
         Player.Floaters = Config.Floaters;
+        Player.GreyUnavailableVerbs = Config.GreyUnavailableVerbs;
         Player.FeedbackButtonInPlay = Config.FeedbackButton;
+        Player.XpLabel = SkillXp.Label(Config);
         Player.Frontend.FixLoadButton = Config.FixLoadButton;
         Player.BuildingSelection.DeselectBuildings = Config.DeselectBuildings;
         Player.InventoryWindows.RotateItems = Config.RotateItems;
         Player.InventoryWindows.AutoOpenBags = Config.AutoOpenBags;
+        Rendering.Characters.GearBlood.KeptStains = Config.KeptStains;
 
         // The region (BIOME_GROUP) under a point, for the biome banner.
         Player.BiomeBanner.RegionAt = (x, z) => Gpu.Weather?.World.RegionAt(x, z).Def is { } def ? (def.StringId, def.Name) : null;
@@ -862,6 +874,7 @@ sealed partial class GameHost(
         Gpu.NavmeshOverlay ??= new NavmeshOverlayRenderer(context);
         DebugOverlays.NavOverlayRenderer = Gpu.NavmeshOverlay;
         Gpu.InspectorOverlay ??= new NavmeshOverlayRenderer(context);
+        Gpu.TownRangeOverlay ??= new NavmeshOverlayRenderer(context);
     }
 
     /// <summary>
@@ -1014,7 +1027,7 @@ sealed partial class GameHost(
         var yaw = (WorldOptions.Yaw ?? 30) * MathF.PI / 180;
         var pitch = (WorldOptions.Pitch ?? Data.World.KenshiCamera.InitialPitchDegrees) * MathF.PI / 180;
         var distance = WorldOptions.Distance ?? Data.World.KenshiCamera.InitialDistance;
-        Session.Camera.Place(new Vector2(target.X, target.Z), yaw, pitch, distance);
+        Session.Camera.Place(new Vector2(target.X, target.Z), yaw, pitch, distance, target.Y);
 
         SendFocus();
         ApplyCamera(Session.Camera.Current);
@@ -1029,11 +1042,17 @@ sealed partial class GameHost(
         if (StartSave is not { } save || GameOptions.Load is not { } folder) return;
 
         Saves.ReadingFolder = folder;
+        var read = Task.FromResult(save);
+
+        // The mesh round the player first, as the menu's load: the save's characters are seated on it when they are made.
+        LoadingStep("navmesh");
+        AwaitLoading(Saves.NavmeshOfPlayer(read));
+
         Task navmesh;
         string summary;
         try
         {
-            navmesh = Saves.SwapInSave(Task.FromResult(save), interactive, out summary);
+            navmesh = Saves.SwapInSave(read, interactive, out summary);
         }
         catch (SceneLoadFailed e)
         {
@@ -1058,6 +1077,8 @@ sealed partial class GameHost(
     {
         Modding.ConnectModUi(ui);
         ConnectSaves(ui);
+        ConnectInfoPanel(ui);
+        ui.InventoryWindows.SplitStacks = Config.SplitStacks;
 
         // The region (BIOME_GROUP) under a point, for the biome banner.
         ui.BiomeBanner.RegionAt = (x, z) => ActiveWeather?.World.RegionAt(x, z).Def is { } def ? (def.StringId, def.Name) : null;
@@ -1082,6 +1103,24 @@ sealed partial class GameHost(
         ui.Frontend.HideKenshiSavesChanged = KeepHideKenshiSaves;
         ui.Frontend.SaveInUse = SaveInUse;
         ui.Frontend.DeleteSave = DeleteSave;
+    }
+
+    /// <summary>
+    /// The information panel opens as it was last left while the fix keeps it (<see cref="UserConfig.KeepInfoPanel"/>); each press is kept.
+    /// </summary>
+    void ConnectInfoPanel(PlayerInterface ui)
+    {
+        ui.InfoExpanded = Config.KeepInfoPanel && Config.InfoPanelExtended;
+        ui.InfoExpandedChanged = KeepInfoPanelState;
+    }
+
+    /// <summary>
+    /// Writes the information panel's state to the config at once, so a quit or crash keeps it.
+    /// </summary>
+    void KeepInfoPanelState(bool extended)
+    {
+        Config.InfoPanelExtended = extended;
+        Config.Save();
     }
 
     /// <summary>
@@ -1623,6 +1662,8 @@ sealed partial class GameHost(
         UpdateWakes();
         UpdateSplashes();
         Modding.UpdateModHits();
+        Modding.UpdateModEffects();
+        Modding.UpdateModGlows();
         Modding.UpdateModFaults();
         Rendering.Profiling.StageClock.Lap(Rendering.Profiling.StageClock.Blood, "blood marks");
 
@@ -1672,9 +1713,9 @@ sealed partial class GameHost(
     internal bool TickAhead;
 
     /// <summary>
-    /// Meitou's dynamic tick ahead (engine choice): on once a world tick takes <see cref="AheadOnMs"/> (smoothed), off again under
-    /// <see cref="AheadOffMs"/>, so a quiet world keeps the game's input delay and a big fight or crowd overlaps; a tick run ahead is slower (it
-    /// shares the cores with the draw), hence the gap.
+    /// Meitou's dynamic tick ahead (engine choice): on once a world tick takes <see cref="AheadOnMs"/> (smoothed, times the game speed when above
+    /// 1x: a frame at 5x runs that many more ticks), off again under <see cref="AheadOffMs"/>, so a quiet world keeps the game's input delay and a
+    /// big fight or crowd overlaps; a tick run ahead is slower (it shares the cores with the draw), hence the gap.
     /// </summary>
     const double AheadOnMs = 4, AheadOffMs = 2;
     /// <summary>
@@ -1688,9 +1729,15 @@ sealed partial class GameHost(
     internal bool TickAheadWanted() => Config.TickAhead switch
     {
         TickAheadMode.Always => true,
-        TickAheadMode.Dynamic => _worldBusy = Session.TickMs >= (_worldBusy ? AheadOffMs : AheadOnMs),
+        TickAheadMode.Dynamic => _worldBusy = SpeedTickMs() >= (_worldBusy ? AheadOffMs : AheadOnMs),
         _ => false,
     };
+
+    /// <summary>
+    /// The smoothed world tick's ms times the game speed (at least 1x), what the dynamic tick ahead weighs: the ticks a frame runs grow with the
+    /// speed.
+    /// </summary>
+    double SpeedTickMs() => Session.TickMs * Math.Max(1.0, Session.Simulation.Speed);
 
     #endregion
 }

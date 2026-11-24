@@ -235,6 +235,15 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     /// UI modes.
     /// </summary>
     internal TradeWindows TradeWindows => field ??= new(this);
+    /// <summary>
+    /// The split stack dialog of Meitou's stack splitting (Shift + Alt on a stack, <see cref="InventoryWindows.SplitStacks"/>).
+    /// </summary>
+    internal StackSplitDialog StackSplitDialog => field ??= new(this);
+
+    /// <summary>
+    /// Meitou's rename dialog for a building the player built.
+    /// </summary>
+    internal Building.RenameBuildingDialog RenameBuildingDialog => field ??= new(this);
 
     #endregion
 
@@ -290,6 +299,12 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     internal bool Hidden((Vector3 Origin, Vector3 Direction) ray, float distance) =>
         Picking.ClosedBuildingHit?.Invoke(ray.Origin, ray.Direction, distance) is not null
             || Picking.ShownInteriorHit?.Invoke(ray.Origin, ray.Direction, distance) is not null;
+
+    /// <summary>
+    /// Whether a character or an object the ray meets at <paramref name="distance"/> is out of the pointer's reach: <see cref="Hidden"/>, or the
+    /// terrain or a building without rooms stands before it (<see cref="WorldPicking.Blocked"/>).
+    /// </summary>
+    internal bool Obscured((Vector3 Origin, Vector3 Direction) ray, float distance) => Hidden(ray, distance) || Picking.Blocked(ray, distance);
 
     /// <summary>
     /// The HUD's height at the bottom of the screen, pixels.
@@ -352,9 +367,20 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     public FloaterMode Floaters { get; set; } = FloaterMode.Simple;
 
     /// <summary>
+    /// The "Unavailable menu rows" option (<see cref="UserConfig.GreyUnavailableVerbs"/>): a context-menu row the selection cannot carry out now is
+    /// greyed and takes only a Shift click (<see cref="Ui.ContextMenuWindow.Available"/>); off, every row is drawn and given as in the original.
+    /// </summary>
+    public bool GreyUnavailableVerbs { get; set; } = true;
+
+    /// <summary>
     /// The button during play (<see cref="UserConfig.FeedbackButton"/>); off, it still shows on the title and with the game menu open.
     /// </summary>
     public bool FeedbackButtonInPlay { get; set; } = true;
+
+    /// <summary>
+    /// The Squad XP label during play ("XP x10", <see cref="Settings.SkillXp.Label"/>); null while Show Squad XP is off.
+    /// </summary>
+    public string? XpLabel { get; set; }
 
     /// <summary>
     /// The original's <c>Show names</c> option (<c>FUN_1406e2fd0</c>): off, the name tag keeps only its icons.
@@ -457,9 +483,10 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     /// </summary>
     RgbaImage? _uiAtlas;
     /// <summary>
-    /// The stats panel's labels (MARTIAL ARTS, STRENGTH, ...): the grey of the orders buttons' text, not Main (docs/game/ui-screens.md).
+    /// The stats panel's labels (MARTIAL ARTS, STRENGTH, ...): the ink of the painted-text template, grey in the base game and a UI mod's colour
+    /// when it recolours that template (docs/game/ui-screens.md).
     /// </summary>
-    internal static readonly string StatLabelColour = "0.4 0.380392 0.356863";
+    internal string StatLabelColour => MyGuiColours.TemplateInk(UiResources, "Kenshi_TextboxPaintedText");
 
     /// <summary>
     /// The game's Kenshi_UI.png, decoded once and shared by the title menu, tooltips and settings; null when missing or unreadable.
@@ -609,66 +636,128 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     internal void AddLines(List<UiControl> controls, string panel, IReadOnlyList<HudLine> lines, float rowHeight, float? fontPixels = null,
         string font = "Kenshi_StandardFont_Medium", string? valueFont = null, float? valuePixels = null, float top = 0)
     {
-        if (controls.FirstOrDefault(c => c.Name == panel) is not { } host) return;
+        if (FindControl(controls, panel) is not { } host) return;
+
         var area = host.Bounds;
         var labelProperties = Face(font, fontPixels);
         var valueProperties = valueFont is null ? labelProperties : Face(valueFont, valuePixels);
         for (int i = 0; i < lines.Count; i++)
         {
-            var tipProperties = lines[i].TipProperties;
+            var line = lines[i];
+            var tipProperties = line.TipProperties;
             var row = new UiRect(area.X + area.Width * 0.03f, area.Y + top + i * rowHeight, area.Width * 0.93f, rowHeight);
-            if (lines[i].Fill is { } fill)
+            if (line.Fill is { } fill)
             {
-                AddProgressLine(controls, $"{panel}-progress-{i}", row, lines[i], fill, valueProperties, host.Clip);
+                AddProgressLine(controls, $"{panel}-progress-{i}", row, line, fill, valueProperties, host.Clip);
                 continue;
             }
 
-            if (lines[i].Action is { } action)
+            if (line.Action is { } action)
             {
-                // The button holds the value; the row's label (if any) stays text on its left.
-                float width = Math.Clamp(lines[i].ButtonWidth, 0.1f, 1);
-                var button = lines[i].Label.Length == 0 ? row : row with { X = row.X + row.Width * (1 - width), Width = row.Width * width };
-                var buttonProperties = new Dictionary<string, string>(valueProperties) { ["TextAlign"] = "Center",
-                    ["TextColour"] = lines[i].ValueColour ?? MyGuiColours.InkText };
-                if (lines[i].TipProperties is { } buttonTip) foreach (var pair in buttonTip) buttonProperties[pair.Key] = pair.Value;
-
-                // Kenshi_Button2 is a template (kenshi_templates.xml) whose root widget has the Kenshi_Button1Skin skin.
-                controls.Add(new($"{panel}-button-{i}", "Button", button with { Y = button.Y + 1, Height = button.Height - 2 },
-                    Loc.Tr(lines[i].Value), action, "Kenshi_Button1Skin", true, buttonProperties, Vector4.Zero, Argument: lines[i].Argument ?? "",
-                    Clip: host.Clip));
-                if (lines[i].Label.Length == 0) continue;
+                AddLineButton(controls, $"{panel}-button-{i}", row, line, action, valueProperties, tipProperties, host.Clip);
+                if (line.Label.Length == 0) continue;
             }
-            var columns = new[]
-            {
-                ("label", lines[i].Label, lines[i].LabelColour, "Left Top", labelProperties),
-                ("value", lines[i].Action is null ? lines[i].Value : "", lines[i].ValueColour, "Right Top", valueProperties),
-            };
-            foreach (var (part, text, colour, align, properties) in columns)
-                if (text.Length > 0)
-                {
-                    var textProperties = new Dictionary<string, string>(properties) { ["TextAlign"] = align,
-                        ["TextColour"] = colour ?? MyGuiColours.TemplateInk(UiResources, "Kenshi_TextboxStandardText") };
 
-                    // A line with a tooltip is a mouse target (the HUD's own tooltip, anchored on its panel).
-                    if (tipProperties is not null) foreach (var pair in tipProperties) textProperties[pair.Key] = pair.Value;
+            var (labelBox, valueBox) = LineColumns(row, line, labelProperties["FontName"], valueProperties["FontName"]);
 
-                    // A value beside a label keeps out of the label's column: a long one (a French weather notice) is cut short instead of running
-                    // over the label. A label beside a button keeps to its left: added after the button, a full-row label with a tooltip would take
-                    // its clicks.
-                    var box = part == "value" && lines[i].Label.Length > 0 ? row with { X = row.X + row.Width * 0.35f, Width = row.Width * 0.65f }
-                        : lines[i].Action is not null ? row with { Width = row.Width * (1 - Math.Clamp(lines[i].ButtonWidth, 0.1f, 1)) } : row;
-                    controls.Add(new($"{panel}-{part}-{i}", "TextBox", box, Loc.Tr(text), "", "Kenshi_TextboxStandardText", true,
-                        textProperties, Vector4.Zero, Pickable: tipProperties is not null, Clip: host.Clip));
-                }
+            // A label beside a button keeps to its left: added after the button, a full-row label with a tooltip would take its clicks.
+            var labelArea = line.Action is not null ? row with { Width = row.Width * (1 - Math.Clamp(line.ButtonWidth, 0.1f, 1)) } : labelBox;
+            AddLineText(controls, $"{panel}-label-{i}", labelArea, line.Label, line.LabelColour, "Left Top", labelProperties, tipProperties,
+                host.Clip);
+            AddLineText(controls, $"{panel}-value-{i}", valueBox, line.Action is null ? line.Value : "", line.ValueColour, "Right Top",
+                valueProperties, tipProperties, host.Clip);
         }
 
         static Dictionary<string, string> Face(string name, float? pixels)
         {
-            var properties = new Dictionary<string, string> { ["FontName"] = name };
+            var properties = new Dictionary<string, string>(2) { ["FontName"] = name };
             if (pixels is { } p)
                 properties["FontPixels"] = Math.Max(8, (int)MathF.Round(p)).ToString(CultureInfo.InvariantCulture);
             return properties;
         }
+    }
+
+    /// <summary>
+    /// The first control named <paramref name="name"/>, or null.
+    /// </summary>
+    static UiControl? FindControl(List<UiControl> controls, string name)
+    {
+        foreach (var c in controls)
+        {
+            if (c.Name == name) return c;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A button line's button: it holds the value; the row's label (if any) stays text on its left.
+    /// </summary>
+    void AddLineButton(List<UiControl> controls, string name, UiRect row, HudLine line, string action, Dictionary<string, string> face,
+        Dictionary<string, string>? tipProperties, UiRect? clip)
+    {
+        float width = Math.Clamp(line.ButtonWidth, 0.1f, 1);
+        var button = line.Label.Length == 0 ? row : row with { X = row.X + row.Width * (1 - width), Width = row.Width * width };
+        var buttonProperties = LineProperties(face, "Center", line.ValueColour ?? MyGuiColours.InkText, tipProperties);
+
+        // Kenshi_Button2 is a template (kenshi_templates.xml) whose root widget has the Kenshi_Button1Skin skin.
+        controls.Add(new(name, "Button", button with { Y = button.Y + 1, Height = button.Height - 2 }, Loc.Tr(line.Value), action,
+            "Kenshi_Button1Skin", true, buttonProperties, Vector4.Zero, Argument: line.Argument ?? "", Clip: clip));
+    }
+
+    /// <summary>
+    /// One text column of a line (nothing for an empty text); a line with a tooltip is a mouse target (the HUD's own tooltip, anchored on its
+    /// panel).
+    /// </summary>
+    void AddLineText(List<UiControl> controls, string name, UiRect box, string text, string? colour, string align, Dictionary<string, string> face,
+        Dictionary<string, string>? tipProperties, UiRect? clip)
+    {
+        if (text.Length == 0) return;
+
+        var ink = colour ?? MyGuiColours.TemplateInk(UiResources, "Kenshi_TextboxStandardText");
+        var textProperties = LineProperties(face, align, ink, tipProperties);
+        controls.Add(new(name, "TextBox", box, Loc.Tr(text), "", "Kenshi_TextboxStandardText", true, textProperties, Vector4.Zero,
+            Pickable: tipProperties is not null, Clip: clip));
+    }
+
+    /// <summary>
+    /// A line part's properties: <paramref name="face"/>, its alignment and colour, then the line's tooltip, in one map sized for them all.
+    /// </summary>
+    static Dictionary<string, string> LineProperties(Dictionary<string, string> face, string align, string colour,
+        Dictionary<string, string>? tipProperties)
+    {
+        var properties = new Dictionary<string, string>(face.Count + 2 + (tipProperties?.Count ?? 0));
+        foreach (var (key, value) in face) properties[key] = value;
+        properties["TextAlign"] = align;
+        properties["TextColour"] = colour;
+        if (tipProperties is not null) foreach (var (key, value) in tipProperties) properties[key] = value;
+
+        return properties;
+    }
+
+    /// <summary>
+    /// A text line's label and value boxes in <paramref name="row"/>. The value sits right of the label's column (35 % of the row), so a long one
+    /// (a French weather notice) is cut short instead of running over the label. When the label is wider than that column, as "Total Weight:" in
+    /// the inventory's narrow data panel at a small interface scale (#1038), the value starts after the label as measured; when both do not fit,
+    /// the value stays whole and the label is cut.
+    /// </summary>
+    (UiRect Label, UiRect Value) LineColumns(UiRect row, HudLine line, string labelFont, string valueFont)
+    {
+        var value = row with { X = row.X + row.Width * 0.35f, Width = row.Width * 0.65f };
+        if (line.Label.Length == 0) return (row, row);
+        if (line.Value.Length == 0 || line.Action is not null || UiPainter is not { } painter) return (row, value);
+
+        float minimum = TitleOpen ? 0 : StandardPixels;
+        float labelWidth = painter.MeasureText(labelFont, Loc.Tr(line.Label), Height, 0, minimum).Width;
+        float valueWidth = painter.MeasureText(valueFont, Loc.Tr(line.Value), Height, 0, minimum).Width;
+        float gap = 4 * UiScale;
+        float right = row.X + row.Width;
+        float start = Math.Max(value.X, row.X + labelWidth + gap);
+        start = Math.Max(row.X, Math.Min(start, right - valueWidth));
+        if (start == value.X) return (row, value);
+
+        var label = row with { Width = Math.Max(0, start - gap - row.X) };
+        return (labelWidth + gap + valueWidth > row.Width ? label : row, row with { X = start, Width = right - start });
     }
 
     /// <summary>
@@ -815,13 +904,19 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     }
 
     /// <summary>
+    /// A right press on a storage's Put or Take priority button in the building panel: the level goes down (Meitou's).
+    /// </summary>
+    bool PriorityRightDown(Vector2 p) =>
+        UiVisible && MyGuiPresentation.HitTest(ArrangeUi(), p.X, p.Y) is { } c && BuildingSelection.PriorityRightClick(c.Action);
+
+    /// <summary>
     /// Returns true when the click belonged to the HUD or the interface (the camera input should not see it).
     /// </summary>
     public bool MouseDown(MouseButton button, Vector2 p, bool shift, bool ctrl = false, bool alt = false)
     {
         Mouse = p;
         UiInput++;
-        (InventoryWindows.PressShift, InventoryWindows.PressCtrl) = (shift, ctrl);
+        (InventoryWindows.PressShift, InventoryWindows.PressCtrl, InventoryWindows.PressAlt) = (shift, ctrl, alt);
         TooltipRuntime.HideTooltip();   // a press captures the mouse, which hides a tooltip (MyGUI)
         if (button == MouseButton.Left && FeedbackPanel.FeedbackButtonDown(p)) return true;
         if (CharacterEditor.EditorPointerDown(button, p)) return true;
@@ -840,6 +935,7 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
         // A right press on a squad bar portrait held 0.25 s opens the member's context menu; a quicker release over it selects the member and
         // focuses the camera on it, as the double click (FUN_140413d80, FUN_140415630, docs/game/ui-input.md "Squad bar portraits").
         if (button == MouseButton.Right && PortraitBar.SquadBarMemberAt(p) is { } member) return PortraitRightDown(p, member, shift);
+        if (button == MouseButton.Right && PriorityRightDown(p)) return true;
         if (button == MouseButton.Middle && UiVisible && WorldMap.MapPointerDown(p)) return true;
         if (button == MouseButton.Right && !OverHud(p)) return WorldRightDown(p, shift, ctrl, alt);
         return OverHud(p);
@@ -918,7 +1014,8 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
         var kind = Picking.PickAt(p).Kind;
         if (kind == WorldPicking.Picked.Character)
         {
-            var quick = QuickOrder(p)?.Do;
+            // A click that gives the character nothing goes on to its cage when it is one of the player's caged by another faction (FUN_1407fc6e0).
+            var quick = QuickOrder(p) is { } order ? order.Do : CageClick(p, alt);
             if (!ContextMenuWindow.ContextPress(p, quick)) quick?.Invoke();
             return;
         }
@@ -956,7 +1053,21 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     }
 
     /// <summary>
-    /// The talk pointer: <c>s_talk</c> while the character holds a line for the player (Dialogue <c>playerInterruptionDialog</c> +0xc8,
+    /// The quick click's cage order on the character under the cursor with a selection (<see cref="Simulation.Locks.CageClickOrder"/>: Alt picks a
+    /// locked cage or escapes an unlocked one, else the hint) for a caged character of the player's; the simulation tests whose cage it is. Null with
+    /// nobody selected or on any other character.
+    /// </summary>
+    Action? CageClick(Vector2 p, bool alt)
+    {
+        if (SelectedIds().Count == 0 || Picking.PickWhereAt(p, _ => true) is not { } hit) return null;
+        if (Session.CurrentSnapshot.Characters.FirstOrDefault(c => c.Id == hit.Id) is not { IsPlayer: true, Prison: not null }) return null;
+
+        var occupant = hit.Id;
+        return () => Say(new Simulation.Locks.CageClickOrder([], occupant, alt) { Tick = Session.World.Tick, Clicked = true });
+    }
+
+    /// <summary>
+    /// The talk pointer:<c>s_talk</c> while the character holds a line for the player (Dialogue <c>playerInterruptionDialog</c> +0xc8,
     /// <c>FUN_1407fb410</c>), else <c>talk</c>.
     /// </summary>
     string TalkPointer(CharacterSnapshot c) => Session.World.WantsToTalk(c.Id) ? "s_talk" : "talk";
@@ -1021,7 +1132,8 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
                 bool defence = c.FightsPlayer;
                 return ("attk", id, Do(() =>
                 {
-                    if (lead.Turret is not null) Say(new Simulation.Combat.ShootAtOrder(selection, id) { Tick = tick });
+                    // The quick click appends 235 to every selected character's queue, Shift or not (FUN_1407fb410 passes 1 to FUN_1407f9e20).
+                    if (lead.Turret is not null) Say(new Simulation.Combat.ShootAtOrder(selection, id) { Tick = tick, Queued = true });
                     else SquadWindows.OrderOrJob(Data.Gameplay.Ai.TaskType.MeleeAttack, id,
                         () => Say(new Simulation.Combat.AttackOrder(selection, id) { Tick = tick, Picked = true, Defensive = defence }));
                 }));
@@ -1250,11 +1362,17 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
     /// <summary>
     /// The character the camera centres on for <paramref name="c"/>: a carried body is centred where its carrier stands, however deep the chain.
     /// </summary>
-    CharacterSnapshot Carrier(CharacterSnapshot c)
+    internal CharacterSnapshot Carrier(CharacterSnapshot c)
     {
+        var characters = Session.CurrentSnapshot.Characters;
         for (int depth = 0; depth < 8 && !c.CarriedBy.IsNone; depth++)
         {
-            if (Session.CurrentSnapshot.Characters.FirstOrDefault(k => k.Id == c.CarriedBy) is not { } carrier) break;
+            CharacterSnapshot? carrier = null;
+            foreach (var k in characters)
+            {
+                if (k.Id == c.CarriedBy) { carrier = k; break; }
+            }
+            if (carrier is null) break;
 
             c = carrier;
         }
@@ -1270,7 +1388,7 @@ sealed partial class PlayerInterface(WorldSession session, Func<float, float, fl
         if (Session.CurrentSnapshot.Characters.FirstOrDefault(c => c.Id == id) is not { } c) return;
         var view = Session.Camera.Current;
         c = Carrier(c);
-        Session.Camera.Place(new Vector2(c.Position.X, c.Position.Z), view.Yaw, view.Pitch, view.Distance);
+        Session.Camera.Place(new Vector2(c.Position.X, c.Position.Z), view.Yaw, view.Pitch, view.Distance, c.Position.Y);
         Follow = follow ? id : null;
     }
 

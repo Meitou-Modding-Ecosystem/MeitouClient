@@ -43,6 +43,17 @@ public static class TaskFinished
     }
 
     /// <summary>
+    /// Slot 4 of an order entry's own instance while it does not run: a <c>Task_Move</c> class that ran (<paramref name="ran"/>,
+    /// <see cref="Player.OrderEntry.Ran"/>) keeps its byte, so only the base test is left; any other as a fresh instance (<see cref="Fresh"/>).
+    /// </summary>
+    public static bool Idle(World world, int slot, TaskType row, CharacterId target, bool ran)
+    {
+        if (!ran || TaskFinishes.Of(row, !target.IsNone) != TaskFinish.Move) return Fresh(world, slot, row, target);
+
+        return TaskDataTable.Of(row)?.Is(TaskDataFlags.NeverDone) != true;
+    }
+
+    /// <summary>
     /// <c>Task_MeleeAttack</c>'s test (<c>FUN_140334230</c> → <c>FUN_14060cd80</c> on the character's fight state): no target, and no technique
     /// (attack or reaction) still short of 0.99 of its clip.
     /// </summary>
@@ -113,9 +124,17 @@ public static class TaskFinished
 
             // Set only by the update that also ends the task (or asks a replan), which the same character update carries out.
             TaskFinish.OwnEnd => true,
+            TaskFinish.Announcement => !AnnouncementOver(world, slot),
             _ => !Fresh(world, slot, row, target),
         };
     }
+
+    /// <summary>
+    /// A running <c>Task_MakeAnnouncement</c>'s test (<c>FUN_140333f60</c>, <b>Verified</b>): its line was said (<see cref="AiMind.Announced"/>), its
+    /// conversation is over and the message counts as delivered (<c>FUN_140673830</c>, <see cref="AiSystem.MessageDelivered"/>).
+    /// </summary>
+    static bool AnnouncementOver(World world, int slot) =>
+        world.Characters.Cold(slot)?.Ai is { Announced: true } && world.SystemOf<AiSystem>()?.MessageDelivered(world, slot) == true;
 
     /// <summary>
     /// The original's running task for Meitou's act-out, with its character target: a fight is <c>Task_MeleeAttack</c> (4, 227 for an animal) or a
@@ -164,7 +183,7 @@ public static class TaskFinished
     /// <summary>
     /// Whether the act-out has had an update since its start (one started this tick has not).
     /// </summary>
-    static bool Updated(World world, int slot) => world.Characters.Cold(slot)?.Running is not { } run || run.Tick < world.Tick;
+    internal static bool Updated(World world, int slot) => world.Characters.Cold(slot)?.Running is not { } run || run.Tick < world.Tick;
 
     #endregion
 }

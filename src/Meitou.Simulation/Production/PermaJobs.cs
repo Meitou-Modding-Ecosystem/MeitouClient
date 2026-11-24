@@ -123,6 +123,12 @@ public static class PermaJobs
     public static int IndexOf(CharacterCold cold, TaskType type) => cold.Jobs.FindIndex(j => j.Type == type);
 
     /// <summary>
+    /// The type the add function gives an entry of <paramref name="ordered"/>, a job or not (<c>FUN_1405086d0</c>'s first step, <b>Verified</b>): the
+    /// row's +0xc when its +4 and +0xc are set, else the type itself.
+    /// </summary>
+    public static TaskType Remapped(TaskType ordered) => Rules.TryGetValue(ordered, out var rule) && rule.Job != 0 ? rule.Job : ordered;
+
+    /// <summary>
     /// The job an order of <paramref name="ordered"/> becomes (<b>Verified</b>: the row's +0xc when it has one), or null when it cannot be a job and
     /// the order runs once: the type has no row, or the type it becomes has none (beds become 153, which is no job).
     /// </summary>
@@ -156,7 +162,7 @@ public static class PermaJobs
         }
 
         cold.Orders |= CharacterOrders.Jobs;
-        DecisionSystem.Request(cold);   // the job list changed: decided again
+        DecisionSystem.Replan(cold);   // the job add replans (FUN_1405086d0)
         return true;
     }
 
@@ -168,6 +174,26 @@ public static class PermaJobs
     public static bool Give(CharacterCold cold, TaskType ordered, PermaJob target) =>
         (!SquadRegistry.IsAnimal(cold) || JobOf(ordered) is TaskType.AttackEnemies or TaskType.Bodyguard or TaskType.StayCloseToTarget)
             && Add(cold, ordered, target);
+
+    /// <summary>
+    /// A job of a code mod's type the player takes up from a building's menu (<see cref="ModJobOffer"/>, docs/modding.md "Mod jobs"; engine rule,
+    /// not in the original): a character holds one per type, so its first job of <paramref name="type"/> gives way to one on <paramref name="site"/>
+    /// in its place in the list, or the job is added at the end; then the jobs switch turns on and the character plans again, as <see cref="Add"/>.
+    /// False when it holds that job on the site already.
+    /// </summary>
+    public static bool GiveOffered(CharacterCold cold, TaskType type, string site)
+    {
+        int at = IndexOf(cold, type);
+        if (at >= 0 && cold.Jobs[at].Site == site) return false;
+
+        var job = new PermaJob(type, site);
+        if (at >= 0) cold.Jobs[at] = job;
+        else cold.Jobs.Add(job);
+
+        cold.Orders |= CharacterOrders.Jobs;
+        DecisionSystem.Replan(cold);
+        return true;
+    }
 
     /// <summary>
     /// Whether two jobs have the same target: the same character when either follows one, else the same site, else the same saved handle.

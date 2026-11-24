@@ -73,6 +73,10 @@ public abstract class EffectGroup
     /// </summary>
     public IReadOnlyList<EffectUnit> Units => _units;
     /// <summary>
+    /// Whether the group is fading out after a weather or region change: no new units are spawned while retiring.
+    /// </summary>
+    public bool Retiring { get; set; }
+    /// <summary>
     /// The EFFECT's <c>colour multiplier</c> applied to the particles' rgb (Observed: "for weather effects only"; a black multiplier, which would
     /// blank the particles, is ignored: <c>Sand-Stream any altitude</c> has one next to <c>ground colour</c>).
     /// </summary>
@@ -438,7 +442,7 @@ public sealed class RespawningEffectGroup : EffectGroup
 
     public override void Update(float dt, in EffectCamera camera, WeatherEffectInput weather)
     {
-        Schedule(dt, camera);
+        if (!Retiring) Schedule(dt, camera);
         var env = Environment(weather);
         foreach (var u in _units)
         {
@@ -500,13 +504,16 @@ public sealed class GlobalEffectGroup : EffectGroup
     public override void Update(float dt, in EffectCamera camera, WeatherEffectInput weather)
     {
         var node = Node(camera);
-        while (_units.Count < Entry!.Count)
+        if (!Retiring)
         {
-            var u = NewUnit(node);
-            u.Life = float.PositiveInfinity;   // Verified (decompiled), FUN_140103f50: the global handler is made immortal whatever its time to live
-            u.Wrap = UnitWrap.Sphere;
-            u.WrapSize = _size;
-            u.Radius = _size;
+            while (_units.Count < Entry!.Count)
+            {
+                var u = NewUnit(node);
+                u.Life = float.PositiveInfinity;   // Verified (decompiled), FUN_140103f50: the global handler is made immortal whatever its time to live
+                u.Wrap = UnitWrap.Sphere;
+                u.WrapSize = _size;
+                u.Radius = _size;
+            }
         }
         // The camera's direction of movement since the last frame (the game's FUN_1401014f0), for the wrap.
         var moved = _lastEye is { } last ? camera.Eye - last : Vector3.Zero;
@@ -589,7 +596,7 @@ public sealed class GlobalPointEffectGroup : EffectGroup
             else if (d2 <= 4 * r2) middle++;
         }
         int need = count * 3 - _units.Count;
-        if (need > 0)
+        if (!Retiring && need > 0)
         {
             int a = Math.Max(Math.Min(need, count - inner), 0);
             int b = Math.Max(Math.Min(need - a, count - middle), 0);
@@ -660,12 +667,15 @@ public sealed class BurstEffectGroup(PuSystemDef system, int seed, EffectWorld w
 {
     /// <summary>
     /// A unit at <paramref name="position"/>, turned by <paramref name="orientation"/>, emitting for <paramref name="seconds"/>, its particles
-    /// <paramref name="size"/> times as big and <paramref name="lifeScale"/> times as long-lived.
+    /// <paramref name="size"/> times as big and <paramref name="lifeScale"/> times as long-lived, its emitters placed <paramref name="stretch"/>
+    /// times as far out (<see cref="ParticleSimulation.Stretch"/>), its particles kept in its frame with <paramref name="keepLocal"/>
+    /// (<see cref="ParticleSimulation.KeepLocal"/>).
     /// </summary>
     /// <param name="recolour">A colour the particles take in place of their texture's hue: kept as a negative tint, which the renderer's fragment
     /// program reads as that.</param>
     /// <returns>The unit, which its owner may move while it emits (its particles stay in the world where they were thrown).</returns>
-    public EffectUnit Spawn(Vector3 position, Quaternion orientation, float seconds, float size, float lifeScale, Vector3? recolour = null)
+    public EffectUnit Spawn(Vector3 position, Quaternion orientation, float seconds, float size, float lifeScale, Vector3? recolour = null,
+        float stretch = 1, bool keepLocal = false)
     {
         var u = NewUnit(position);
         if (recolour is { } colour) u.Tint = -Vector3.Max(colour, new Vector3(1e-4f));
@@ -673,7 +683,9 @@ public sealed class BurstEffectGroup(PuSystemDef system, int seed, EffectWorld w
         u.Life = seconds;
         u.Size = size;
         u.LifeScale = lifeScale;
-        u.Radius *= size * lifeScale;
+        u.Stretch = stretch;
+        u.KeepLocal = keepLocal;
+        u.Radius *= size * lifeScale * Math.Max(stretch, 1);
         return u;
     }
 

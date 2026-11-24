@@ -362,7 +362,7 @@ sealed class GameLoop(GameHost host)
             IsVisible = false,
             FramesPerSecond = 0,
             UpdatesPerSecond = 0,
-        }, _vsync, dlss: true, frameGeneration: _frameGenerationAsked, hdr: _hdrAtStart);
+        }, _vsync, dlss: true, frameGeneration: _frameGenerationAsked, hdr: _hdrAtStart, monitor: host.WorldOptions.Monitor);
         _frameGenerationLoaded = FrameGenerationSetup.Available(_display, _frameGenerationAsked) ? _frameGenerationAsked : FrameGenerationMethod.Off;
         host.Streamline = _display.Streamline;
         host.Ngx = _display.Ngx;
@@ -384,7 +384,7 @@ sealed class GameLoop(GameHost host)
         bool fullScreen = host.Config.FullScreen && !host.WorldOptions.Windowed && !_headless;
         (_savedVSync, _savedFullScreen) = (_vsync, fullScreen);
         if (_window is null) { }
-        else if (fullScreen) BorderlessFullScreen.Toggle(_window);
+        else if (fullScreen) BorderlessFullScreen.Toggle(_window, _display.Monitor);
         else if (!host.WorldOptions.SizeGiven && !host.WorldOptions.HiddenWindow)
             _window.WindowState = WindowState.Maximized;   // maximising would show a hidden window
         host.BeginLoadingScreen(_display);   // its textures and fonts are made before the window shows
@@ -513,10 +513,14 @@ sealed class GameLoop(GameHost host)
             GunnerFacingChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.GunnerFacesBarrel = on),
             PunchReachChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.PunchReachFix = on),
             AnimalMovesChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.AnimalMovesFix = on),
+            TurretAssaultChanged = on => EachSystem<Simulation.Combat.CombatSystem>(combat => combat.TurretAssault = on),
             BenchFacingChanged = on => host.Session.World.BenchFacingFix = on,
+            SeatBedsChanged = on => host.Session.World.SeatBedFix = on,
             PrisonPoseChanged = on => host.Session.World.PrisonPoseFix = on,
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
+            CounterTalkChanged = on => host.Session.World.CounterTalk = on,
+            AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TimeSpeedsChanged = () => host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed),
             AnimalsPickUpChanged = on => EachSystem<Simulation.Player.PlayerSystem>(players => players.AnimalsPickUp = on),
@@ -544,6 +548,7 @@ sealed class GameLoop(GameHost host)
             (population.CampaignAncestorsOnce, population.KeepWild, population.ResidentSchedule) =
                 (host.Config.CampaignAncestorsOnce, host.Config.KeepWild, host.Config.ResidentSchedule);
             population.OffscreenOverrides = host.Config.OffscreenOverrides;
+            population.KeepDowned = host.Config.KeepDowned;
         }
 
         foreach (var production in host.Session.World.Systems.OfType<Simulation.Production.ProductionSystem>())
@@ -803,7 +808,7 @@ sealed class GameLoop(GameHost host)
     /// </summary>
     void ToggleFullScreen()
     {
-        if (_window is not null) BorderlessFullScreen.Toggle(_window);
+        if (_window is not null) BorderlessFullScreen.Toggle(_window, _display.Monitor);
     }
 
     /// <summary>
@@ -1409,7 +1414,7 @@ sealed class GameLoop(GameHost host)
         var pointer = PreparePointer(takeFile);
         host.PlayBench.BenchLap(5);
         if (_display.BeginFrame(size.X, size.Y)) DrawFrame(size, pointer, takeFile);
-        else if (host.ScreenshotRequested && host.AgentChannel.ShotPath is not null && ++host.ShotNoFrame >= 30)
+        else if (host is { ScreenshotRequested: true, AgentChannel.ShotPath: not null } && ++host.ShotNoFrame >= 30)
             host.AgentChannel.ControlShotFailed("the frame cannot be drawn (window minimised or device lost)");
         UpdateStats(dt);
         _totalFrames++;
@@ -1483,7 +1488,10 @@ sealed class GameLoop(GameHost host)
         host.Session.World.Profile.Enabled = host.DebugMenu.Profiler is { Showing: not FrameProfiler.Mode.Off }
             || host.GameOptions.PlayBench is not null || SpikeLog.Enabled;
         host.UpdateLoadingPause();
+
+        // TICKS HAPPEN HERE!
         if (!host.Covered) host.Session.Advance(frameDt);   // loading and arrival preserve the loaded world's exact time
+
         host.Duel.DuelHoldClock();
         double advanceMs = Stopwatch.GetElapsedTime(a0).TotalMilliseconds;
         host.AdvanceTotal += advanceMs;
@@ -1500,6 +1508,7 @@ sealed class GameLoop(GameHost host)
         host.UpdateNav();
         host.DebugOverlays.UpdateNavOverlay();
         host.DebugOverlays.UpdateInspectorOverlay();
+        host.TownRangeRing.Update();
         host.BuildingSync.UpdateBuildings();
         host.PlayBench.BenchLap(2);
     }
@@ -1584,7 +1593,7 @@ sealed class GameLoop(GameHost host)
     {
         if (host.SkyArrival is not null || host.TitleScreen.TitleVisible || !(_tour.Active || !host.Session.Camera.IsFree && !_cinemaHolds)) return;
         var eye = host.Camera.Eye;
-        float shortfall = host.Session.Camera.EyeGroundAt(eye.X, eye.Z) + Data.World.KenshiCamera.EyeClearance(host.Camera.Distance) - eye.Y;
+        float shortfall = host.Session.Camera.EyeGroundAt(eye.X, eye.Z, eye.Y) + Data.World.KenshiCamera.EyeClearance(host.Camera.Distance) - eye.Y;
         // Over a hair only: at the clearance's edge the ground read under the eye wavers by a few ten-thousandths frame to frame, and lifting by
         // that moved the eye by a float step now and then, a jump of a pixel or two for a character close to it.
         if (shortfall > 1e-3f) host.Camera.Target += new Vector3(0, shortfall, 0);

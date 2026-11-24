@@ -37,6 +37,15 @@ sealed class NewGameLaunch(GameHost host)
             return;
         }
 
+        LeaveForMainMenu();
+    }
+
+    /// <summary>
+    /// The main menu's load: the new world of <see cref="HandleMainMenu"/>, the title or game menu shown. Also where a load whose world was already
+    /// swapped in fails (GameHost.StepSceneLoad, #1198): that world is left half-ticked and must not run.
+    /// </summary>
+    internal void LeaveForMainMenu()
+    {
         host.StartSceneLoad(mainMenuTransition: true, host.TitleScreen.TitleHour, GameHost.Stage("build", () =>
         {
             var built = host.Saves.BuildSystems(interactive: true);
@@ -58,6 +67,7 @@ sealed class NewGameLaunch(GameHost host)
             host.Sound.AudioMainMenu();
             return null;
         }));
+        host.ActiveSceneLoad!.ToMainMenu = true;
     }
 
     /// <summary>
@@ -107,7 +117,6 @@ sealed class NewGameLaunch(GameHost host)
                         world.RestoreSeed(seed);
                         world.Player.BanditsLoot = nextDifficulty.BanditsLoot;
                         spawned = built.Population!.StartPlayer(world, chosen);
-                        world.TellReady(fromSave: false);
                     });
                 }
                 catch (Exception e)
@@ -115,6 +124,8 @@ sealed class NewGameLaunch(GameHost host)
                     Console.Error.WriteLine($"new game  {e}");
                     throw new GameHost.SceneLoadFailed($"New game failed: {e.Message}");
                 }
+
+                host.Session.World.TellReady(fromSave: false);   // after the swap, as a load's (GameSaves.SwapInSave)
 
                 host.PopData = nextData;
                 host.Saves.Difficulty = nextDifficulty;
@@ -131,7 +142,7 @@ sealed class NewGameLaunch(GameHost host)
 
                 var lead = host.Session.World.Characters.Previous[spawned!.Leader.Slot].Position;
                 var view = host.Session.Camera.Current;
-                host.Session.Camera.Place(new Vector2(lead.X, lead.Z), view.Yaw, view.Pitch, view.Distance);
+                host.Session.Camera.Place(new Vector2(lead.X, lead.Z), view.Yaw, view.Pitch, view.Distance, lead.Y);
                 host.SettleNewWorld();
                 host.Player.Notice(Loc.Tr("Started {1}", chosen.Name));
                 ShowStartHints();

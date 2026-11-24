@@ -503,6 +503,17 @@ sealed class TooltipRuntime(PlayerInterface player)
     ];
 
     /// <summary>
+    /// <see cref="HudTips"/>' user strings, made once: bound as they are to a widget without properties of its own (the bindings only read them).
+    /// </summary>
+    static readonly (string Widget, Dictionary<string, string> Tip)[] HudTipProperties =
+        [.. HudTips.Select(t => (t.Widget, UiTooltips.TextProperties(t.Text, "fixed")))];
+
+    /// <summary>
+    /// The widgets the bounty rows' tooltip goes on.
+    /// </summary>
+    static readonly string[] BountyWidgets = ["BountyPanel", "BountyText"];
+
+    /// <summary>
     /// A selected building's status word (the medical header) and the tooltip the building classes give it (<b>Observed</b>: the strings of the
     /// <c>vfunc_114</c> status functions, a title followed by its text; the machine classes' words, Meitou applies them to every building).
     /// </summary>
@@ -559,7 +570,7 @@ sealed class TooltipRuntime(PlayerInterface player)
     /// The bounty panel's tooltip rows (<c>FUN_1405d2da0</c>, docs/game/ui-screens.md section 4): per faction its name and <c>c.{1,num}</c> (Main for
     /// the local faction, else Greyed), <c>-Wanted For: </c> with the first four crimes and a <c> </c> row with the rest; then the imprisonment row,
     /// or a rule, the turn-in line and the local faction's expiry. <paramref name="everyExpiry"/> (Meitou UI): each faction's expiry under its own
-    /// rows instead.
+    /// rows instead, none for a prisoner.
     /// </summary>
     static List<(string Key, string Value)> BountyRows(IReadOnlyList<Simulation.Crime.BountyLine> bounties, PrisonView? prison, bool everyExpiry)
     {
@@ -573,7 +584,10 @@ sealed class TooltipRuntime(PlayerInterface player)
             if (crimes.Length > 0)
                 rows.Add((wanted + Loc.Tr("-Wanted For:") + " ", wanted + string.Join(", ", crimes.Take(4))));
             if (crimes.Length > 4) rows.Add((" ", wanted + string.Join(", ", crimes.Skip(4))));
-            if (everyExpiry) rows.Add((Expiry(bounty), ""));
+
+            // No expiry for a prisoner (#1064): the original's panel prints none then, and the lifetime's sweep is skipped in a cage
+            // (FUN_1405cbb80), so a prisoner's hours left run below zero and read like a sentence that is over.
+            if (everyExpiry && prison is null) rows.Add((Expiry(bounty), ""));
         }
 
         if (prison is { } p)
@@ -726,13 +740,11 @@ sealed class TooltipRuntime(PlayerInterface player)
     {
         void Add(string name, string text)
         {
-            var properties = b.Properties.TryGetValue(name, out var existing) ? new Dictionary<string, string>(existing) : [];
-            foreach (var pair in UiTooltips.TextProperties(text, "fixed")) properties[pair.Key] = pair.Value;
-
-            b.Properties[name] = properties;
+            var tip = UiTooltips.TextProperties(text, "fixed");
+            b.Properties[name] = b.Properties.TryGetValue(name, out var existing) ? Merged(existing, tip) : tip;
         }
 
-        foreach (var (widget, text) in HudTips) Add(widget, text);
+        BindHudTips(b);
 
         if (player.Lead() is { } wanted && ShowsBountyPanel(wanted))
         {
@@ -742,13 +754,8 @@ sealed class TooltipRuntime(PlayerInterface player)
             if (wanted.Bounties.Count > 0 && !bare)
                 rows.AddRange(BountyRows(wanted.Bounties, wanted.Prison, player.UiMode == UiMode.Meitou));
 
-            foreach (string name in new[] { "BountyPanel", "BountyText" })
-            {
-                var properties = b.Properties.TryGetValue(name, out var existing) ? new Dictionary<string, string>(existing) : [];
-                foreach (var pair in UiTooltips.RowProperties(rows, "fixed")) properties[pair.Key] = pair.Value;
-
-                b.Properties[name] = properties;
-            }
+            var tip = UiTooltips.RowProperties(rows, "fixed");
+            foreach (string name in BountyWidgets) b.Properties[name] = b.Properties.TryGetValue(name, out var existing) ? Merged(existing, tip) : tip;
         }
 
         if (player.BuildingSelection.BuildingFocus() is { } focus)
@@ -757,6 +764,27 @@ sealed class TooltipRuntime(PlayerInterface player)
             if (BuildingStatusTip(status, player.BuildingSelection.PanelMachine(focus)) is { } tip) Add("HealthText", tip);
         }
         else if (player.Lead() is { Body: not null } lead) Add("HealthText", HudPanels.HealthWord(lead).Tip);
+    }
+
+    /// <summary>
+    /// The HUD widgets' fixed tooltips (<see cref="HudTips"/>) over what the widgets already bind.
+    /// </summary>
+    static void BindHudTips(UiBindings b)
+    {
+        foreach (var (widget, tip) in HudTipProperties)
+            b.Properties[widget] = b.Properties.TryGetValue(widget, out var existing) ? Merged(existing, tip) : tip;
+    }
+
+    /// <summary>
+    /// A copy of <paramref name="existing"/> with <paramref name="tip"/>'s user strings set over it, sized for both.
+    /// </summary>
+    static Dictionary<string, string> Merged(IReadOnlyDictionary<string, string> existing, Dictionary<string, string> tip)
+    {
+        var properties = new Dictionary<string, string>(existing.Count + tip.Count);
+        foreach (var (key, value) in existing) properties[key] = value;
+        foreach (var (key, value) in tip) properties[key] = value;
+
+        return properties;
     }
 
     #endregion
@@ -772,7 +800,7 @@ sealed class TooltipRuntime(PlayerInterface player)
         float Charges, float MaxCharges, int StolenFrom, TradeItemView? Trade, string? MapNote)
     {
         /// <summary>
-        /// Only the name (the machine slots' items, which the original's tooltip shows the same way).
+        /// Only the name (a cell given no tip).
         /// </summary>
         public bool Brief { get; init; }
 
@@ -795,6 +823,11 @@ sealed class TooltipRuntime(PlayerInterface player)
         /// How many items a bag holds (-1: not a bag): an empty one is named "{name} (empty)".
         /// </summary>
         public int BagItems { get; init; } = -1;
+
+        /// <summary>
+        /// The item's code-mod tag (<see cref="InventoryItemView.ModTag"/>; "" none), for the mods' tooltip lines.
+        /// </summary>
+        public string ModTag { get; init; } = "";
 
         /// <summary>
         /// The chance a take of the item goes unseen, for another faction's item its window's opener would steal
@@ -827,6 +860,7 @@ sealed class TooltipRuntime(PlayerInterface player)
                 BagItems = v.BagItems,
                 StealChance = v.StealChance,
                 StolenOwner = v.StolenOwner,
+                ModTag = v.ModTag,
             };
 
         /// <summary>
@@ -1052,6 +1086,7 @@ sealed class TooltipRuntime(PlayerInterface player)
         if (armour is not null) AddArmourTail(lines, t, record, armour);
         AddChargeRows(lines, t, type, function);
         AddMapNoteRows(lines, t);
+        AddModRows(lines, t);
 
         // The record's description closes every other item's tooltip, with no blank row before it (the second tooltip function, FUN_14079f4d0 and its
         // overrides).
@@ -1060,6 +1095,15 @@ sealed class TooltipRuntime(PlayerInterface player)
         if (type == Data.Fcs.FcsRecordType.Weapon) lines.AddRange(WeaponTail(t, model));
 
         return lines;
+    }
+
+    /// <summary>
+    /// The code mods' lines for the item (<see cref="UiRegistration.AddItemTooltipLines"/>), each a label and an optional value.
+    /// </summary>
+    void AddModRows(List<TooltipLine> lines, ItemTip t)
+    {
+        var item = new UiItemTooltipContext(t.Record, t.Name, t.ModTag, t.Quantity, t.Level, t.Quality);
+        foreach (var line in player.ModItemTooltipLines(item)) lines.Add(new(line.Label, line.Value ?? ""));
     }
 
     /// <summary>
@@ -1465,11 +1509,13 @@ sealed class TooltipRuntime(PlayerInterface player)
     /// destroyed (h + d - s at or below -m) says so; below 0 a robotic limb "does not degenerate", a vital part above the KO point is "dangerous"
     /// (death at -m; unconscious: regain consciousness before the KO point) and at it "critical", any other part "getting worse"; from 0 a part more
     /// than 20 short of m needs bandaging (robotic: plainly), less than 5 % short (healing and stun within 5) is okay or healing, else bandaging is
-    /// not urgent; okay or healing, wear above 5 adds a wear line. Under 60 left a line on what the damage affects follows. The original's kick line
-    /// and lost-limb line are not modelled.
+    /// not urgent; okay or healing, wear above 5 adds a wear line. Under 60 left a line on what the damage affects follows. A lost limb (a stump)
+    /// says only that it is gone forever. The original's kick line is not modelled.
     /// </summary>
     internal static string PartTip(HealthPartView part, float? koPoint, bool unconscious)
     {
+        if (part.Limb == Simulation.Bodies.LimbState.Stump) return Loc.Tr("This limb is gone forever.");
+
         float h = part.Flesh, d = part.Bandage, s = part.Stun, m = part.Maximum;
         string text;
 

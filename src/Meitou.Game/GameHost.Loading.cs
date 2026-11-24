@@ -1,6 +1,7 @@
 using Meitou.Game.Host;
 using Meitou.Game.Rendering.Display;
 using Meitou.Game.Rendering.Overlays;
+using Meitou.Localisation;
 
 namespace Meitou.Game;
 
@@ -36,20 +37,22 @@ sealed partial class GameHost
     /// </summary>
     static readonly (string Step, string Label, double Seconds)[] StartSteps =
     [
-        ("scene", "the world", 0.5), ("terrain", "terrain", 0.3), ("colourmap", "terrain colour map (first start only)", 0.3),
-        ("biomes", "terrain textures", 2.0), ("sky", "sky", 0.25), ("weather", "weather", 0.15),
-        ("particles", "weather effects", 0.2), ("water", "water", 0.6), ("reflections", "water", 0.1),
-        ("objects", "buildings", 0.4), ("foliage", "foliage", 0.35),
-        ("shadows", "lighting", 0.3), ("gi", "lighting", 0.15), ("people", "people", 0.3), ("world", "the world", 0.1),
-        ("interface", "the interface", 0.3),
-        ("navmesh", "paths", 0.5), ("characters", "characters", 0.2), ("finishing", "finishing", 0.4), ("view", "the view", 1.2),
+        ("scene", Loc.Mark("the world"), 0.5), ("terrain", Loc.Mark("terrain"), 0.3),
+        ("colourmap", Loc.Mark("terrain colour map (first start only)"), 0.3), ("biomes", Loc.Mark("terrain textures"), 2.0),
+        ("sky", Loc.Mark("sky"), 0.25), ("weather", Loc.Mark("weather"), 0.15), ("particles", Loc.Mark("weather effects"), 0.2),
+        ("water", Loc.Mark("water"), 0.6), ("reflections", Loc.Mark("water"), 0.1), ("objects", Loc.Mark("buildings"), 0.4),
+        ("foliage", Loc.Mark("foliage"), 0.35), ("shadows", Loc.Mark("lighting"), 0.3), ("gi", Loc.Mark("lighting"), 0.15),
+        ("people", Loc.Mark("people"), 0.3), ("world", Loc.Mark("the world"), 0.1), ("interface", Loc.Mark("the interface"), 0.3),
+        ("navmesh", Loc.Mark("paths"), 0.5), ("characters", Loc.Mark("characters"), 0.2), ("finishing", Loc.Mark("finishing"), 0.4),
+        ("view", Loc.Mark("the view"), 1.2),
     ];
     /// <summary>
     /// The steps of a load between scenes (GameHost.Transition.cs).
     /// </summary>
     internal static readonly (string Step, string Label, double Seconds)[] SceneSteps =
     [
-        ("read", "the save", 0.6), ("build", "the world", 0.5), ("people", "people", 0.3), ("finishing", "finishing", 0.2), ("view", "the view", 1.2),
+        ("read", Loc.Mark("the save"), 0.6), ("build", Loc.Mark("the world"), 0.5), ("people", Loc.Mark("people"), 0.3),
+        ("finishing", Loc.Mark("finishing"), 0.2), ("view", Loc.Mark("the view"), 1.2),
     ];
     /// <summary>
     /// The steps of the load running: <see cref="StartSteps"/>, or <see cref="SceneSteps"/> between scenes.

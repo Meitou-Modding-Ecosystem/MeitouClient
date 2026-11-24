@@ -707,6 +707,11 @@ public sealed class PopulationData
     }
 
     /// <summary>
+    /// The FACTION record id at position <paramref name="index"/> of <see cref="Factions"/>; null for one outside it.
+    /// </summary>
+    public string? FactionId(int index) => (uint)index < (uint)Factions.Count ? Factions[index].Id : null;
+
+    /// <summary>
     /// The faction <c>Wildlife</c> (<c>3943-gamedata.base</c>): a spawned squad's faction when nothing else gives one (<c>FUN_1408fe6b0</c>); -1
     /// when absent.
     /// </summary>
@@ -1039,6 +1044,12 @@ public sealed class PopulationSettings
     public bool CampaignAncestorsOnce { get; init; } = true;
 
     /// <summary>
+    /// Fixes option: a loaded campaign takes its phase, fight, arrival, announcement and carry clocks from Meitou's WAR_SAVESTATE keys. Off: they are
+    /// ignored and each clock starts as the original's after a load (the phase at the load's hour, the rest not started); they are written either way.
+    /// </summary>
+    public bool KeepCampaignClocks { get; init; } = true;
+
+    /// <summary>
     /// Meitou: a wild site keeps its squads' characters while it is unloaded and makes the same ones again. Faithful: they are dropped (and a save's
     /// wild platoon despawned on leaving), as the original.
     /// </summary>
@@ -1050,6 +1061,12 @@ public sealed class PopulationSettings
     /// nothing for them off screen.
     /// </summary>
     public bool ResidentSchedule { get; init; } = true;
+
+    /// <summary>
+    /// Meitou: a squad that unloads splits off each member lying knocked out inside the loaded zones, as it does a carried one, so a guard carried
+    /// off and put down stays (#1085). Faithful: he goes with his squad once out of view, as the original.
+    /// </summary>
+    public bool KeepDowned { get; init; } = true;
 
     /// <summary>
     /// Meitou: a town that is not loaded takes its <c>override town</c> at the next look once one qualifies (<see cref="TownOverrides"/>).

@@ -56,7 +56,7 @@ sealed class FurnitureUse(PlayerInterface player)
                 var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, b.Yaw);
                 var placed = footprint.Place(b.Position, yaw);
                 if (player.Picking.BuildingRayT(ray, placed, footprint.YMin, footprint.YMax, b.Record, b.Position, b.Position.Y, yaw) is { } t
-                    && t < bestT && AboveViewedFloor?.Invoke(b.Position) != true && !player.Hidden(ray, t))
+                    && t < bestT && AboveViewedFloor?.Invoke(b.Position) != true && !player.Obscured(ray, t))
                 {
                     (hit, bestT) = ((b, t), t);
                 }
@@ -91,6 +91,18 @@ sealed class FurnitureUse(PlayerInterface player)
     /// The selected characters carrying someone.
     /// </summary>
     CharacterId[] Carriers() => [.. player.Selected().Where(c => !c.Carrying.IsNone).Select(c => c.Id)];
+
+    /// <summary>
+    /// The selected characters carrying someone a cage takes: no animal. The original's cage rows give Put in (108) only when the carried
+    /// character's animal test (vfunc <c>0x248</c>) is null, and no row at all for a carried animal (<c>FUN_1407a6bc0</c>, <b>Verified</b>; #1048).
+    /// </summary>
+    CharacterId[] CageCarriers() => [.. player.Selected().Where(c => !c.Carrying.IsNone && !CarriesAnimal(c)).Select(c => c.Id)];
+
+    /// <summary>
+    /// Whether the one <paramref name="carrier"/> carries is an animal.
+    /// </summary>
+    bool CarriesAnimal(CharacterSnapshot carrier) =>
+        player.Session.CurrentSnapshot.Characters.FirstOrDefault(c => c.Id == carrier.Carrying) is { Animal: true };
 
     /// <summary>
     /// The selection sleeps in <paramref name="bed"/>.
@@ -140,9 +152,12 @@ sealed class FurnitureUse(PlayerInterface player)
                 : ("Sleep", () => SleepIn(bed)),
         };
 
-        // A bed the player built: its site's verbs too (dismantle...), which its quick click no longer reaches.
+        // A bed the player built: its site's verbs too (dismantle...), which its quick click no longer reaches, and the code mods' job offers.
         if (player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => bed.Id == s.Id + "@bed0") is { } site)
+        {
             verbs.AddRange(player.Build.SiteVerbs(site));
+            verbs.AddRange(player.Build.OfferedJobs(site));
+        }
 
         player.ContextMenuWindow.OpenMenu = new(player.Build.Services?.ItemName(bed.Record) ?? bed.Record, pending.At, verbs);
     }
@@ -174,7 +189,7 @@ sealed class FurnitureUse(PlayerInterface player)
             var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, c.Yaw);
             var placed = footprint.Place(c.Position, yaw);
             if (player.Picking.BuildingRayT(ray, placed, footprint.YMin, footprint.YMax, c.Record, c.Position, c.Position.Y, yaw) is { } t
-                && t < bestT && AboveViewedFloor?.Invoke(c.Position) != true && !player.Hidden(ray, t))
+                && t < bestT && AboveViewedFloor?.Invoke(c.Position) != true && !player.Obscured(ray, t))
             {
                 (hit, bestT) = ((c, t), t);
             }
@@ -187,7 +202,7 @@ sealed class FurnitureUse(PlayerInterface player)
     /// The verbs of a cage (the original's cage rows, <c>FUN_1407a6bc0</c>, <b>Verified</b>). Another faction's: locked, Pick Lock (76), Use Tools
     /// (285), Use Strength (286); unlocked, Put in (108) when a selected character carries someone, else Get in (107), or Set Free (110) when
     /// occupied. The player's own: Unlock (78) or Lock (77) by its lock, then Put in when empty and a selected character carries someone, Set Free
-    /// when occupied (the release unlocks it).
+    /// when occupied (the release unlocks it). A carried animal is no one to put in, and its carrier gets no Get in (<see cref="CageCarriers"/>).
     /// </summary>
     /// <param name="clicked">The verbs give the orders of a quick right click (<see cref="Simulation.Player.OrderCommand.Clicked"/>).</param>
     internal List<(string Caption, Action Give)> CageVerbs(CageSpot cage, bool clicked = false)
@@ -218,7 +233,7 @@ sealed class FurnitureUse(PlayerInterface player)
             return;
         }
 
-        var carriers = Carriers();
+        var carriers = CageCarriers();
         if (carriers.Length > 0)
         {
             verbs.Add(("Put in",
@@ -254,7 +269,7 @@ sealed class FurnitureUse(PlayerInterface player)
             return;
         }
 
-        var carriers = Carriers();
+        var carriers = CageCarriers();
         if (carriers.Length > 0)
         {
             verbs.Add(("Put in",
@@ -263,7 +278,10 @@ sealed class FurnitureUse(PlayerInterface player)
                     Cage = cage.Id, Tick = player.Session.World.Tick, Clicked = clicked,
                 })));
         }
-        else verbs.Add(("Get in", () => player.Say(new GetInCageOrder([], cage.Id) { Tick = player.Session.World.Tick, Clicked = clicked })));
+        else if (Carriers().Length == 0)
+        {
+            verbs.Add(("Get in", () => player.Say(new GetInCageOrder([], cage.Id) { Tick = player.Session.World.Tick, Clicked = clicked })));
+        }
     }
 
     /// <summary>
@@ -285,9 +303,7 @@ sealed class FurnitureUse(PlayerInterface player)
     {
         if (player.SelectedIds().Count == 0 || PickCageAt(p)?.Cage is not { } cage) return false;
 
-        var verbs = CageVerbs(cage);
-
-        if (!player.InventoryWindows.PressShift && player.ContextMenuWindow.Menu(Loc.Tr("Cage"), p, verbs) is { } now)
+        if (!player.InventoryWindows.PressShift && CageMenu(cage, p) is { } now)
         {
             player.ContextMenuWindow.OpenMenu = now;
             return true;
@@ -296,7 +312,21 @@ sealed class FurnitureUse(PlayerInterface player)
         // The quick order is the cage's use (108 / 107 / 76), never the own cage's Lock or Unlock.
         var clickedVerbs = CageVerbs(cage, clicked: true);
         Action? quick = cage.Occupant.IsNone ? clickedVerbs.FirstOrDefault(v => v.Caption is not ("Lock" or "Unlock")).Give : null;
-        return player.ContextMenuWindow.ContextPressOn(p, at => player.ContextMenuWindow.Menu(Loc.Tr("Cage"), at, CageVerbs(cage)), quick);
+        return player.ContextMenuWindow.ContextPressOn(p, at => CageMenu(cage, at), quick);
+    }
+
+    /// <summary>
+    /// The cage's menu: its verbs, and for one the player built its site's (Repair 95, Dismantle 96, sorted in by order number as the original's
+    /// building rows, so the own cage reads Unlock, Dismantle, Put in; #1089) and the code mods' job offers.
+    /// </summary>
+    internal ContextMenuWindow.ContextMenu? CageMenu(CageSpot cage, Vector2 at)
+    {
+        var verbs = CageVerbs(cage);
+        if (player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == cage.Id) is not { } site)
+            return player.ContextMenuWindow.Menu(Loc.Tr("Cage"), at, verbs);
+
+        verbs.AddRange(player.Build.SiteVerbs(site));
+        return player.ContextMenuWindow.Menu(Loc.Tr("Cage"), at, verbs, player.Build.OfferedJobs(site));
     }
 
     #endregion
@@ -341,7 +371,7 @@ sealed class FurnitureUse(PlayerInterface player)
             var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, c.Yaw);
             var placed = footprint.Place(c.Position, yaw);
             if (player.Picking.BuildingRayT(ray, placed, footprint.YMin, footprint.YMax, c.Record, c.Position, c.Position.Y, yaw) is { } t
-                && t < bestT && AboveViewedFloor?.Invoke(c.Position) != true && !player.Hidden(ray, t))
+                && t < bestT && AboveViewedFloor?.Invoke(c.Position) != true && !player.Obscured(ray, t))
             {
                 (hit, bestT) = ((c, t), t);
             }
@@ -425,7 +455,7 @@ sealed class FurnitureUse(PlayerInterface player)
             var turn = door.Rotation ?? Quaternion.CreateFromAxisAngle(Vector3.UnitY, door.Yaw);
 
             if (player.GroundItemPicks.RayNears(ray, mesh, at, turn) && WorldPicking.RayMesh(ray, mesh, at, turn) is { } t && t < bestT
-                && !player.Hidden(ray, t - DoorPickSlack))
+                && !player.Obscured(ray, t - DoorPickSlack))
             {
                 (best, bestT) = (((door, state.Locked), t), t);
             }
@@ -464,9 +494,11 @@ sealed class FurnitureUse(PlayerInterface player)
             return true;
         }
 
+        // The door's quick order is appended to the queue, Shift or not (FUN_1407fc6e0 gives it through FUN_1407f9e20 with the keep flag set,
+        // Verified by disassembly); the broken door's Repair clears it.
         void Quick() => player.Say(DoorBroken(pick.Door)
             ? new Simulation.Construction.BuildOrder([], pick.Door.Id) { Tick = player.Session.World.Tick }
-            : new DoorOrder([], pick.Door.Id, alt) { Tick = player.Session.World.Tick, Clicked = true });
+            : new DoorOrder([], pick.Door.Id, alt) { Tick = player.Session.World.Tick, Clicked = true, Queued = true });
 
         ContextMenuWindow.ContextMenu? DoorMenu(Vector2 at) =>
             player.ContextMenuWindow.Menu(Loc.Tr("Door"), at, player.ContextMenuWindow.DoorVerbs(pick));
@@ -507,7 +539,7 @@ sealed class FurnitureUse(PlayerInterface player)
                 var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, d.Yaw);
                 var placed = footprint.Place(d.Position, yaw);
                 if (player.Picking.BuildingRayT(ray, placed, footprint.YMin, footprint.YMax, d.Record, d.Position, d.Position.Y, yaw) is { } t
-                    && t < bestT && AboveViewedFloor?.Invoke(d.Position) != true && !player.Hidden(ray, t))
+                    && t < bestT && AboveViewedFloor?.Invoke(d.Position) != true && !player.Obscured(ray, t))
                 {
                     (hit, bestT) = ((d, t), t);
                 }
@@ -588,7 +620,7 @@ sealed class FurnitureUse(PlayerInterface player)
     {
         if (player.Ray(pixel) is not { } ray || player.Build.Services is not { } host) return null;
 
-        float bestT = player.Picking.GroundHit(ray.Origin, ray.Direction) is { } ground ? Vector3.Distance(ray.Origin, ground) : 6000;
+        float bestT = player.Picking.PickReach(ray.Origin, ray.Direction).Reach;
         (string, string, float)? best = null;
         foreach (var candidate in host.Placement.StaticAlong(ray.Origin, ray.Direction, bestT))
         {
@@ -599,7 +631,7 @@ sealed class FurnitureUse(PlayerInterface player)
             var hull = candidate.Footprint.Place(b.Position, b.Rotation);
             var hit = player.Picking.BuildingRayT(ray, hull, candidate.Footprint.YMin, candidate.Footprint.YMax, b.BuildingId, b.Position, y,
                 b.Rotation);
-            if (hit is not { } t || t >= bestT || player.Hidden(ray, t) || host.WorldInfo(b) is not { Turret: true, Destroyed: false }) continue;
+            if (hit is not { } t || t >= bestT || player.Obscured(ray, t) || host.WorldInfo(b) is not { Turret: true, Destroyed: false }) continue;
 
             (best, bestT) = ((b.Key, b.BuildingId, t), t);
         }
@@ -669,7 +701,7 @@ sealed class FurnitureUse(PlayerInterface player)
                 var yaw = Quaternion.CreateFromAxisAngle(Vector3.UnitY, b.PlacementYaw);
                 var placed = footprint.Place(b.Position, yaw);
                 if (player.Picking.BuildingRayT(ray, placed, footprint.YMin, footprint.YMax, b.Record, b.Position, b.Position.Y, yaw) is { } t
-                    && t < bestT && AboveViewedFloor?.Invoke(b.Position) != true && !player.Hidden(ray, t))
+                    && t < bestT && AboveViewedFloor?.Invoke(b.Position) != true && !player.Obscured(ray, t))
                 {
                     (hit, bestT) = ((b, t), t);
                 }

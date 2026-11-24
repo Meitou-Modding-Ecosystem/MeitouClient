@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using Meitou.Game;
 using Meitou.Game.DevTools;
+using Meitou.Game.Effects;
 using Meitou.Game.Host;
 using Meitou.Simulation;
 using Meitou.Simulation.Combat;
@@ -41,6 +42,22 @@ sealed class GameMods(GameHost host)
     /// This frame's hits handed to the mods' feeds, kept to avoid allocating.
     /// </summary>
     readonly List<CombatHit> _frameHits = [];
+    /// <summary>
+    /// The world the mods' effects were queued for; a new world drops them.
+    /// </summary>
+    World? _effectsFor;
+    /// <summary>
+    /// Plays the mods' effects; made with the first one.
+    /// </summary>
+    ModEffectPlayer? _effectPlayer;
+    /// <summary>
+    /// The world the mods' glows were set for and its game second at the last frame; a new world drops them.
+    /// </summary>
+    (World? World, double Seconds) _glowsFor;
+    /// <summary>
+    /// This frame's glows, kept to avoid allocating.
+    /// </summary>
+    readonly List<(GlowTarget Target, GlowNow Glow)> _frameGlows = [];
 
     /// <summary>
     /// Starts the JIT warm-up now, or (with code mods enabled) once they are initialized.
@@ -76,6 +93,7 @@ sealed class GameMods(GameHost host)
         // The world's body options were made from the config before this, so settings taken in from a mod reach them here.
         _builtInNotices = BuiltInMods.Adopt(host.Config, host.Install);
         (data.BodyOptions.SquadXp, data.BodyOptions.OthersXp) = (host.Config.SquadXp, host.Config.OthersXp);
+        data.BodyOptions.SquadSkillXp = Meitou.Game.Settings.SkillXp.Rates(host.Config.SquadSkillXp);
 
         if (host.DataPhase?.Mods is { } prepared) StartPrepared(prepared, host.DataPhase.Enabled, db, data);
         else LoadMods(db, data);
@@ -173,11 +191,71 @@ sealed class GameMods(GameHost host)
     }
 
     /// <summary>
-    /// Once a frame: a notice for each mod system the world stopped after a fault (docs/modding.md "Tick systems").
+    /// Once a frame, after the hits: the mods' queued effects start and the playing ones follow their characters (docs/modding.md "Visual
+    /// effects"). Nothing without code mods; a new world drops the old world's effects.
+    /// </summary>
+    internal void UpdateModEffects()
+    {
+        if (Mods is null) return;
+
+        var effects = Mods.Effects;
+        _effectPlayer ??= new ModEffectPlayer(host);
+        effects.Resolve ??= _effectPlayer.Resolve;
+        effects.Exists ??= _effectPlayer.Exists;
+        var world = host.Session?.World;
+        if (!ReferenceEquals(_effectsFor, world))
+        {
+            _effectsFor = world;
+            effects.Clear();
+        }
+        if (!effects.Idle) _effectPlayer.Advance(effects);
+    }
+
+    /// <summary>
+    /// Once a frame: ages the mods' glows by the game clock (pause and game speed hold and hasten them) and hands them to the character
+    /// renderer by draw key (docs/modding.md "Glow"). Nothing without code mods; a new world drops the old world's glows.
+    /// </summary>
+    internal void UpdateModGlows()
+    {
+        if (Mods is null) return;
+
+        var glows = Mods.Glows;
+        var world = host.Session?.World;
+        double now = host.Session?.Clock.GameSeconds ?? 0;
+        if (!ReferenceEquals(_glowsFor.World, world))
+        {
+            _glowsFor = (world, now);
+            glows.Clear();
+        }
+        glows.Advance((float)Math.Clamp(now - _glowsFor.Seconds, 0, 1));
+        _glowsFor.Seconds = now;
+        ShowGlows(glows);
+    }
+
+    /// <summary>
+    /// Puts this frame's glows into the character renderer's table (left empty when none glow).
+    /// </summary>
+    void ShowGlows(ModGlows glows)
+    {
+        if (host.Gpu?.Characters is not { } crowd) return;
+
+        crowd.Glows.Clear();
+        if (glows.Count == 0) return;
+
+        glows.Current(_frameGlows);
+        foreach (var (target, glow) in _frameGlows) crowd.SetGlow(host.DrawKey(target.On), target, glow.Colour, glow.Strength);
+    }
+
+    /// <summary>
+    /// Once a frame: a notice for each mod system the world stopped after a fault (docs/modding.md "Tick systems") and one for each mod that
+    /// failed anywhere as built for another version of the game (<see cref="Content.CodeModFaults.Tell"/>).
     /// </summary>
     internal void UpdateModFaults()
     {
-        if (Mods is null || host.Session?.World is not { } world) return;
+        if (Mods is null) return;
+
+        while (Content.CodeModFaults.TryTakeNotice(out var outdated)) Notice(outdated);
+        if (host.Session?.World is not { } world) return;
 
         while (world.TryTakeModFaultNotice(out var notice)) Notice(notice);
     }
@@ -248,7 +326,8 @@ sealed class GameMods(GameHost host)
     /// The squads of the world just loaded that a code mod made autonomous or kept out of the faction size count, when that mod is not running now
     /// (not installed, refused or failed to start), go back to the player (<see cref="Simulation.Ai.SquadAutonomy.DropUnowned"/>) and count again
     /// (<see cref="Simulation.Factions.SquadManagement.DropUnownedUncounted"/>), and lose the shops, purses and sleep it gave them, each with a
-    /// notice; between ticks, before the first.
+    /// notice; the NPC platoons it held in its name move on their own again (<see cref="Simulation.Population.PopulationSystem.DropUnownedHolds"/>,
+    /// a log line only); between ticks, before the first.
     /// </summary>
     internal void DropUnownedAutonomy(World world)
     {
@@ -269,6 +348,11 @@ sealed class GameMods(GameHost host)
 
         int woken = Simulation.Factions.SquadManagement.DropUnownedDormant(world, running.Contains);
         if (woken > 0) Notice($"{woken} squad(s) a mod that is not loaded put to sleep are awake again.");
+
+        // NPC platoons a missing mod held go back to the population; the player sees no change, so the log only.
+        int released = Simulation.Population.PopulationSystem.DropUnownedHolds(world, running.Contains);
+        if (released > 0)
+            Console.WriteLine($"mods      {released} platoon(s) a mod that is not loaded held move on their own again.");
     }
 
     /// <summary>
@@ -309,10 +393,26 @@ sealed class GameMods(GameHost host)
             action.Held = playing && actions.Held(action.Action);
             if (!playing || !actions.Pressed(action.Action)) continue;
 
-            context ??= new Game.Host.Input.ModKeyContext(host.Session.CurrentSnapshot, host.Player.SelectedIds(), host.Session.World.Tick,
-                host.Session.World.Commands.Enqueue);
+            context ??= KeyContext();
             action.Press(context);
         }
+    }
+
+    /// <summary>
+    /// A key action press's context: the snapshot on screen, the selection, the tick, the command queue and the modifiers held now.
+    /// </summary>
+    Game.Host.Input.ModKeyContext KeyContext()
+    {
+        var input = host.Session.Input;
+        bool Held(Game.Host.Input.Key left, Game.Host.Input.Key right) => input.IsHeld(left) || input.IsHeld(right);
+
+        return new Game.Host.Input.ModKeyContext(host.Session.CurrentSnapshot, host.Player.SelectedIds(), host.Session.World.Tick,
+            host.Session.World.Commands.Enqueue)
+        {
+            Ctrl = Held(Game.Host.Input.Key.LeftControl, Game.Host.Input.Key.RightControl),
+            Shift = Held(Game.Host.Input.Key.LeftShift, Game.Host.Input.Key.RightShift),
+            Alt = Held(Game.Host.Input.Key.LeftAlt, Game.Host.Input.Key.RightAlt),
+        };
     }
 
     /// <summary>
@@ -357,6 +457,7 @@ sealed class GameMods(GameHost host)
         catch (Exception e)
         {
             Console.Error.WriteLine($"mod       {command.Owner}: debug command '{command.Label}' failed: {e}");
+            Content.CodeModFaults.Tell(command.Owner, e);
             return $"{command.Owner}: {e.GetBaseException().Message}";
         }
     }

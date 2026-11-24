@@ -36,6 +36,11 @@ sealed class ContextMenuWindow(PlayerInterface player)
     internal static readonly Vector4 VerbHover = new(0.86f, 0.62f, 0.2f, 1);
 
     /// <summary>
+    /// The colour of an unavailable row's caption.
+    /// </summary>
+    internal static readonly Vector4 UnavailableInk = new(0.5f, 0.48f, 0.43f, 1);
+
+    /// <summary>
     /// A context menu: its title, where it opens and its verbs (caption and what it gives).
     /// </summary>
     internal sealed record ContextMenu(string Title, Vector2 At, IReadOnlyList<(string Caption, Action Give)> Verbs);
@@ -151,17 +156,19 @@ sealed class ContextMenuWindow(PlayerInterface player)
         NearestSelected(at, player.Selected()) is { } lead ? Lockpicking.Chance(level, lead.LockpickSkill) : null;
 
     /// <summary>
-    /// A trader's customer: the selected character nearest it that stands and is no animal; null when none does.
+    /// A trader's customer, or a talker's: the selected character nearest it that stands and is no animal; null when none does.
     /// </summary>
     CharacterSnapshot? Customer(CharacterSnapshot trader) => NearestSelected(trader.Position, player.Selected().Where(c => !c.Down && !c.Animal));
 
     /// <summary>
-    /// Talk To (12) when the target has something to say to the talker: the first selected character that is no animal (an animal never talks, as
-    /// the quick click's receiver <c>FUN_1407fae70</c> skips them).
+    /// Talk To (12) when the target has something to say to the talker: the selected character nearest it that stands and is no animal, as the
+    /// quick click picks it. The original's menu (<c>FUN_1407fa650</c> → <c>FUN_1407f9e20</c>, <b>Verified</b>) orders every selected character;
+    /// Meitou orders only that one by the owner's choice, and the others keep their queues.
     /// </summary>
-    void AddTalkVerb(List<(string, Action)> verbs, CharacterId id)
+    void AddTalkVerb(List<(string, Action)> verbs, CharacterSnapshot target)
     {
-        if (player.Selected().FirstOrDefault(c => !c.Animal) is not { } talker || !player.Session.World.CanTalk(id, talker.Id)) return;
+        var id = target.Id;
+        if (Customer(target) is not { } talker || !player.Session.World.CanTalk(id, talker.Id)) return;
 
         verbs.Add(("Talk To", () => player.Say(new Simulation.Dialogue.TalkOrder(talker.Id, id) { Tick = player.Session.World.Tick })));
     }
@@ -190,10 +197,18 @@ sealed class ContextMenuWindow(PlayerInterface player)
     static int? OrderOf(string caption) => VerbOrders.TryGetValue(SplitChance(caption).Caption, out int order) ? order : null;
 
     /// <summary>
-    /// The menu for <paramref name="verbs"/>, as the original fills it: an animals-only selection keeps only its orders, the rest sorted by order
-    /// number; null when none is left.
+    /// Whether <paramref name="caption"/> is the label of one of the original's verbs. A code mod's job offer may not take one: its row would read
+    /// as the game's.
     /// </summary>
-    internal ContextMenu? Menu(string title, Vector2 at, List<(string Caption, Action Give)> verbs)
+    internal static bool IsGameVerb(string caption) => OrderOf(caption) is not null;
+
+    /// <summary>
+    /// The menu for <paramref name="verbs"/>, as the original fills it: an animals-only selection keeps only its orders, the rest sorted by order
+    /// number. Then <paramref name="offered"/>, the rows of the code mods' job offers (<see cref="Building.BuildMode.OfferedJobs"/>): an offer
+    /// names who it is for, so its row stays for an animals-only selection too. Null when no row is left.
+    /// </summary>
+    internal ContextMenu? Menu(string title, Vector2 at, List<(string Caption, Action Give)> verbs,
+        IReadOnlyList<(string Caption, Action Give)>? offered = null)
     {
         var selected = player.Selected();
         IEnumerable<(string Caption, Action Give)> kept = verbs;
@@ -201,6 +216,8 @@ sealed class ContextMenuWindow(PlayerInterface player)
             kept = kept.Where(v => OrderOf(v.Caption) is { } o && AnimalVerbOrders.Contains(o));
 
         var list = kept.Select((v, i) => (v, i)).OrderBy(x => OrderOf(x.v.Caption) ?? int.MaxValue).ThenBy(x => x.i).Select(x => x.v).ToList();
+        if (offered is not null) list.AddRange(offered);
+
         return list.Count == 0 ? null : new ContextMenu(title, at, list);
     }
 
@@ -280,11 +297,50 @@ sealed class ContextMenuWindow(PlayerInterface player)
             }));
         }
 
-        // Shift turns an order into a job (SquadPanel).
-        List<(string, Action)> rows = [.. verbs.Select(v => (v.Item1, player.SquadWindows.JobOrOrder(v.Item1, id, v.Item2)))];
+        // Shift turns an order into a job (SquadPanel); a medic verb no selected character has the kit for is unavailable.
+        List<(string, Action)> rows = [.. verbs.Select(v => KitVerb(v.Item1, player.SquadWindows.JobOrOrder(v.Item1, id, v.Item2)))];
         rows.AddRange(player.ModMenuVerbs(target));
         return rows;
     }
+
+    /// <summary>
+    /// A medic verb (First Aid, Repairs, Splint Injuries) made unavailable (<see cref="Available"/>) when no selected character has its kit at hand
+    /// (<see cref="CharacterSnapshot.HasMedkit"/>, <see cref="CharacterSnapshot.HasSplintKit"/>: what the order's start would refuse with "I don't
+    /// have a medkit." or "I don't have a splint kit."); other verbs as they are.
+    /// </summary>
+    (string, Action) KitVerb(string caption, Action give) => caption switch
+    {
+        "First Aid" or "Repairs" => Available(caption, give, player.Selected().Any(c => c.HasMedkit)),
+        "Splint Injuries" => Available(caption, give, player.Selected().Any(c => c.HasSplintKit)),
+        _ => (caption, give),
+    };
+
+    /// <summary>
+    /// A row the selection cannot carry out now, with the setting on (<see cref="PlayerInterface.GreyUnavailableVerbs"/>): drawn greyed; a plain
+    /// click does nothing, a Shift click gives the row's own action (which turns an order into its job). Meitou only: the original draws and gives
+    /// every row alike.
+    /// </summary>
+    sealed class UnavailableVerb(PlayerInterface player, Action give)
+    {
+        /// <summary>
+        /// The row chosen: its action with Shift held, else nothing.
+        /// </summary>
+        public void Choose()
+        {
+            if (player.SlowModifier) give();
+        }
+    }
+
+    /// <summary>
+    /// A row as it is when <paramref name="available"/> or the setting is off, else its unavailable form (<see cref="UnavailableVerb"/>).
+    /// </summary>
+    internal (string Caption, Action Give) Available(string caption, Action give, bool available) =>
+        available || !player.GreyUnavailableVerbs ? (caption, give) : (caption, new UnavailableVerb(player, give).Choose);
+
+    /// <summary>
+    /// Whether a row's action is an unavailable row's (<see cref="Available"/>).
+    /// </summary>
+    static bool IsUnavailable(Action give) => give.Target is UnavailableVerb;
 
     /// <summary>
     /// A caged character: Talk To (12) and Loot (26). Meitou points at an occupied cage with occupant selection as its occupant and shows one menu,
@@ -296,7 +352,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
     void PrisonerVerbs(List<(string, Action)> verbs, CharacterSnapshot target, PrisonView prison, IReadOnlyList<CharacterId> selection, bool down)
     {
         var id = target.Id;
-        if (!down) AddTalkVerb(verbs, id);
+        if (!down) AddTalkVerb(verbs, target);
 
         // 26 unless it is the player's and selected: Trade for the player's own, else Loot (a pickpocket while it is awake).
         if (target.CanOpenInventory && !(target.IsPlayer && selection.Contains(id))) verbs.Add(InventoryVerb(target));
@@ -334,7 +390,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
         else if (selection.Contains(id))
         {
             if (!down)
-                verbs.Add(("Escape", () => player.Say(new GetOutOrder([id]) { Tick = player.Session.World.Tick })));
+                verbs.Add(("Escape", () => player.Say(new GetOutOrder(player.SelectedIds()) { Tick = player.Session.World.Tick })));   // every selected one (FUN_1407f9e20)
         }
         else if (target.CarriedBy.IsNone)
         {
@@ -503,7 +559,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
         verbs.Add(("Attack Unprovoked",
             () => player.Say(new AttackOrder(selection, id) { Tick = player.Session.World.Tick, Picked = true, Unprovoked = true })));
         verbs.Add(("Bodyguard", () => player.Say(new FollowOrder(selection, id) { Guard = true, Tick = player.Session.World.Tick })));
-        AddTalkVerb(verbs, id);
+        AddTalkVerb(verbs, target);
     }
 
     /// <summary>
@@ -515,7 +571,7 @@ sealed class ContextMenuWindow(PlayerInterface player)
         var id = target.Id;
         bool onTurret = player.Selected().LastOrDefault() is { Turret: not null };
         bool hostile = player.PointerPanel.Hostile(target);
-        AddTalkVerb(verbs, id);
+        AddTalkVerb(verbs, target);
 
         // The customer is the selected character nearest the trader that stands (as the quick order's lead), not the first selected.
         if (target.IsTrader && !hostile && Customer(target) is { } customer)
@@ -523,9 +579,9 @@ sealed class ContextMenuWindow(PlayerInterface player)
 
         if (onTurret)
         {
-            // The lead mans a turret: the attacks give way to Shoot At (235), which sends every selected gunner's fire at the target.
-            var gunners = player.Selected().Where(c => c.Turret is not null).Select(c => c.Id).ToArray();
-            verbs.Add(("Shoot At", () => player.Say(new ShootAtOrder(gunners, id) { Tick = player.Session.World.Tick })));
+            // The lead mans a turret: the attacks give way to Shoot At (235), given to every selected character with its queue cleared
+            // (FUN_1407f9e20); one on no turret holds it blocked.
+            verbs.Add(("Shoot At", () => player.Say(new ShootAtOrder(player.SelectedIds(), id) { Tick = player.Session.World.Tick })));
             return;
         }
 
@@ -836,10 +892,11 @@ sealed class ContextMenuWindow(PlayerInterface player)
         {
             var (caption, chance) = SplitChance(menu.Verbs[i].Caption);
             float rowY = y + titleH + i * optionH + optionH * 0.0512821f, rowH = optionH * 0.897436f;
+            var rowInk = IsUnavailable(menu.Verbs[i].Give) ? UnavailableInk : ink;
             controls.Add(new($"context-verb-{i}", "Button", new(x + w * 0.0208333f, rowY, buttonW, rowH), Loc.Tr(caption),
                 "meitou:context", "Kenshi_Button1Skin", true,
                 new Dictionary<string, string> { ["FontName"] = "Kenshi_PaintedTextFont_Medium", ["TextAlign"] = "Center" },
-                default, ink, HoverColour: VerbHover, Pickable: true, Argument: i.ToString(CultureInfo.InvariantCulture)));
+                default, rowInk, HoverColour: VerbHover, Pickable: true, Argument: i.ToString(CultureInfo.InvariantCulture)));
             if (chance is not { } c) continue;
 
             float p = Math.Clamp(c * 0.01f, 0, 1);

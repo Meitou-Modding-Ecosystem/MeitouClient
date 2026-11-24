@@ -1,3 +1,4 @@
+using System.Numerics;
 using Meitou.Data.World;
 using Meitou.Simulation.Population;
 
@@ -10,7 +11,7 @@ namespace Meitou.Simulation.Ai;
 sealed class WorkFunctionality(PopulationData data)
 {
     /// <summary>
-    /// How near a worker must come to each building, by building id (<see cref="RangeOf"/>).
+    /// How near a worker must come to each building, by building id (<see cref="RangeOf(string)"/>).
     /// </summary>
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, float> _ranges = new(StringComparer.Ordinal);
 
@@ -35,13 +36,98 @@ sealed class WorkFunctionality(PopulationData data)
     readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _functions = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The use nodes of each building record, in the building's own frame (<see cref="MarkerOf(string, Vector3, float, Vector3, IWalkability)"/>).
+    /// </summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, Vector3[]> _useNodes = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// How near a worker must come to its building's position: the functionality's <c>use range</c> (the original's <c>UseableStuff</c> reach,
     /// <c>maxUseRange</c>, docs/game/buildings-production.md "Work distance"), <see cref="AiSystem.WorkReach"/> for a building without one.
     /// </summary>
-    public float RangeOf(TownBuilding b) => _ranges.GetOrAdd(b.BuildingId, id =>
+    public float RangeOf(TownBuilding b) => RangeOf(b.BuildingId);
+
+    /// <summary>
+    /// How near a resident pretend-operating a home piece (a workstation or training dummy) must come to it: as <see cref="RangeOf(TownBuilding)"/>
+    /// for the piece's record.
+    /// </summary>
+    public float PieceRangeOf(HomeSpot piece) => RangeOf(piece.Record ?? "");
+
+    /// <summary>
+    /// <c>Building::getPositionMarker(from)</c> of a workplace (<c>FUN_14054b850</c>, <b>Verified</b>; docs/game/buildings-production.md "Work
+    /// distance"): where a worker walks to and what its reach is measured from. With two or more use nodes the one nearest <paramref name="from"/>
+    /// (squared 3D distance), with one that node, with none the building's position. A node that cannot be stood on is passed over and with none
+    /// left the building's position is taken (engine choice, for the original's bad-node map: it skips a node a walk to which proved impossible).
+    /// </summary>
+    public Vector3 MarkerOf(TownBuilding b, Vector3 from, IWalkability walk) => MarkerOf(b.BuildingId, b.Position, b.Yaw, from, walk);
+
+    /// <summary>
+    /// Where a resident pretend-operating a home piece (a workstation or training dummy) walks to and measures its reach from: as
+    /// <see cref="MarkerOf(TownBuilding, Vector3, IWalkability)"/> for the piece as placed (row 221 runs <c>Task_OperateMachine</c> as 87 does).
+    /// </summary>
+    public Vector3 PieceMarkerOf(HomeSpot piece, Vector3 from, IWalkability walk) =>
+        MarkerOf(piece.Record ?? "", piece.Position, piece.PlacementYaw, from, walk);
+
+    /// <summary>
+    /// The functionality's <c>use range</c> of building record <paramref name="id"/>, <see cref="AiSystem.WorkReach"/> without one.
+    /// </summary>
+    float RangeOf(string id) => _ranges.GetOrAdd(id, ReadRange);
+
+    /// <summary>
+    /// Reads the <c>use range</c> of building record <paramref name="id"/>'s functionality (<see cref="RangeOf(string)"/>).
+    /// </summary>
+    float ReadRange(string id) =>
         data.Db.Find(id)?.GetReferences("functionality") is [var link, ..] && data.Db.Find(link.TargetStringId) is { } function
             ? function.GetFloat("use range", AiSystem.WorkReach)
-            : AiSystem.WorkReach);
+            : AiSystem.WorkReach;
+
+    /// <summary>
+    /// The position marker of building record <paramref name="id"/> placed at <paramref name="position"/> turned by <paramref name="yaw"/>
+    /// (<see cref="MarkerOf(TownBuilding, Vector3, IWalkability)"/>).
+    /// </summary>
+    Vector3 MarkerOf(string id, Vector3 position, float yaw, Vector3 from, IWalkability walk)
+    {
+        var nodes = _useNodes.GetOrAdd(id, LocalNodes);
+        if (nodes.Length == 0) return position;
+
+        var turn = Matrix4x4.CreateRotationY(yaw);
+        if (nodes.Length == 1) return position + Vector3.Transform(nodes[0], turn);
+
+        Span<bool> refused = stackalloc bool[nodes.Length];
+        while (Nearest(position, nodes, turn, from, refused) is var (k, at))
+        {
+            if (walk.IsWalkable(at.X, at.Z)) return at;
+            refused[k] = true;
+        }
+
+        return position;
+    }
+
+    /// <summary>
+    /// The use nodes of building record <paramref name="id"/> in the building's own frame, none for a record without them.
+    /// </summary>
+    Vector3[] LocalNodes(string id) =>
+        data.Db.Find(id) is { } record && Locks.FixtureRegistry.UseNodes(data.Db, record) is { } nodes ? [.. nodes.Select(n => n.At)] : [];
+
+    /// <summary>
+    /// The node of <paramref name="nodes"/> nearest <paramref name="from"/> among those not <paramref name="refused"/>, with its place in the
+    /// world; null when every one is refused.
+    /// </summary>
+    static (int Index, Vector3 At)? Nearest(Vector3 position, Vector3[] nodes, Matrix4x4 turn, Vector3 from, ReadOnlySpan<bool> refused)
+    {
+        (int Index, Vector3 At)? best = null;
+        float bestD = float.MaxValue;
+
+        for (int k = 0; k < nodes.Length; k++)
+        {
+            if (refused[k]) continue;
+
+            var at = position + Vector3.Transform(nodes[k], turn);
+            float d = Vector3.DistanceSquared(at, from);
+            if (d < bestD) (best, bestD) = ((k, at), d);
+        }
+
+        return best;
+    }
 
     /// <summary>
     /// The clip a worker plays at a building: its functionality's <c>animation</c>, else <c>stonemine</c> (<c>Task_OperateMachine</c>,

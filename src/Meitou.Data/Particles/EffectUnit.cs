@@ -60,6 +60,11 @@ public sealed class EffectUnit
     /// </summary>
     public float LongestLife { get; }
     /// <summary>
+    /// The unit's particles are a medium that scatters the light it is in (dust, spray thrown up by a foot), whatever the material's blend: the
+    /// Meitou <c>dustlight</c> switch lights them as the scene is (docs/render-post.md "Lit dust"). False for what glows (flames, sparks).
+    /// </summary>
+    public bool Scatters { get; set; }
+    /// <summary>
     /// The unit's simulation while it is active (near the camera); null otherwise.
     /// </summary>
     public ParticleSimulation? Simulation { get; set; }
@@ -91,6 +96,14 @@ public sealed class EffectUnit
     /// See <see cref="Size"/>.
     /// </summary>
     public float LifeScale { get; set; } = 1;
+    /// <summary>
+    /// The node's scale (<see cref="ParticleSimulation.Stretch"/>).
+    /// </summary>
+    public float Stretch { get; set; } = 1;
+    /// <summary>
+    /// The node keeps its particles in its frame (<see cref="ParticleSimulation.KeepLocal"/>).
+    /// </summary>
+    public bool KeepLocal { get; set; }
     /// <summary>
     /// The node's bounding sphere for culling (<see cref="float.PositiveInfinity"/>: always drawn).
     /// </summary>
@@ -210,6 +223,8 @@ public sealed class EffectUnit
             Orientation = Orientation,
             Size = Size,
             LifeScale = LifeScale,
+            Stretch = Stretch,
+            KeepLocal = KeepLocal,
         };
         Anchor = Position;
     }
@@ -244,6 +259,7 @@ public sealed class EffectUnit
         sim.WorldOffset = Anchor;
         sim.Origin = local;
         sim.Orientation = Orientation;   // a steered burst turns with what it follows (ParticleRenderer.MoveBurst)
+        sim.Stretch = Stretch;
         sim.EmissionStopped = Stopped;
         float left = Pending;
         Pending = 0;

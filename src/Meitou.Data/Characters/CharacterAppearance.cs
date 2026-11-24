@@ -1,5 +1,6 @@
 using System.Numerics;
 using Meitou.Data.Fcs;
+using Meitou.Data.Gameplay;
 
 namespace Meitou.Data.Characters;
 
@@ -126,7 +127,7 @@ public sealed record CharacterPart
     public Vector3 PointOffset { get; init; }
 
     /// <summary>
-    /// The part's own placement in the item it belongs to, before the attachment point's (a loaded bolt in its crossbow); null: none.
+    /// The part's own placement in the item it belongs to, before the attachment point's (a loaded bolt in its crossbow, a weapon's scale); null: none.
     /// </summary>
     public Matrix4x4? Local { get; init; }
 
@@ -406,9 +407,15 @@ public sealed class CharacterAppearance
     public Dictionary<string, AttachmentPoint> AttachmentPoints { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Pose weights from the body file, keyed by pose name (only non-zero values).
+    /// Pose weights from the body file, keyed by pose name (only non-zero values), with the code mods' (<see cref="ModLooks.Extras"/>) set over
+    /// them.
     /// </summary>
     public Dictionary<string, float> PoseWeights { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The colour tints code mods lay over the skin (<see cref="ModLooks.Extras"/>, docs/modding.md "Look extras"); none without them.
+    /// </summary>
+    public IReadOnlyList<LookTint> Tints { get; private set; } = [];
 
     /// <summary>
     /// What the build could not resolve or chose to leave out, as readable lines.
@@ -488,6 +495,7 @@ public sealed class CharacterAppearance
         var result = CreateResult(db, race, female, body, bodyFile, loadout, character, faction, random, notes);
         result.Notes.AddRange(notes);
         AddPoseWeights(result, body);
+        if (ModLooks.HasExtras && body is not null) AddExtras(result, body, race, female);
 
         var (items, materials, colours) = CollectItems(db, options, character, loadout, random);
         AddEquipped(db, result, options, race, items);
@@ -638,6 +646,24 @@ public sealed class CharacterAppearance
             SkinToneParameter = body?.SkinTone is { } tone ? Vector3.One - tone : Vector3.Zero,
             HairColour = HairColourOf(db, race, body, random),
         };
+    }
+
+    /// <summary>
+    /// The code mods' extras for a person's look (docs/modding.md "Look extras"): their pose weights set over the body's (0 takes one off), and
+    /// their tints.
+    /// </summary>
+    static void AddExtras(CharacterAppearance result, AppearanceFile body, GameRecord race, bool female)
+    {
+        var context = new LookExtrasContext(body.Record, race, female, result.Head);
+        if (ModLooks.Extras(context) is not { } extras) return;
+
+        foreach (var (name, weight) in extras.PoseWeights)
+        {
+            if (weight != 0) result.PoseWeights[name] = weight;
+            else result.PoseWeights.Remove(name);
+        }
+
+        result.Tints = extras.Tints;
     }
 
     /// <summary>
@@ -1079,14 +1105,15 @@ public sealed class CharacterAppearance
         if (slot == "back" && backCount > 0) slot = "back2";
         string Field(string f) => f == "mesh" && female && weapon.GetPath("mesh female").Length > 0 ? "mesh female" : f;
         bool bare = weapon.GetPath("bare sword").Length > 0;
+        var local = WeaponLocal(weapon, model);
         if ((drawn || both) && bare)
         {
             var shown = !both ? WeaponShown.Always : back ? WeaponShown.BackDrawn : WeaponShown.Drawn;
             Parts.Add(new CharacterPart { Record = weapon, Mesh = weapon.GetPath("bare sword"), Field = "bare sword", Mode = AttachMode.Bone,
-                    Slot = AttachSlot.Weapon, Point = "hands", Material = model, Shown = shown });
+                    Slot = AttachSlot.Weapon, Point = "hands", Material = model, Shown = shown, Local = local });
             if (weapon.GetPath("sheath") is { Length: > 0 } sheath)
                 Parts.Add(new CharacterPart { Record = weapon, Mesh = sheath, Field = "sheath", Mode = AttachMode.Bone, Slot = AttachSlot.Weapon,
-                        Point = slot, Material = model, Shown = shown });
+                        Point = slot, Material = model, Shown = shown, Local = local });
             if (!both) return;
         }
         // Mode-0 items fall back from "mesh female" to "mesh" (ogre-skeleton.md).
@@ -1105,7 +1132,8 @@ public sealed class CharacterAppearance
             Slot = AttachSlot.Weapon,
             Point = slot,
             Material = model,
-            Shown = !(both && bare) ? WeaponShown.Always : back ? WeaponShown.BackSheathed : WeaponShown.Sheathed
+            Shown = !(both && bare) ? WeaponShown.Always : back ? WeaponShown.BackSheathed : WeaponShown.Sheathed,
+            Local = local
         });
     }
 
@@ -1139,6 +1167,13 @@ public sealed class CharacterAppearance
             Material = model,
         });
     }
+
+    /// <summary>
+    /// A weapon's meshes are scaled by the item's and its model's scale fields (<see cref="ItemIconStyle.WeaponScale"/>; <c>setupItemMaterial</c>
+    /// sets it on every WEAPON attachment's node): the wakizashi is the katana's meshes at 0.95 overall and 0.9 in length. Null when unscaled.
+    /// </summary>
+    static Matrix4x4? WeaponLocal(GameRecord weapon, GameRecord? model) =>
+        ItemIconStyle.WeaponScale(weapon, model) is var scale && scale != Vector3.One ? Matrix4x4.CreateScale(scale) : null;
 
     /// <summary>
     /// A crossbow (docs/characters.md "Crossbows", <b>Observed</b>): its <c>mesh</c>, <c>extra mesh loaded</c> / <c>extra mesh unloaded</c> and a
@@ -1207,6 +1242,7 @@ public sealed class CharacterAppearance
             Shape = Shape,
             Beard = Beard,
             SkinToneParameter = SkinToneParameter,
+            Tints = Tints,
             HairColour = HairColour,
             HeadOnly = true,
         };
@@ -1246,6 +1282,7 @@ public sealed class CharacterAppearance
             Shape = Shape,
             Beard = Beard,
             SkinToneParameter = SkinToneParameter,
+            Tints = Tints,
             HairColour = HairColour,
             HiddenLimbs = HiddenLimbs,
             HiddenParts = HiddenParts,

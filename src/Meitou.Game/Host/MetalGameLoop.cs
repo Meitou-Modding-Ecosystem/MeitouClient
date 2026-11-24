@@ -796,9 +796,12 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             },
             systems: systems, walkability: walkability);
         host.Session.World.BenchFacingFix = host.Config.FixBenchFacing;
+        host.Session.World.SeatBedFix = host.Config.FixSeatBeds;
         host.Session.World.PrisonPoseFix = host.Config.FixPrisonPose;
         host.Session.World.CagedAnimalFix = host.Config.FixCagedAnimals;
         host.Session.World.BagSearchFix = host.Config.FixBagSearch;
+        host.Session.World.CounterTalk = host.Config.CounterTalk;
+        host.Session.World.AnimalTargetFix = host.Config.FixAnimalTarget;
         host.Session.World.TakeIntoBackpack = host.Config.TakeIntoBackpack;
         host.Session.World.ActionLog = host.ActionLogs.Log;
         host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed);
@@ -1123,7 +1126,9 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
         {
             SpeedUnit = host.Config.SpeedUnit,
             Floaters = host.Config.Floaters,
+            GreyUnavailableVerbs = host.Config.GreyUnavailableVerbs,
             FeedbackButtonInPlay = host.Config.FeedbackButton,
+            XpLabel = Settings.SkillXp.Label(host.Config),
         };
         host.Player = _hud;
         _hud.LoadUi(host.GameOptions.UiMode ?? host.Config.UiMode, host.Assets.Find);
@@ -1215,6 +1220,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
         _worldGpu.Markers = _moveMarker;
         _worldGpu.NavmeshOverlay = _navOverlay;
         _worldGpu.InspectorOverlay = new NavmeshOverlayRenderer(_ctx);   // the pick & collision inspector's hulls (F10 > Tools)
+        _worldGpu.TownRangeOverlay = new NavmeshOverlayRenderer(_ctx);   // the outposts' build limit rings in build mode
         _worldGpu.HoverOutline = _hoverOutline;
         Console.WriteLine($"metal     HUD ready ({hud.UiMode})");
     }
@@ -1275,7 +1281,11 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             host.Saves.ReadingFolder = host.GameOptions.Load ?? "";
             try
             {
-                var navmesh = host.Saves.SwapInSave(Task.FromResult(startSave), interactive: true, out string summary);
+                // The mesh round the player first, as the menu's load: the save's characters are seated on it when they are made.
+                var read = Task.FromResult(startSave);
+                host.AwaitLoading(host.Saves.NavmeshOfPlayer(read));
+
+                var navmesh = host.Saves.SwapInSave(read, interactive: true, out string summary);
                 host.AwaitLoading(navmesh);
                 host.SettleNewWorld();
                 _hud.FollowSelected();
@@ -1333,9 +1343,12 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
                 foreach (var players in host.Session.World.Systems.OfType<Meitou.Simulation.Player.PlayerSystem>()) players.AnimalsPickUp = on;
             },
             BenchFacingChanged = on => host.Session.World.BenchFacingFix = on,
+            SeatBedsChanged = on => host.Session.World.SeatBedFix = on,
             PrisonPoseChanged = on => host.Session.World.PrisonPoseFix = on,
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
+            CounterTalkChanged = on => host.Session.World.CounterTalk = on,
+            AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TutorialsChanged = on => { if (host.Saves.Tutorials is { } t) t.Enabled = on; },
             ResetTutorials = () => host.Saves.Tutorials?.Reset(),
@@ -1347,6 +1360,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
                         population.KeepWild, population.ResidentSchedule) = (host.Config.KeepRoamers, host.Config.OffscreenFights,
                         host.Config.OffscreenHealing, host.Config.CampaignAncestorsOnce, host.Config.KeepWild, host.Config.ResidentSchedule);
                     population.OffscreenOverrides = host.Config.OffscreenOverrides;
+                    population.KeepDowned = host.Config.KeepDowned;
                 }
                 foreach (var production in host.Session.World.Systems.OfType<Meitou.Simulation.Production.ProductionSystem>())
                     production.UnloadedProduction = host.Config.UnloadedProduction;
@@ -1684,6 +1698,8 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             v => _worldGpu.ParticleDensity = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Night grading strength (0 = game)", 0, 1, () => host.WorldOptions.Post.NightGradeStrength,
             v => host.WorldOptions.Post.NightGradeStrength = MathF.Round(v * 20) / 20, "0.00"));
+        sliders.Add(new Slider(WorldFrame.AdaptiveExposureSlider, 1, 3, () => host.WorldOptions.Post.AdaptiveExposureStrength,
+            v => host.WorldOptions.Post.AdaptiveExposureStrength = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Light shafts strength", 0, 1, () => host.WorldOptions.Post.ShaftStrength,
             v => host.WorldOptions.Post.ShaftStrength = MathF.Round(v * 20) / 20, "0.00"));
         sliders.Add(new Slider("Light shafts air (0 = none)", 0, 4, () => host.WorldOptions.Post.ShaftAir,
@@ -2888,7 +2904,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
             && (_tour.Active || !host.Session.Camera.IsFree && !_tourHolds))
         {
             var clearEye = host.Camera.Eye;
-            float shortfall = host.Session.Camera.EyeGroundAt(clearEye.X, clearEye.Z) +
+            float shortfall = host.Session.Camera.EyeGroundAt(clearEye.X, clearEye.Z, clearEye.Y) +
                 Meitou.Data.World.KenshiCamera.EyeClearance(host.Camera.Distance) - clearEye.Y;
             // Over a hair only.
             if (shortfall > 1e-3f) host.Camera.Target += new Vector3(0, shortfall, 0);
@@ -2912,6 +2928,7 @@ sealed class MetalGameLoop(GameHost host, Data.Gameplay.NewGameStart? start)
         host.UpdateNav();
         host.DebugOverlays.UpdateNavOverlay();
         if (_hud is not null) host.DebugOverlays.UpdateInspectorOverlay();
+        if (_hud is not null) host.TownRangeRing.Update();
         // Diagnostic isolation for the far-travel freeze: skip the runtime building/ground-item/lamps diff.
         if (Environment.GetEnvironmentVariable("MEITOU_METAL_NO_BUILDINGS") != "1") host.BuildingSync.UpdateBuildings();
         // The interior view (docs/formats/zones.md): the player's building opens, its upper floors and their characters are hidden.

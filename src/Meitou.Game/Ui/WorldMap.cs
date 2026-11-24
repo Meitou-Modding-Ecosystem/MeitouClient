@@ -751,11 +751,14 @@ sealed class WorldMap(PlayerInterface player)
             if (trade.Stock.FirstOrDefault(i => i.Index == int.Parse(stockIndex, CultureInfo.InvariantCulture)) is not { } stock)
                 return false;
 
+            var into = player.InventoryWindows.InventoryOwner()?.Id ?? CharacterId.None;
+
             player.Say(new BuyItem(stock.Token, shift ? stock.Quantity : 1)
             {
                 Tick = player.Session.World.Tick,
                 Equip = true,
-                Into = player.InventoryWindows.InventoryOwner()?.Id ?? CharacterId.None,
+                IntoBag = !into.IsNone && player.InventoryWindows.BagShown(into),
+                Into = into,
             });
             return true;
         }
@@ -885,7 +888,7 @@ sealed class WorldMap(PlayerInterface player)
 
         if (machine is null) return false;
 
-        bool inputs = machine.Inputs.Count > 0 || machine.Storage is null;
+        bool inputs = machine.Inputs.Count > 0 || !machine.HasStorage;
         int slot = inputs ? machine.Inputs.ToList().FindIndex(i => i.Item == item.Record) : -1;
         if (inputs && slot < 0) return true;   // no input takes it
 

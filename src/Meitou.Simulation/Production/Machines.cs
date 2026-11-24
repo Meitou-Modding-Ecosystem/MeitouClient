@@ -268,6 +268,20 @@ public sealed class Machine : IPowerDraw
     public byte Status { get; set; }
 
     /// <summary>
+    /// The inputs row 94's finder walks, in list order (<c>FUN_14059d9b0</c>, <b>Verified</b>): those that rate and hold none of their item (slot
+    /// <c>0x560</c>, <c>FUN_140299d00</c>), else, with none such, those with room (slot <c>0x568</c>, <c>FUN_140299b60</c>). An idle bench section
+    /// has no item (<see cref="InputSlot.Idle"/>) and is left out.
+    /// </summary>
+    public IEnumerable<InputSlot> FillOrder
+    {
+        get
+        {
+            var empty = Inputs.Where(i => !i.Idle && i.Rate > 0 && i.Count == 0).ToList();
+            return empty.Count > 0 ? empty : Inputs.Where(i => !i.Idle && i.Count < i.Recipe.Capacity);
+        }
+    }
+
+    /// <summary>
     /// <c>machineHasEmptyInputs</c> (slot 149 <c>FUN_140298b70</c>, <b>Verified</b>): some rated input holds no item and its level is spent (0.001
     /// or less).
     /// </summary>
@@ -336,6 +350,11 @@ public sealed class Machine : IPowerDraw
     /// </summary>
     public bool OnGrid { get; set; }
     /// <summary>
+    /// Its building belongs to no town at all (NO_TOWN, docs/game/buildings-production.md "Town at materialization"), so no power frame runs it and a
+    /// machine that draws power gets none. Derived each tick; not saved, not hashed.
+    /// </summary>
+    public bool NoTown { get; set; }
+    /// <summary>
     /// Whether the battery's town grid charged its batteries overall this tick (see <see cref="OnGrid"/>).
     /// </summary>
     public bool GridCharging { get; set; }
@@ -355,6 +374,21 @@ public sealed class Machine : IPowerDraw
     /// The save's <c>power on</c> (default on; no UI switch yet).
     /// </summary>
     public bool PowerOn { get; set; } = true;
+    /// <summary>
+    /// A storage's put priority, the player's setting on its panel (<see cref="Items.StoragePriority"/>; save key <c>meitou put priority</c>):
+    /// where the game's searches put things first. Normal by default. Engine setting, not in the original.
+    /// </summary>
+    public Items.StoragePriority PutPriority { get; internal set; }
+    /// <summary>
+    /// A storage's take priority, the player's setting on its panel (save key <c>meitou take priority</c>): where the game's searches take
+    /// things from first. Normal by default. Engine setting, not in the original.
+    /// </summary>
+    public Items.StoragePriority TakePriority { get; internal set; }
+
+    /// <summary>
+    /// The storage's priority for <paramref name="use"/> (<see cref="PutPriority"/> or <see cref="TakePriority"/>).
+    /// </summary>
+    public Items.StoragePriority PriorityFor(Items.StorageUse use) => use == Items.StorageUse.Put ? PutPriority : TakePriority;
     /// <summary>
     /// The save's <c>broken</c> (UseableStuff <c>+0x3b6</c>, docs/game/buildings-production.md "Broken machines"): set by every dismantle step
     /// (<c>Building::addDismantleProgress</c>), cleared by a build step that leaves progress above 0, by completion and by the ruin's first tick. A
@@ -435,6 +469,10 @@ public sealed class Machine : IPowerDraw
     /// An item furnace's grid metal (<see cref="ProductionSystem.FurnaceMetal"/>), for its panel; derived each tick, not saved, not hashed.
     /// </summary>
     public float Metal { get; set; }
+    /// <summary>
+    /// The view last published and the values it was made from (<see cref="MachineRegistry.Published"/>); not saved, not hashed.
+    /// </summary>
+    internal MachineViewCache View { get; } = new();
 
     /// <summary>
     /// Adds the machine's state to the world's state hash.
@@ -448,6 +486,13 @@ public sealed class Machine : IPowerDraw
         h.Add(Charge);
         h.Add(Granted);
         if (Broken) h.Add(0x42726B6E);
+        if (PutPriority != Items.StoragePriority.Normal || TakePriority != Items.StoragePriority.Normal)
+        {
+            h.Add(0x50726931);
+            h.Add((int)PutPriority);
+            h.Add((int)TakePriority);
+        }
+
         if (Data.IsFurnace) { h.Add(Burning ? 1 : 0); h.Add(BurnLevel); }
         foreach (var i in Inputs) { h.Add(i.Count); h.Add(i.Level); }
         if (Output is { } o) { h.Add(o.Count); h.Add(o.Progress); }
@@ -508,9 +553,9 @@ public sealed class MachineRegistry
     /// </summary>
     readonly Dictionary<string, Machine> _bySite = new(StringComparer.Ordinal);
     /// <summary>
-    /// The cache of <see cref="Published"/> (null: made again on the next call).
+    /// The machines' views last published, kept while none of them changed.
     /// </summary>
-    IReadOnlyList<MachineSnapshot>? _published;
+    IReadOnlyList<MachineSnapshot> _published = [];
 
     /// <summary>
     /// The number of machines.
@@ -525,18 +570,49 @@ public sealed class MachineRegistry
     /// </summary>
     public Machine? Find(string site) => _bySite.GetValueOrDefault(site);
     /// <summary>
-    /// Bumped on every change the host shows (items, progress, status).
+    /// Whether any machine has a storage priority other than Normal (<see cref="Machine.PutPriority"/>, <see cref="Machine.TakePriority"/>), so the
+    /// game's storage searches rank storages (<see cref="World.StorageMayOutrank"/>). Recounted between ticks, whenever the machines or a priority
+    /// change.
+    /// </summary>
+    public bool AnyStoragePriority { get; private set; }
+    /// <summary>
+    /// Bumped on every change the host shows (items, progress, status): by <see cref="Touch"/> and by a <see cref="Published"/> whose views changed.
     /// </summary>
     public long Version { get; private set; }
+    /// <summary>
+    /// Bumped every tick the machines work (<see cref="ProductionSystem.SlowWorld"/>): the views that also read the characters at the machines (the
+    /// smiths, the research) refresh on it as well as on <see cref="Version"/>.
+    /// </summary>
+    public long Worked { get; private set; }
 
     /// <summary>
-    /// Notes a change the host shows: bumps <see cref="Version"/> and drops the published views.
+    /// Notes a change the host shows: bumps <see cref="Version"/>. The machines' views need no touch (each publish compares them value by value);
+    /// the views made from other state too read the version.
     /// </summary>
-    public void Touch()
+    public void Touch() => Version++;
+
+    /// <summary>
+    /// Notes a tick of the machines' work: bumps <see cref="Worked"/>.
+    /// </summary>
+    internal void Work() => Worked++;
+
+    /// <summary>
+    /// Sets a storage's priority for <paramref name="use"/> and recounts <see cref="AnyStoragePriority"/>; serial phases only.
+    /// </summary>
+    internal void SetPriority(Machine machine, Items.StorageUse use, Items.StoragePriority level)
     {
-        Version++;
-        _published = null;
+        if (use == Items.StorageUse.Put) machine.PutPriority = level;
+        else machine.TakePriority = level;
+
+        RecountPriorities();
+        Touch();
     }
+
+    /// <summary>
+    /// Recounts <see cref="AnyStoragePriority"/> from the machines; serial phases only.
+    /// </summary>
+    internal void RecountPriorities() =>
+        AnyStoragePriority = _all.Any(m => m.PutPriority != Items.StoragePriority.Normal || m.TakePriority != Items.StoragePriority.Normal);
 
     /// <summary>
     /// Adds a machine.
@@ -545,6 +621,7 @@ public sealed class MachineRegistry
     {
         _all.Add(machine);
         _bySite[machine.Site] = machine;
+        RecountPriorities();
         Touch();
     }
 
@@ -558,6 +635,7 @@ public sealed class MachineRegistry
         if (at < 0) _all.Add(machine);
         else _all[at] = machine;
         _bySite[machine.Site] = machine;
+        RecountPriorities();
         Touch();
     }
 
@@ -568,6 +646,7 @@ public sealed class MachineRegistry
     {
         if (!_bySite.Remove(site, out var m)) return false;
         _all.Remove(m);
+        RecountPriorities();
         Touch();
         return true;
     }
@@ -579,6 +658,7 @@ public sealed class MachineRegistry
     {
         _all.Clear();
         _bySite.Clear();
+        AnyStoragePriority = false;
         Touch();
     }
 
@@ -593,7 +673,40 @@ public sealed class MachineRegistry
     }
 
     /// <summary>
-    /// The machines as the host shows them (cached until the next change).
+    /// The machines as the host shows them: each machine's view is made again only when a value it shows changed
+    /// (<see cref="MachineViewCache"/>), and the list and <see cref="Version"/> only when a view or the set of machines changed. Only the machines
+    /// of <paramref name="shown"/> (sites) get their storage's items.
     /// </summary>
-    internal IReadOnlyList<MachineSnapshot> Published(ItemFactory items) => _published ??= [.. _all.Select(m => MachineSnapshot.Of(m, items))];
+    internal IReadOnlyList<MachineSnapshot> Published(ItemFactory items, IReadOnlyList<string> shown)
+    {
+        MachineSnapshot[]? fresh = null;
+
+        for (int i = 0; i < _all.Count; i++)
+        {
+            var m = _all[i];
+            var view = m.View.ViewOf(m, items, shown.Contains(m.Site));
+            if (fresh is null && i < _published.Count && ReferenceEquals(view, _published[i])) continue;
+            fresh ??= Started(i);
+            fresh[i] = view;
+        }
+
+        if (fresh is null)
+        {
+            if (_published.Count == _all.Count) return _published;
+            fresh = Started(_all.Count);
+        }
+
+        Version++;
+        return _published = fresh;
+    }
+
+    /// <summary>
+    /// A new view list for every machine, its first <paramref name="kept"/> views the published ones.
+    /// </summary>
+    MachineSnapshot[] Started(int kept)
+    {
+        var list = new MachineSnapshot[_all.Count];
+        for (int i = 0; i < kept; i++) list[i] = _published[i];
+        return list;
+    }
 }

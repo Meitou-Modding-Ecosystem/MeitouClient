@@ -113,9 +113,59 @@ public sealed class UiBuildingContext(UiSelectedBuilding building, Simulation.Wo
 public sealed record UiSelectedBuilding(string Instance, string? Record, string? SiteId, string Name, bool Owned);
 
 /// <summary>
+/// A line an extension adds to the HUD's town panel under the game's own (<see cref="UiRegistration.AddTownPanelLines"/>): <paramref name="Label"/>
+/// in the panel's label column; <paramref name="Value"/> (null or blank: none) in its value column, as text, or as the caption of a button there
+/// when the line has a <paramref name="Press"/>; a line with a press and no value is one button across the line, captioned with the label.
+/// <paramref name="Tooltip"/> (null: none) shows over the line. A press runs on the host's thread and changes the world only by queueing commands.
+/// </summary>
+public sealed record UiTownLine(string Label, string? Value = null, string? Tooltip = null, Action? Press = null);
+
+/// <summary>
+/// What an extension's town panel lines get: the outpost the panel shows, whether the player's faction owns it, the snapshot the panel is laid out
+/// from, the tick read when asked, and the command queue, through which a press changes the world.
+/// </summary>
+public sealed class UiTownContext(Simulation.Production.OutpostSnapshot town, bool owned, Simulation.WorldSnapshot snapshot, Func<long> tick,
+    Action<Simulation.SimCommand> enqueue)
+{
+    /// <summary>
+    /// The outpost the panel shows: its <see cref="Simulation.Production.OutpostSnapshot.Number"/> is the
+    /// <see cref="Simulation.Construction.PlayerTown.Number"/> commands name it by (<c>world.Buildings.FindTown</c>), its name, centre, radius,
+    /// owner, Open to public and power.
+    /// </summary>
+    public Simulation.Production.OutpostSnapshot Town { get; } = town;
+
+    /// <summary>
+    /// Whether the player's faction owns the outpost, as the panel decides when it lets the player rename it and tick Open to public (true for every
+    /// outpost the panel shows today: it shows only the player's).
+    /// </summary>
+    public bool Owned { get; } = owned;
+
+    /// <summary>
+    /// The snapshot the panel is laid out from (the one on screen).
+    /// </summary>
+    public Simulation.WorldSnapshot Snapshot { get; } = snapshot;
+
+    /// <summary>
+    /// The world's tick now, for a command's <see cref="Simulation.SimCommand.Tick"/>.
+    /// </summary>
+    public long Tick => tick();
+
+    /// <summary>
+    /// Queues a command for the world.
+    /// </summary>
+    public void Enqueue(Simulation.SimCommand command) => enqueue(command);
+}
+
+/// <summary>
 /// What an action handler gets: the frame's data and the control's argument.
 /// </summary>
-public sealed record UiActionContext(UiFrameContext Frame, string Argument);
+public sealed record UiActionContext(UiFrameContext Frame, string Argument)
+{
+    /// <summary>
+    /// A text box's text after the change that ran the action (<see cref="UiNodeKind.TextBox"/>); empty for a click.
+    /// </summary>
+    public string Text { get; init; } = "";
+}
 
 /// <summary>
 /// What an extension's right-click menu rows get (<see cref="UiRegistration.AddCharacterMenuVerbs"/>): the character the menu is for, the selected
@@ -159,7 +209,15 @@ public sealed class UiMenuContext(Simulation.CharacterSnapshot target, IReadOnly
 /// <summary>
 /// A row an extension adds to a character's right-click menu: its caption and what choosing it does (on the host's thread).
 /// </summary>
-public sealed record UiMenuVerb(string Caption, Action Choose);
+public sealed record UiMenuVerb(string Caption, Action Choose)
+{
+    /// <summary>
+    /// The selection cannot carry it out now (for example it lacks the item it needs). With the Interface setting "Unavailable menu rows" on
+    /// Greyed (the default) the row is drawn greyed, a plain click does nothing and a Shift click still chooses it (a mod row reads Shift itself,
+    /// so it can set up a job for later); on Faithful the row is drawn and chosen as any other.
+    /// </summary>
+    public bool Unavailable { get; init; }
+}
 
 /// <summary>
 /// Read-only presentation data. UI extensions cannot mutate UiBindings or receive the simulation world.
@@ -252,6 +310,11 @@ public sealed class UiHost
     readonly Dictionary<string, (string Owner, Action<UiActionContext> Handler)> _actions = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// The text boxes the last <see cref="Arrange"/> laid out, by name (<see cref="DispatchText"/>).
+    /// </summary>
+    readonly Dictionary<string, UiControl> _textBoxes = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// The style overrides in registration order (the last wins).
     /// </summary>
     readonly List<(string Owner, string Target, UiStyle Style)> _overrides = [];
@@ -270,6 +333,47 @@ public sealed class UiHost
     /// The building panel button sources, with their owners, in registration order.
     /// </summary>
     readonly List<(string Owner, Func<UiBuildingContext, IEnumerable<UiBuildingAction>> Actions)> _buildingActions = [];
+
+    /// <summary>
+    /// The most lines the extensions together add to the town panel: as many as the game's own, so the panel at most doubles.
+    /// </summary>
+    public const int MaxTownLines = 4;
+
+    /// <summary>
+    /// The most characters a town panel line's label or value keeps; the panel cuts what does not fit its column.
+    /// </summary>
+    public const int MaxTownLineText = 64;
+
+    /// <summary>
+    /// The most characters a town panel line's tooltip keeps (the tooltip wraps it).
+    /// </summary>
+    public const int MaxTownLineTooltip = 1000;
+
+    /// <summary>
+    /// The extensions' item tooltip line sources (<see cref="UiRegistration.AddItemTooltipLines"/>).
+    /// </summary>
+    internal ItemTooltipLines ItemTips { get; } = new();
+
+    /// <summary>
+    /// The extensions' building panel bar sources (<see cref="UiRegistration.AddBuildingRows"/>).
+    /// </summary>
+    internal BuildingPanelRows BuildingBars { get; } = new();
+
+    /// <summary>
+    /// The town panel line sources, with their owners, in registration order.
+    /// </summary>
+    readonly List<(string Owner, Func<UiTownContext, IEnumerable<UiTownLine>> Lines)> _townLines = [];
+
+    /// <summary>
+    /// The extensions whose town panel lines were left out past <see cref="MaxTownLines"/>, each reported once.
+    /// </summary>
+    readonly HashSet<string> _townLinesCut = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The extensions' character panel line and job panel button sources (<see cref="UiRegistration.AddCharacterPanelLines"/>,
+    /// <see cref="UiRegistration.AddJobPanelButtons"/>).
+    /// </summary>
+    internal CharacterPanelHooks CharacterPanel { get; } = new();
 
     /// <summary>
     /// The contributions: owner, slot, mode (null: every mode), order and factory.
@@ -303,7 +407,8 @@ public sealed class UiHost
 
     /// <summary>
     /// An extension failed (a contribution's build, an action, a map marker source, a right-click menu row source or a row's action, a squad
-    /// AI option source or press, or a building panel button source or press).
+    /// AI option source or press, a building panel button source or press, a town panel line, character panel line or job panel button source or
+    /// press, or lines or buttons past a panel's limit).
     /// </summary>
     public event Action<UiDiagnostic>? Diagnostic;
 
@@ -408,6 +513,11 @@ public sealed class UiHost
         _buildingActions.Add((owner, actions));
 
     /// <summary>
+    /// Adds a town panel line source for <paramref name="owner"/>.
+    /// </summary>
+    internal void AddTownLines(string owner, Func<UiTownContext, IEnumerable<UiTownLine>> lines) => _townLines.Add((owner, lines));
+
+    /// <summary>
     /// Adds a contribution to <paramref name="slot"/> for <paramref name="owner"/>.
     /// </summary>
     internal void Contribute(string owner, string slot, UiMode? mode, int order, Func<UiFrameContext, UiNode> factory) =>
@@ -430,6 +540,10 @@ public sealed class UiHost
     {
         _squadAiOptions.RemoveAll(o => o.Owner == owner);
         _buildingActions.RemoveAll(a => a.Owner == owner);
+        _townLines.RemoveAll(l => l.Owner == owner);
+        ItemTips.Remove(owner);
+        BuildingBars.Remove(owner);
+        CharacterPanel.Remove(owner);
         foreach (string id in _styles.Where(p => p.Value.Owner == owner).Select(p => p.Key).ToArray()) _styles.Remove(id);
         foreach (string id in _controls.Where(p => p.Value.Owner == owner).Select(p => p.Key).ToArray()) _controls.Remove(id);
         foreach (string id in _actions.Where(p => p.Value.Owner == owner).Select(p => p.Key).ToArray()) _actions.Remove(id);
@@ -667,6 +781,141 @@ public sealed class UiHost
     }
 
     /// <summary>
+    /// The lines the extensions add to an item's tooltip (<see cref="ItemTooltipLines.For"/>); a failing source is reported as a
+    /// <see cref="Diagnostic"/> and dropped.
+    /// </summary>
+    public IReadOnlyList<UiItemTooltipLine> ItemTooltipLines(UiItemTooltipContext item) => ItemTips.For(item, Diagnostic);
+
+    /// <summary>
+    /// Whether any extension adds building panel bars (<see cref="BuildingRows"/>).
+    /// </summary>
+    public bool HasBuildingRows => BuildingBars.Any;
+
+    /// <summary>
+    /// The bars the extensions add under the selected building's Condition (<see cref="BuildingPanelRows.For"/>); a failing source is reported as a
+    /// <see cref="Diagnostic"/> and dropped.
+    /// </summary>
+    public IReadOnlyList<UiBuildingRow> BuildingRows(UiBuildingContext context) => BuildingBars.For(context, Diagnostic);
+
+    /// <summary>
+    /// Whether any extension adds character panel lines (<see cref="CharacterPanelLines"/>).
+    /// </summary>
+    public bool HasCharacterPanelLines => CharacterPanel.AnyLines;
+
+    /// <summary>
+    /// The lines the extensions add to the character panel (<see cref="CharacterPanelHooks.Lines"/>), with the town panel lines' rules: at most
+    /// <see cref="CharacterPanelHooks.MaxLines"/>, texts cut, a failing source reported as a <see cref="Diagnostic"/> once and dropped.
+    /// </summary>
+    public IReadOnlyList<UiCharacterLine> CharacterPanelLines(UiCharacterContext context) =>
+        CharacterPanel.Lines(context, GuardedPress, Diagnostic);
+
+    /// <summary>
+    /// Whether any extension adds job panel buttons (<see cref="JobPanelButtons"/>).
+    /// </summary>
+    public bool HasJobPanelButtons => CharacterPanel.AnyButtons;
+
+    /// <summary>
+    /// The buttons the extensions add beside the jobs list (<see cref="CharacterPanelHooks.Buttons"/>), with the town panel lines' rules: at most
+    /// <see cref="CharacterPanelHooks.MaxButtons"/>, captions cut, a failing source reported as a <see cref="Diagnostic"/> once and dropped.
+    /// </summary>
+    public IReadOnlyList<UiJobButton> JobPanelButtons(UiCharacterContext context) => CharacterPanel.Buttons(context, GuardedPress, Diagnostic);
+
+    /// <summary>
+    /// Whether any extension adds town panel lines (<see cref="TownLines"/>).
+    /// </summary>
+    public bool HasTownLines => _townLines.Count > 0;
+
+    /// <summary>
+    /// The lines the extensions add to the town panel, in registration order, at most <see cref="MaxTownLines"/> of all sources together (a copy of
+    /// the sources is walked, so a source may register or dispose). A label or value is cut to <see cref="MaxTownLineText"/> characters and put on
+    /// one line, a blank value is none, and a tooltip is cut to <see cref="MaxTownLineTooltip"/>. A source that throws, or names a line without a
+    /// label, is reported once as a <see cref="Diagnostic"/> and dropped (it is asked whenever the panel is laid out); one whose lines pass the limit
+    /// keeps the lines that fit, the rest left out and reported once. A press that throws is reported each time.
+    /// </summary>
+    public IReadOnlyList<UiTownLine> TownLines(UiTownContext context)
+    {
+        var lines = new List<UiTownLine>();
+        foreach (var entry in _townLines.ToArray())
+        {
+            try
+            {
+                var added = entry.Lines(context)
+                    .Take(MaxTownLines + 1)
+                    .ToList();
+                if (added.Any(l => l is null || string.IsNullOrWhiteSpace(l.Label)))
+                    throw new InvalidOperationException("A town panel line needs a label.");
+
+                int room = MaxTownLines - lines.Count;
+                if (added.Count > room) ReportTownLinesCut(entry.Owner);
+                lines.AddRange(added
+                    .Take(room)
+                    .Select(l => ShownTownLine(entry.Owner, l)));
+            }
+            catch (Exception e)
+            {
+                _townLines.Remove(entry);
+                Diagnostic?.Invoke(new UiDiagnostic(entry.Owner, "town panel lines (dropped)", e));
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// <paramref name="line"/> as the panel shows it: its label and value cut and on one line each (<see cref="OneLine"/>), a blank value none, its
+    /// tooltip cut to <see cref="MaxTownLineTooltip"/> characters, its press guarded under the shown label.
+    /// </summary>
+    UiTownLine ShownTownLine(string owner, UiTownLine line)
+    {
+        string label = OneLine(line.Label);
+        string? value = string.IsNullOrWhiteSpace(line.Value) ? null : OneLine(line.Value);
+        string? tooltip = line.Tooltip is null ? null : Cut(line.Tooltip, MaxTownLineTooltip);
+        var press = line.Press is null ? null : GuardedPress(owner, "town panel line " + label, line.Press);
+        return new UiTownLine(label, value, tooltip, press);
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> cut to <see cref="MaxTownLineText"/> characters first (so a long text costs no more than a short one), then with its
+    /// line breaks, a backslash followed by <c>n</c> (which the painter draws as a break) and other control characters as spaces.
+    /// </summary>
+    internal static string OneLine(string text)
+    {
+        string line = Cut(text, MaxTownLineText)
+            .ReplaceLineEndings(" ")
+            .Replace(@"\n", " ", StringComparison.Ordinal);
+        var chars = line.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (char.IsControl(chars[i])) chars[i] = ' ';
+        }
+
+        return new string(chars);
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> cut to at most <paramref name="max"/> characters, never between the two halves of a character outside the basic plane
+    /// (an emoji).
+    /// </summary>
+    internal static string Cut(string text, int max)
+    {
+        if (text.Length <= max) return text;
+
+        int length = char.IsHighSurrogate(text[max - 1]) ? max - 1 : max;
+        return text[..length];
+    }
+
+    /// <summary>
+    /// Reports once per extension that some of its town panel lines were left out past <see cref="MaxTownLines"/>.
+    /// </summary>
+    void ReportTownLinesCut(string owner)
+    {
+        if (!_townLinesCut.Add(owner)) return;
+
+        var error = new InvalidOperationException($"The town panel holds {MaxTownLines} lines of all extensions together; the rest are left out.");
+        Diagnostic?.Invoke(new UiDiagnostic(owner, "town panel lines (past the limit, left out)", error));
+    }
+
+    /// <summary>
     /// An extension's press that reports a throw as a <see cref="Diagnostic"/> (<paramref name="what"/> names it) instead of passing it on to the
     /// input, and does nothing once its extension is removed.
     /// </summary>
@@ -689,11 +938,17 @@ public sealed class UiHost
     #region Layout
 
     /// <summary>
+    /// A text box's skin when its style names none (the faithful screens' one-line boxes).
+    /// </summary>
+    const string TextBoxSkin = "Kenshi_EditBox";
+
+    /// <summary>
     /// Arrange contributions into named parent rectangles in stable order. A failed contribution is omitted.
     /// </summary>
     public IReadOnlyList<UiControl> Arrange(UiMode mode, int width, int height, UiBindings bindings, IReadOnlyDictionary<string, UiRect> slots)
     {
         _frame = new(this, mode, width, height, bindings);
+        _textBoxes.Clear();
         var result = new List<UiControl>();
         if (width <= 0 || height <= 0) return result;
 
@@ -734,7 +989,9 @@ public sealed class UiHost
         if (visible.Width <= 0 || visible.Height <= 0) return;
 
         bool enabled = parentEnabled && node.Enabled;
-        result.Add(Control(node, b, visible, enabled));
+        var control = Control(node, b, visible, enabled);
+        result.Add(control);
+        if (node.Kind == UiNodeKind.TextBox) _textBoxes[node.Id] = control;
 
         var content = new UiRect(
             b.X + node.Padding, b.Y + node.Padding, Math.Max(0, b.Width - node.Padding * 2), Math.Max(0, b.Height - node.Padding * 2));
@@ -776,9 +1033,23 @@ public sealed class UiHost
         if (image && node.Portrait.Length > 0) properties[RecordPortraits.Property] = node.Portrait;
         else if (image && node.Image.Length > 0) properties["ImageTexture"] = Rendering.Ui.UiPainter.IconTexture(node.Image);
 
-        return new(node.Id, ControlType(node.Kind), image ? bounds : visible, node.Text, node.Action, style.Skin, enabled, properties,
+        bool textBox = node.Kind == UiNodeKind.TextBox;
+        if (textBox) AddTextBoxProperties(node, properties);
+
+        string skin = textBox && style.Skin.Length == 0 ? TextBoxSkin : style.Skin;
+        return new(node.Id, ControlType(node.Kind), image ? bounds : visible, node.Text, node.Action, skin, enabled, properties,
             style.Background, style.Text, style.Hover, style.Active, style.Disabled, node.Pickable, node.Argument, style.TextScale,
             image ? visible : null);
+    }
+
+    /// <summary>
+    /// A text box's edit properties: the mark that routes it through the screens' edit focus (<see cref="MyGuiScreenHost.OverlayEditProperty"/>)
+    /// and its <c>MaxTextLength</c>.
+    /// </summary>
+    static void AddTextBoxProperties(UiNode node, Dictionary<string, string> properties)
+    {
+        properties[MyGuiScreenHost.OverlayEditProperty] = "true";
+        if (node.MaxLength > 0) properties["MaxTextLength"] = node.MaxLength.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -789,6 +1060,7 @@ public sealed class UiHost
         UiNodeKind.Button => "Button",
         UiNodeKind.Label => "TextBox",
         UiNodeKind.Image => "ImageBox",
+        UiNodeKind.TextBox => "EditBox",
         _ => "Widget",
     };
 
@@ -799,14 +1071,31 @@ public sealed class UiHost
     /// <summary>
     /// Returns false for an unregistered action; disabled controls consume clicks without invoking handlers.
     /// </summary>
-    public bool Dispatch(UiControl control)
+    public bool Dispatch(UiControl control) => Dispatch(control, "");
+
+    /// <summary>
+    /// A text event of the screens' edit focus: a text box's text changed, so its action runs with the text (disabled or actionless: nothing). False
+    /// for an event of a screen, not of a text box.
+    /// </summary>
+    public bool DispatchText(MyGuiEvent e)
+    {
+        if (e.Screen != MyGuiScreenHost.OverlayScreen) return false;
+
+        if (e.Action == "text" && _textBoxes.TryGetValue(e.Widget, out var box)) Dispatch(box, e.Text);
+        return true;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="control"/>'s action with <paramref name="text"/> (<see cref="UiActionContext.Text"/>).
+    /// </summary>
+    bool Dispatch(UiControl control, string text)
     {
         if (!control.Enabled) return true;
         if (_frame is null || !_actions.TryGetValue(control.Action, out var action)) return false;
 
         try
         {
-            action.Handler(new(_frame, control.Argument));
+            action.Handler(new(_frame, control.Argument) { Text = text });
         }
         catch (Exception e)
         {
@@ -944,6 +1233,69 @@ public sealed class UiRegistration : IDisposable
         Check();
         ArgumentNullException.ThrowIfNull(actions);
         _host.AddBuildingActions(Id, actions);
+    }
+
+    /// <summary>
+    /// Adds lines to the HUD's town panel, under the game's own (docs/modding.md "Town panel lines"): <paramref name="lines"/> runs on the host's
+    /// thread whenever the panel is arranged, which can be every frame, so it must be cheap, and while a tick may be in flight, so it must not touch
+    /// the world; it reads the context, and a pressed line, never the source itself, changes the world through commands
+    /// (<see cref="UiTownContext.Enqueue"/>), which must check that the outpost still exists when they apply.
+    /// </summary>
+    public void AddTownPanelLines(Func<UiTownContext, IEnumerable<UiTownLine>> lines)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(lines);
+        _host.AddTownLines(Id, lines);
+    }
+
+    /// <summary>
+    /// Adds lines to item tooltips, after the game's own rows and before the description (docs/modding.md "Item tooltip lines"):
+    /// <paramref name="lines"/> runs on the host's thread whenever a tooltip is built, so it must be cheap, and while a tick may be in flight, so it
+    /// reads only its context (the item's record, name, code-mod tag, quantity, level and quality).
+    /// </summary>
+    public void AddItemTooltipLines(Func<UiItemTooltipContext, IEnumerable<UiItemTooltipLine>> lines)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(lines);
+        _host.ItemTips.Add(Id, lines);
+    }
+
+    /// <summary>
+    /// Adds bars under the Condition bar of a selected building, placed piece or piece of furniture (docs/modding.md "Building panel bars"):
+    /// <paramref name="rows"/> runs on the host's thread whenever the panel's bars are bound, which can be every frame, so it must be cheap, and
+    /// while a tick may be in flight, so it must not touch the world; it reads the context. Bars show state only; buttons go through
+    /// <see cref="AddBuildingActions"/>.
+    /// </summary>
+    public void AddBuildingRows(Func<UiBuildingContext, IEnumerable<UiBuildingRow>> rows)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(rows);
+        _host.BuildingBars.Add(Id, rows);
+    }
+
+    /// <summary>
+    /// Adds lines to the HUD's character panel, under its stats lines (docs/modding.md "Character panel lines and job panel buttons"):
+    /// <paramref name="lines"/> runs on the host's thread whenever the panel is arranged, which can be every frame, so it must be cheap, and while a
+    /// tick may be in flight, so it must not touch the world; it reads the context, and a pressed line changes the world through commands
+    /// (<see cref="UiCharacterContext.Enqueue"/>).
+    /// </summary>
+    public void AddCharacterPanelLines(Func<UiCharacterContext, IEnumerable<UiCharacterLine>> lines)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(lines);
+        _host.CharacterPanel.AddLines(Id, lines);
+    }
+
+    /// <summary>
+    /// Adds buttons beside the HUD's jobs list (docs/modding.md "Character panel lines and job panel buttons"): <paramref name="buttons"/> runs on
+    /// the host's thread whenever the HUD is bound, which can be every frame, so it must be cheap and must not touch the world; a press runs for
+    /// the character the buttons were shown for and changes the world through commands (<see cref="UiCharacterContext.Enqueue"/>).
+    /// </summary>
+    public void AddJobPanelButtons(Func<UiCharacterContext, IEnumerable<UiJobButton>> buttons)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(buttons);
+        _host.CharacterPanel.AddButtons(Id, buttons);
     }
 
     /// <summary>

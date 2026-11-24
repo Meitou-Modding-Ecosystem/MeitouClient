@@ -342,7 +342,7 @@ public sealed record InventoryItemView(int Index, string Record, string Name, st
 
     /// <summary>
     /// The view of <paramref name="item"/> as item <paramref name="index"/> of a window: everything the item itself says, none of what depends on
-    /// its holder (stolen marks, stealing chance).
+    /// its holder (stolen marks, stealing chance). A field read here is also recorded by <c>MachineViewCache.RecordItem</c>; keep them in step.
     /// </summary>
     public static InventoryItemView Of(int index, Items.ItemInstance item) =>
         new(index, item.Record, item.Name, item.Section, item.X, item.Y, item.Width, item.Height, item.Quantity, item.Weight, item.Quality)
@@ -510,11 +510,6 @@ public sealed class CharacterSnapshot
     /// The job list (<see cref="CharacterCold.Jobs"/>), first = highest priority.
     /// </summary>
     public IReadOnlyList<Production.PermaJob> Jobs { get; internal set; } = [];
-
-    /// <summary>
-    /// The code mods' jobs (<see cref="CharacterCold.ModJobs"/>).
-    /// </summary>
-    public IReadOnlyList<Production.ModJob> ModJobs { get; internal set; } = [];
     /// <summary>
     /// The path being followed from the next waypoint, for selected and inspected characters only (the host's F11 path view draws it).
     /// </summary>
@@ -531,10 +526,6 @@ public sealed class CharacterSnapshot
     /// The stat-driven body of a person (not a robot, not an animal), from its current stats and hunger; null for the others.
     /// </summary>
     public BodyBuild? Build { get; internal set; }
-    /// <summary>
-    /// What a selected character carries, one line per item (empty for the others).
-    /// </summary>
-    public IReadOnlyList<string> Inventory { get; internal set; } = [];
     /// <summary>
     /// A selected character's bounties, one line per faction that wants it (empty for the others and for one nobody wants).
     /// </summary>
@@ -610,8 +601,9 @@ public sealed class CharacterSnapshot
     /// </summary>
     public IReadOnlyList<Bodies.StatusEffectView> Effects { get; internal set; } = [];
     /// <summary>
-    /// The inventory of a selected character, of the one whose loot window is open, or of a player character whose inventory is shown (null for
-    /// the others).
+    /// The inventory of a character a window can show (null for the others): of the selection, the first by slot, the lead and the selected
+    /// opener of the open loot or container window (every selected one with <see cref="Player.PlayerState.AllSelectedGrids"/>); the open loot's
+    /// body; a player character whose pinned inventory is shown.
     /// </summary>
     public InventoryView? ItemGrid { get; internal set; }
     /// <summary>
@@ -739,6 +731,14 @@ public sealed class CharacterSnapshot
     /// A selected character carrying unworn shackles (<see cref="Locks.LockSystem.CarriedShackles"/>).
     /// </summary>
     public bool CarriesShackles { get; internal set; }
+    /// <summary>
+    /// A selected character for whom First Aid or Repairs would find a kit now (<see cref="FirstAid.FirstAidSystem.MedkitAtHand"/>).
+    /// </summary>
+    public bool HasMedkit { get; internal set; }
+    /// <summary>
+    /// A selected character holding its own splint kit (<see cref="FirstAid.FirstAidSystem.SplintKitAtHand"/>).
+    /// </summary>
+    public bool HasSplintKit { get; internal set; }
     /// <summary>
     /// The number that turns its portrait camera (<see cref="CharacterCold.PortraitSerial"/>).
     /// </summary>
@@ -968,7 +968,7 @@ public sealed record WorldSnapshot(long Tick, IReadOnlyList<CharacterSnapshot> C
     /// </summary>
     public IReadOnlyList<Dialogue.SpeechBubble> Speech { get; init; } = [];
     /// <summary>
-    /// The last thing a conversation asked the host to do (the host acts on each <see cref="Dialogue.DialogueRequest.Id"/> once).
+    /// The last thing a conversation asked the host to do (the host acts on each request object once: ids start again in each world).
     /// </summary>
     public Dialogue.DialogueRequest? DialogueRequest { get; init; }
     /// <summary>
@@ -1141,6 +1141,16 @@ public sealed record WorldSnapshot(long Tick, IReadOnlyList<CharacterSnapshot> C
     /// The power of the building the HUD shows when it is a level building of a town that draws power; null for others.
     /// </summary>
     public Production.LevelPowerView? InspectedLevelPower { get; init; }
+    /// <summary>
+    /// The machine whose lines the HUD shows when the building is a town's generator, research bench or crafting bench (its <c>townwork:</c>
+    /// machine, or a view of one where none is made yet, <see cref="Production.ProductionSystem.TownMachineOf"/>); null for others.
+    /// </summary>
+    public Production.MachineSnapshot? InspectedTownMachine { get; init; }
+    /// <summary>
+    /// The <c>townwork:</c> machine site of the building the HUD shows when it is a standing town building or layout object of the player's faction
+    /// (<see cref="Production.ProductionSystem.OwnTownMachineOf"/>): its window opens on selection; null for others.
+    /// </summary>
+    public string? InspectedOwnMachine { get; init; }
     /// <summary>
     /// The gun numbers of the building the HUD shows when it is a turret (its Stats 1 gun lines); null for others.
     /// </summary>

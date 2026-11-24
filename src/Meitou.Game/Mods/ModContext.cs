@@ -259,21 +259,6 @@ public sealed class ModContext
     }
 
     /// <summary>
-    /// A job (docs/modding.md "Mod jobs"): the context menu of a finished player building of record
-    /// <see cref="Meitou.Simulation.Production.ModJobKind.Building"/> offers its caption to a selection with a character it takes, who then lists it
-    /// in the jobs list. The engine only offers and lists it: the mod's system reads <see cref="Meitou.Simulation.CharacterCold.ModJobs"/> in the
-    /// tick, does the work and saves the jobs. An id another mod took refuses it.
-    /// </summary>
-    public void AddJob(Meitou.Simulation.Production.ModJobKind job)
-    {
-        CheckOpen();
-        ArgumentNullException.ThrowIfNull(job);
-        if (Meitou.Simulation.Production.ModJobs.Refusal(job) is { } refusal) throw new ArgumentException(refusal, nameof(job));
-        if (Pending.Jobs.Any(j => j.Id == job.Id)) throw new ArgumentException($"The mod already has a job '{job.Id}'.", nameof(job));
-        Pending.Jobs.Add(job);
-    }
-
-    /// <summary>
     /// A rule asked whether a wearer may wear an item (docs/modding.md "Wear rules"): <paramref name="rule"/> gets the item's record id, the
     /// wearer's RACE id and whether it is an animal, after the item's own race lists pass, and false refuses the item everywhere a race limit
     /// applies. It may run on any thread, so it must be quick, read no world state and answer the same for the same arguments. A throw counts as
@@ -284,6 +269,45 @@ public sealed class ModContext
         CheckOpen();
         ArgumentNullException.ThrowIfNull(rule);
         Pending.WearRules.Add(rule);
+    }
+
+    /// <summary>
+    /// Rows in the character editor (docs/modding.md "Character editor rows"): <paramref name="source"/> is asked, on the interface's thread, for the
+    /// rows of each character the editor shows (its race, sex, look and whether it is a new game's creation) and answers sliders, lists and colours
+    /// for any tab, shown after the game's own. Their values are kept on the look record under this mod's id, so the editor's CONFIRM, the save and
+    /// EXPORT carry them; read them with <see cref="Data.Characters.ModLooks"/>. Return none for a character the mod has nothing for.
+    /// </summary>
+    public void AddEditorRows(Data.Characters.LookRowSource source)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(source);
+        Pending.LookRows.Add(source);
+    }
+
+    /// <summary>
+    /// This mod's values for a look (docs/modding.md "Character editor rows"): <paramref name="roll"/> writes them on every generated character's
+    /// look, after the game's own rolls, and on the editor's RANDOMISE (<see cref="Data.Characters.LookRollContext.Tab"/>, the tab rolled, null for
+    /// RANDOMISE ALL), with a random sequence of its own. It may run on any thread, so it must be quick, read no world state and write the same
+    /// values for the same arguments. A throw keeps what it wrote and is logged once.
+    /// </summary>
+    public void AddLookRoll(Data.Characters.LookRoll roll)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(roll);
+        Pending.LookRolls.Add(roll);
+    }
+
+    /// <summary>
+    /// Additions to how people are drawn (docs/modding.md "Look extras"): <paramref name="source"/> is asked each time a person's look is built
+    /// (its look record, race, sex and head) and answers pose weights set over the look's own and colour tints on disks of the skin, or null. It may
+    /// run on any thread, so it must be quick, read no world state and answer the same for the same arguments. A throw, or a tint that is not
+    /// valid, adds nothing to that look and is logged once.
+    /// </summary>
+    public void AddLookExtras(Data.Characters.LookExtrasSource source)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(source);
+        Pending.LookExtras.Add(source);
     }
 
     /// <summary>
@@ -372,7 +396,7 @@ public sealed class ModContext
     /// A job type of the mod's own (docs/modding.md "Mod jobs"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up, so
     /// never a game task), which the mod puts in characters' job lists and runs itself. The jobs panel names it <paramref name="name"/>; a save keeps
     /// it in its place in the list under Meitou keys (the original's list never holds it), and a load puts it back while the type is registered.
-    /// One mod per number, whether claimed as a job or an NPC goal type (a mod may claim one number as both).
+    /// One mod per number, whether claimed as a job or a goal type (a mod may claim one number as both).
     /// </summary>
     public void AddJobType(Data.Gameplay.Ai.TaskType type, string name)
     {
@@ -384,11 +408,44 @@ public sealed class ModContext
     }
 
     /// <summary>
-    /// An NPC goal type of the mod's own (docs/modding.md "NPC goals"): a task type number (<see cref="SimulationExtensions.FirstModCode"/> and up,
-    /// so never a game task) that AI_TASK records of a data mod name in AI packages; NPCs whose running package lists it weigh it in the AI's chooser
-    /// by the desire of the goal one of the mod's systems registers (<see cref="Meitou.Simulation.Ai.INpcGoalOwner"/>), and the mod acts it out. Log
-    /// lines and notices name it <paramref name="name"/>. One mod per number, whether claimed as a goal or a job type (a mod may claim one number as
-    /// both); without the mod the goal stays inert.
+    /// An offer of one of the mod's job types on the player's buildings (docs/modding.md "Mod jobs"): the right-click menu of a finished building
+    /// of the player's faction whose record the offer names shows its caption to a selection holding a character it is for, and choosing it gives
+    /// each such character the job on that building, in the place of the one of that type it held. After the type's <see cref="AddJobType"/>; one
+    /// offer per type. Refused: what <see cref="Simulation.Production.ModJobOffer.Refusal"/> names, a caption that is the label of one of the
+    /// game's own verbs, and a building that is no BUILDING of the loaded data.
+    /// </summary>
+    public void AddJobOffer(Simulation.Production.ModJobOffer offer)
+    {
+        CheckOpen();
+        ArgumentNullException.ThrowIfNull(offer);
+        if (!Pending.JobTypes.ContainsKey(offer.Type))
+            throw new InvalidOperationException($"Job type {offer.Type} is not one mod '{Id}' has claimed (AddJobType comes first).");
+        if (Pending.JobOffers.Any(o => o.Type == offer.Type))
+            throw new InvalidOperationException($"Job type {offer.Type} is offered twice by mod '{Id}'.");
+        ThrowIfRefused(offer);
+
+        Pending.JobOffers.Add(offer with { Buildings = [.. offer.Buildings.Distinct(StringComparer.Ordinal)] });
+    }
+
+    /// <summary>
+    /// Throws when the mod's job offer cannot be registered: its own refusal, a caption the game's verbs have, or a building the data lacks.
+    /// </summary>
+    void ThrowIfRefused(Simulation.Production.ModJobOffer offer)
+    {
+        if (offer.Refusal() is { } refusal) throw new ArgumentException(refusal, nameof(offer));
+        if (ContextMenuWindow.IsGameVerb(offer.Caption))
+            throw new ArgumentException($"'{offer.Caption}' is the label of one of the game's own verbs.", nameof(offer));
+
+        string? missing = offer.Buildings.FirstOrDefault(b => Data.Find(b) is not { Type: global::Meitou.Data.Fcs.FcsRecordType.Building });
+        if (missing is not null) throw new ArgumentException($"'{missing}' is not a BUILDING of the loaded data.", nameof(offer));
+    }
+
+    /// <summary>
+    /// A goal type of the mod's own (docs/modding.md "Chooser goals and jobs"): a task type number (<see cref="SimulationExtensions.FirstModCode"/>
+    /// and up, so never a game task) that AI_TASK records of a data mod name in AI packages and goal lists; characters whose lists hold it weigh it in
+    /// the AI's chooser by the desire of the goal one of the mod's systems registers (<see cref="Meitou.Simulation.Ai.IChooserOwner"/>), and the
+    /// mod acts it out. Log lines and notices name it <paramref name="name"/>. One mod per number, whether claimed as a goal or a job type (a mod may
+    /// claim one number as both); without the mod the goal stays inert.
     /// </summary>
     public void AddGoalType(Data.Gameplay.Ai.TaskType type, string name)
     {
@@ -428,6 +485,70 @@ public sealed class ModContext
         ArgumentNullException.ThrowIfNull(view);
         Pending.HitFeeds.Add(new ModHitFeed(Id, view));
     }
+
+    /// <summary>
+    /// Plays a display-only effect on <paramref name="anchor"/> (docs/modding.md "Visual effects"): a world point, a character's bone or held
+    /// weapon, or a building, the system's origin at the anchor, its axes turned to the anchor's frame and its emitters scaled by its stretch,
+    /// following it while it emits; while the anchor cannot be located (not drawn, weapon sheathed, building gone) it pauses, until its lifetime
+    /// ends. <paramref name="effect"/> is an EFFECT record's string id or a particle system name, <paramref name="seconds"/> how long it emits (0
+    /// to <see cref="ModEffects.MaxSeconds"/>), <paramref name="tint"/> the particles' colour (rgb, 1 the full channel, up to
+    /// <see cref="ModEffects.MaxTint"/>; null: their texture's). Each call plays a new one (<see cref="KeepEffect"/> renews one). On the host's
+    /// thread, from a host-side callback such as a combat hit feed, never a tick system; started at the next frame. False when rejected (logged
+    /// once per mod and problem).
+    /// </summary>
+    public bool PlayEffect(string effect, EffectAnchor anchor, float seconds = 1, System.Numerics.Vector3? tint = null) =>
+        _registry.Effects.Play(Id, effect, anchor, tint, seconds);
+
+    /// <summary>
+    /// Plays a display-only effect at a world point: <see cref="PlayEffect(string, EffectAnchor, float, System.Numerics.Vector3?)"/> on
+    /// <see cref="EffectAnchor.At"/>.
+    /// </summary>
+    public bool PlayEffect(string effect, System.Numerics.Vector3 at, float seconds = 1, System.Numerics.Vector3? tint = null) =>
+        PlayEffect(effect, EffectAnchor.At(at), seconds, tint);
+
+    /// <summary>
+    /// Plays a display-only effect on a character's <paramref name="bone"/> (null: the chest, <c>Bip01 Spine2</c>):
+    /// <see cref="PlayEffect(string, EffectAnchor, float, System.Numerics.Vector3?)"/> on <see cref="EffectAnchor.Bone"/>.
+    /// </summary>
+    public bool PlayEffect(string effect, CharacterId on, string? bone = null, float seconds = 1, System.Numerics.Vector3? tint = null) =>
+        PlayEffect(effect, EffectAnchor.Bone(on, bone ?? EffectAnchor.ChestBone), seconds, tint);
+
+    /// <summary>
+    /// Plays <paramref name="effect"/> on <paramref name="anchor"/> as <see cref="PlayEffect(string, EffectAnchor, float,
+    /// System.Numerics.Vector3?)"/>, but as this mod's one for that effect and anchor: called again before it ends it is renewed to
+    /// <paramref name="seconds"/> from then rather than restarted (another tint restarts it), so a mod keeps an aura up by calling it within
+    /// <see cref="ModEffects.MaxSeconds"/>.
+    /// </summary>
+    public bool KeepEffect(string effect, EffectAnchor anchor, float seconds, System.Numerics.Vector3? tint = null) =>
+        _registry.Effects.Keep(Id, effect, anchor, tint, seconds);
+
+    /// <summary>
+    /// Ends this mod's kept <paramref name="effect"/> on <paramref name="anchor"/> (<see cref="KeepEffect"/>); its particles live out. False when
+    /// it keeps none there.
+    /// </summary>
+    public bool StopEffect(string effect, EffectAnchor anchor) => _registry.Effects.Stop(Id, effect, anchor);
+
+    /// <summary>
+    /// Makes <paramref name="target"/> give off light of its own (docs/modding.md "Glow"), display only: a whole character, the blade it holds
+    /// drawn, or its parts in one slot. <paramref name="colour"/> is rgb (1 the full channel, up to <see cref="ModGlows.MaxColour"/>),
+    /// <paramref name="seconds"/> its lifetime (0 to <see cref="ModGlows.MaxSeconds"/>, on the game clock), <paramref name="strength"/> 0 to
+    /// <see cref="ModGlows.MaxStrength"/>. One glow a target: it replaces the one before, fading from where that stood, so calling it again
+    /// before it ends keeps it up with no restart. Particles are separate (<see cref="KeepEffect"/>). On the host's thread, as
+    /// <see cref="PlayEffect(string, EffectAnchor, float, System.Numerics.Vector3?)"/>. False when rejected (logged once per mod and problem).
+    /// </summary>
+    public bool Glow(GlowTarget target, System.Numerics.Vector3 colour, float seconds, float strength = 1) =>
+        _registry.Glows.Start(Id, target, colour, seconds, strength);
+
+    /// <summary>
+    /// Fades out early the glow this mod set on <paramref name="target"/>; false when it set none there.
+    /// </summary>
+    public bool StopGlow(GlowTarget target) => _registry.Glows.Stop(Id, target);
+
+    /// <summary>
+    /// Whether <paramref name="effect"/> (an EFFECT record's string id or a particle system name) names a particle system the game has now, so a
+    /// mod can choose another before asking for it. False before the particles load, while they are off, or off the host's thread.
+    /// </summary>
+    public bool HasEffect(string effect) => _registry.Effects.Has(effect);
 
     /// <summary>
     /// Arranges the faction tab's relations list (docs/modding.md "Faction list"): <paramref name="arrange"/> gets the rows the tab would show,

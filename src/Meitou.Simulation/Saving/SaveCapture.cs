@@ -99,11 +99,22 @@ public static partial class SaveCapture
     }
 
     /// <summary>
-    /// <paramref name="prepared"/> is a <see cref="PrepareBase"/> made with the same <paramref name="loaded"/> (null: made here, which is the
-    /// slow part).
+    /// Captures a world at a tick boundary and updates the derived file fields, ready for callers that consume the save immediately.
     /// </summary>
     public static SaveGame Capture(World world, PopulationData data, SaveClock clock, LoadedSave? loaded = null, SaveCaptureOptions? options = null,
         SaveBuilder? prepared = null)
+    {
+        var game = CaptureState(world, data, clock, loaded, options, prepared);
+        game.UpdateDerived();
+        return game;
+    }
+
+    /// <summary>
+    /// Captures the world's state at a tick boundary. The writer must call <see cref="SaveGame.UpdateDerived"/> before writing the detached save.
+    /// <paramref name="prepared"/> is a <see cref="PrepareBase"/> made with the same <paramref name="loaded"/>, or null to make the base here.
+    /// </summary>
+    public static SaveGame CaptureState(World world, PopulationData data, SaveClock clock, LoadedSave? loaded, SaveCaptureOptions? options,
+        SaveBuilder? prepared)
     {
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(data);
@@ -141,11 +152,11 @@ public static partial class SaveCapture
         // The wild: the nests made so far in the town list the original's way, and the wild squads in the world as new platoons of their nest
         // or sector.
         WriteWild(builder, world, data, options, clock, buildings, races, campItems);
+        WriteNestTowns(factionsPopulation);
 
         options.HandlesWritten?.Invoke(s_memoryPass?.Handles ?? []);
         game.LastingIds = world.LastingIds.Write(game, s_memoryPass?.ColdHandles ?? []);
         WriteMemories();
-        game.UpdateDerived();
         return game;
     }
 
@@ -219,6 +230,9 @@ public static partial class SaveCapture
         // Again, with the states of the buildings first written now (job targets name them by handle).
         buildings = HeldSave.BuildingStates(game);
         MachineSave.Write(game, world);
+
+        // Before the machines and furniture inventories, which write into the entries it makes.
+        world.Interiors.Write(game, world, data, buildings, options.Seed);
         TownMachineSave.Write(game, world);
         FurnitureInventorySave.Write(game, world, data.Db, buildings);
         RuinSave.Write(game, world, data, buildings);
@@ -347,6 +361,45 @@ public static partial class SaveCapture
         /// buildings are written.
         /// </summary>
         public Func<CampaignTown, Hand>? TownHands { get; set; }
+        /// <summary>
+        /// The platoon records whose squad is in a nest, with the nest's wild site: their <c>currenttown</c> is written once the nests are.
+        /// </summary>
+        public readonly List<(FcsRecord Record, int Site)> NestTowns = [];
+    }
+
+    /// <summary>
+    /// Writes a squad's town and arrival hour on its platoon record (<see cref="CurrentTownSave"/>); a nest's handle waits for the nests
+    /// (<see cref="WriteNestTowns"/>). A record written without a blackboard keeps what it holds.
+    /// </summary>
+    static void WriteCurrentTown(FcsRecord record, Ai.Blackboard? board)
+    {
+        if (board is not null) WriteCurrentTown(record, board.InTown, board.InTownSince);
+    }
+
+    /// <summary>
+    /// Writes the town a squad is in and its arrival hour on its platoon record (see the overload above).
+    /// </summary>
+    static void WriteCurrentTown(FcsRecord record, CampaignTown town, double since)
+    {
+        if (s_memoryPass is not { TownHands: { } hands } pass) return;
+
+        CurrentTownSave.Write(record, town, since, hands);
+        if (town.Nest > 0) pass.NestTowns.Add((record, town.Nest - 1));
+    }
+
+    /// <summary>
+    /// Writes the nest handle of each platoon whose squad is in a nest, now that the nests have theirs (<c>FUN_1402688d0</c> finds a nest as the
+    /// squad's town, <c>FUN_14026c2d0</c> writes its handle): the null handle for one the save does not hold.
+    /// </summary>
+    static void WriteNestTowns(PopulationSystem? population)
+    {
+        if (s_memoryPass is not { } pass) return;
+
+        foreach (var (record, site) in pass.NestTowns)
+        {
+            var hand = population is not null && population.NestSaveId(site, out var id) ? id.Handle : Hand.Null;
+            CurrentTownSave.WriteNest(record, hand);
+        }
     }
 
     /// <summary>
@@ -545,7 +598,8 @@ public static partial class SaveCapture
 
     /// <summary>
     /// Each placed town's <c>replacementTown</c> (the TOWN in its place, "" none) and, while replaced, its <c>faction</c>, into its state; a town
-    /// whose new residents are still to be made gets <see cref="PopulationSystem.OverridePendingKey"/> (dropped once they are).
+    /// whose new residents are still to be made gets <see cref="PopulationSystem.OverridePendingKey"/> when <see cref="PopulationSystem.OverrideSaved"/>
+    /// (dropped once they are).
     /// </summary>
     static void WriteTownReplacements(SaveGame game, PopulationData data, PopulationSystem? population)
     {
@@ -559,7 +613,7 @@ public static partial class SaveCapture
         {
             if (town.IsNest || !sites.TryGetValue(town.Instance, out int site)) continue;
 
-            if (population?.OverridePending(site) == true) town.Record.Bools[PopulationSystem.OverridePendingKey] = true;
+            if (population?.OverrideSaved(site) == true) town.Record.Bools[PopulationSystem.OverridePendingKey] = true;
             else town.Record.Bools.Remove(PopulationSystem.OverridePendingKey);
             var replacement = data.Sites[site].Replacement;
             if (replacement is null && !town.Record.Strings.ContainsKey("replacementTown")) continue;
@@ -742,6 +796,12 @@ public static partial class SaveCapture
         ModSquadSave.Write(platoon.Record, squad);
         ShopSave.WritePlayer(platoon.Record, squad, world);
         ModTagSave.Write(platoon.Record, squad.ModTags);
+
+        // Its town and arrival hour, as every platoon's blackboard writes them (FUN_14026c2d0): its board's while the AI runs it; a save's pair the
+        // AI has not taken yet stays as read.
+        if (squad.Ai is { } board) WriteCurrentTown(platoon.Record, board);
+        else if (squad.SavedTown is null) WriteCurrentTown(platoon.Record, squad.StayTown, squad.StaySince);
+
         if (index >= 0)
         {
             // The name the tabs show is the record's name; the string id stays the file's (Observed: rename writes the record's name,
@@ -884,7 +944,8 @@ public static partial class SaveCapture
         if (cold.SlaveState != 0 && Kidnap.ObedientSlave.OwnerOf(world, cold) is { } owner) s_memoryPass?.Slavers.Add((g, owner));
         DialogueSave.Write(g, cold);
         if (orders) Orders.Write(g, cold);
-        if (orders && sc.Ai is { } ai)
+        // An NPC's job list too, while it has one (the original's records hold NPCs' 57 and 187, docs/game/ai-tasks.md "Perma-jobs").
+        if ((orders || cold.Jobs.Count > 0) && sc.Ai is { } ai)
         {
             var modJobs = world.SystemOf<PlayerSystem>()?.Extensions?.JobTypes;
             PermaJobSave.Write(ai, cold, world.Buildings, buildings, who => HandOf(world, who), modJobs);
@@ -1130,6 +1191,11 @@ public static partial class SaveCapture
             if (p is not null) platoon.Record.Bools["intact"] = p.IntactFlag;   // +0x100
             ShopSave.Write(platoon.Record, squad is not null ? squad.Shop : sp.Shop, world);
             WriteAi(platoon.Record, squad is not null ? AiSave.Of(squad.Ai) ?? squad.SavedAi : sp.Ai);
+            bool made = sp.Wild is not null && !(p is not null && PackageSave.OwnPersistent(p));
+            if (squad is not null) PackageSave.Write(platoon.Record, squad.Ai, data, made);
+            if (squad is not null) WriteCurrentTown(platoon.Record, squad.Ai);
+            if (squad is not null) HomeLockSave.Write(platoon.Record, world, squad);
+            else if (p is not null) HomeLockSave.Write(platoon.Record, world, data, sp, p);
 
             // A wild one the AI ran: its package, persistent while it occupies a town (as the original's occupation).
             if (sp.Wild is not null && p is not null && (squad?.Ai?.Current?.Id ?? p.Package) is { } package)
@@ -1632,6 +1698,9 @@ public static partial class SaveCapture
 
             // Moved out of a house the player bought with no other home: not persistent, as the original's purchase leaves it (WriteMovedOut).
             if (squad.MovedOut && squad.HomeBuilding is null) written.Record.Bools["persistent"] = false;
+            PackageSave.Write(written.Record, squad.Ai, _data, roamer is { Pinned: false } && !PackageSave.OwnPersistent(roamer));
+            WriteCurrentTown(written.Record, squad.Ai);
+            HomeLockSave.Write(written.Record, _world, squad);
             if (roamer is not null && into is null) WriteBaseTown(written.Record, roamer);
             return written;
         }
@@ -1986,7 +2055,7 @@ public static partial class SaveCapture
 
                 placements ??= levels.Buildings().GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(),
                     StringComparer.Ordinal);
-                if (!placements.TryGetValue(b, out var placement) || AddPlacedState(game, placement) is not { } added) continue;
+                if (!placements.TryGetValue(b, out var placement) || AddPlacedState(game, placement, levels) is not { } added) continue;
 
                 buildings[b] = state = added;
             }
@@ -2006,7 +2075,7 @@ public static partial class SaveCapture
     /// the building's fixtures read back (completeness, damage and height). Null when the zone has no file. The state has no handle, as a level
     /// building's state in the level data has none.
     /// </summary>
-    static FcsRecord? AddPlacedState(SaveGame game, BuildingPlacement placement)
+    static FcsRecord? AddPlacedState(SaveGame game, BuildingPlacement placement, WorldLevelData? levels)
     {
         if (!game.Zones.TryGetValue(placement.Zone, out var zone)) return null;
 
@@ -2027,8 +2096,11 @@ public static partial class SaveCapture
         state.Ints["flags"] = 1;   // bit 0: outside
 
         // as the level edits write the same placement
-        if (placement.InteriorLayout is { Length: > 0 } interior) state.Strings["interior layout name"] = interior;
-        if (placement.ExteriorLayout is { Length: > 0 } exterior) state.Strings["exterior layout name"] = exterior;
+        var levelState = placement.StateId is not null ? levels?.Zones.GetValueOrDefault(placement.Zone)?.Find(placement.StateId) : null;
+        string interior = placement.LayoutName(levelState, exterior: false);
+        string exterior = placement.LayoutName(levelState, exterior: true);
+        if (interior.Length > 0) state.Strings["interior layout name"] = interior;
+        if (exterior.Length > 0) state.Strings["exterior layout name"] = exterior;
         file.Records.Add(state);
         list.Instances.RemoveAll(i => i.Id == placement.InstanceId);
         var instance = new FcsInstance

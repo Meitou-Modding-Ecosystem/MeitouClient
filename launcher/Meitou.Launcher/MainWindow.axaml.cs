@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
@@ -146,6 +149,8 @@ public sealed partial class MainWindow : Window
         _updater = new LauncherUpdater(_releases, config.IncludePrereleases);
         InitializeComponent();
         _modDrag = new ModListDrag(ModListBox, _mods);
+        _ = new SmoothWheelScroll(ModListBox);
+        RestoreWindowSize(config);
         _grips = new WindowResizeGrips(this);
         LauncherText.Use(StartLanguage(found), found);
         PopulateLanguageOptions(found);
@@ -155,6 +160,10 @@ public sealed partial class MainWindow : Window
         PlayVersionButton.Flyout = _versionMenu;
         TrackPointer();
         WireModList();
+        ModDetailsToggle.IsChecked = config.ModDetailsShown;
+        ShowModDetails();
+        AnimateModDetails();
+        ShowModsSummary();
         ConfigureOptions(config);
         ShowBuiltTexts();
         InstallPathBox.Text = LauncherConfig.InstallDirectory;
@@ -222,6 +231,7 @@ public sealed partial class MainWindow : Window
     {
         Closing += (_, _) =>
         {
+            SaveWindowSize();
             _workshopSync.Stop();
             if (_graphicsSave?.IsEnabled == true) SaveGame();
         };
@@ -325,6 +335,7 @@ public sealed partial class MainWindow : Window
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == ClientSizeProperty && WindowState == WindowState.Normal) _normalSize = ClientSize;
         if (change.Property != WindowStateProperty || Plate is null) return;
         bool max = WindowState == WindowState.Maximized;
         Plate.Margin = new Thickness(max ? 0 : 8);
@@ -333,6 +344,40 @@ public sealed partial class MainWindow : Window
         SetupHost.CornerRadius = new CornerRadius(0, 0, max ? 0 : 10, max ? 0 : 10);
         Grips.IsVisible = !max;
         MaximizeIcon.Data = Avalonia.Media.Geometry.Parse(max ? "M2,0 H10 V8 M0,2 H8 V10 H0 Z" : "M0,0 H10 V10 H0 Z");
+    }
+
+    /// <summary>
+    /// The window's size the last time it was neither maximised nor full screen, saved on close; null until known.
+    /// </summary>
+    Size? _normalSize;
+
+    /// <summary>
+    /// The size and state <c>launcher.json</c> kept from the last close: the size within the primary screen's working area, then
+    /// maximised or full screen again.
+    /// </summary>
+    void RestoreWindowSize(LauncherConfig config)
+    {
+        if (config.WindowWidth is { } width && config.WindowHeight is { } height)
+        {
+            var screen = Screens.Primary;
+            var area = screen is null ? new Size(width, height) : screen.WorkingArea.Size.ToSize(screen.Scaling);
+            Width = Math.Clamp(width, MinWidth, Math.Max(MinWidth, area.Width));
+            Height = Math.Clamp(height, MinHeight, Math.Max(MinHeight, area.Height));
+        }
+
+        if (config.WindowState is WindowState.Maximized or WindowState.FullScreen) WindowState = config.WindowState;
+    }
+
+    /// <summary>
+    /// Keeps the window's normal size and whether it is maximised or full screen in <c>launcher.json</c>.
+    /// </summary>
+    void SaveWindowSize()
+    {
+        var size = _normalSize ?? ClientSize;
+        _config.WindowWidth = size.Width;
+        _config.WindowHeight = size.Height;
+        _config.WindowState = WindowState is WindowState.Maximized or WindowState.FullScreen ? WindowState : WindowState.Normal;
+        _config.Save();
     }
 
     #endregion
@@ -377,8 +422,12 @@ public sealed partial class MainWindow : Window
         ShowBuiltTexts();
         foreach (var row in _mods) row.LanguageChanged();
         if (_modsReady) ShowDependencyProblems();
+        ShowModDetails();
+        ShowModsSummary();
         ShowReleases();
-        PopulateLanguageOptions(_install);
+
+        // Refilling the box inside its own SelectionChanged throws (Avalonia's selection is still committing), so it waits for the next turn.
+        Dispatcher.UIThread.Post(() => PopulateLanguageOptions(_install));
     }
 
     /// <summary>
@@ -454,6 +503,9 @@ public sealed partial class MainWindow : Window
         "zh-cn" => "Chinese",
         "ja-jp" => "Japanese",
         "ko-kr" => "Korean",
+        "en-piglatin" => "Pig Latin",
+        "en-pirate" => "Pirate",
+        "en-morse" => "Morse code",
         _ => code,
     };
 
@@ -907,26 +959,21 @@ public sealed partial class MainWindow : Window
     {
         int load = ++_modsLoad;
         _modsReady = false;
+        UpdateSaveCurrentPreset();
         _blanking.Reset();
         _mods.Clear();
+        ShowModSort();
         ModsEmpty.IsVisible = false;
         SyncWorkshopButton.IsVisible = MacSteam.CanSync;
         var gameInstall = _install;
-        List<(ModEntry Entry, CodeModEntry Code)> entries;
+        List<ModRow> rows;
+
         try
         {
-            entries = gameInstall is null ? [] : await Task.Run(() =>
-            {
-                var order = ModList.LauncherOrder(gameInstall, ModList.Discover(gameInstall));
-
-                // The rows show each mod's author, RE_Kenshi notes and code-mod dependencies: read them here too, not on the UI thread.
-                foreach (var entry in order)
-                {
-                    _ = entry.Mod.Header;
-                    _ = entry.Mod.ReKenshi;
-                }
-                return order.Select(e => (e, CodeModDependencies.ReadEntry(e.Mod, e.Enabled))).ToList();
-            });
+            rows = gameInstall is null ? [] : await Task.Run(() =>
+                ModList.LauncherOrder(gameInstall, ModList.Discover(gameInstall))
+                    .Select(ReadModRow)
+                    .ToList());
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -935,41 +982,190 @@ public sealed partial class MainWindow : Window
             ModsEmpty.Text = Tr("Could not read the mods: {1}", e.Message);
             return;
         }
+
         if (load != _modsLoad) return;
-        foreach (var (entry, code) in entries) _mods.Add(new ModRow(entry.Mod, entry.Enabled, code));
+
+        foreach (var row in rows) _mods.Add(row);
 
         // Only a toggle changes the checks; the checks' own Notes changes must not start them again.
         foreach (var row in _mods)
-            row.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ModRow.Enabled)) ModListChanged(); };
+        {
+            row.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ModRow.Enabled)) ModListChanged();
+            };
+        }
+
         _modsReady = true;
+        UpdateSaveCurrentPreset();
         ShowDependencyProblems();
         QueueBlankingCheck();
         MarkPorts();
-        ApplyModSearch();
+        ApplyModFilters();
+        ShowModSort();
         OfferPorts();
     }
 
     /// <summary>
-    /// The search text changed: the rows that do not match it are hidden.
+    /// Reads the header, RE_Kenshi metadata and code manifest for the row, and snapshots the file dates for sorting.
     /// </summary>
-    void ModSearch_TextChanged(object? sender, TextChangedEventArgs e) => ApplyModSearch();
+    static ModRow ReadModRow(ModEntry entry)
+    {
+        var mod = entry.Mod;
+        _ = mod.Header;
+        _ = mod.ReKenshi;
+        var code = CodeModDependencies.ReadEntry(mod, entry.Enabled);
+
+        return new ModRow(mod, entry.Enabled, code) { Dates = ReadModDates(mod.Path) };
+    }
 
     /// <summary>
-    /// Shows only the rows matching the search box (<see cref="ModRow.Matches"/>), and says why the list is empty when it is.
+    /// The Regex box was ticked or cleared: the search is read again the new way.
     /// </summary>
-    void ApplyModSearch()
+    void ModSearchRegex_Click(object? sender, RoutedEventArgs e) => ApplyModFilters();
+
+    /// <summary>
+    /// Reads both timestamps from the installed file. An inaccessible or missing file sorts last by date.
+    /// </summary>
+    static (DateTime Added, DateTime Modified) ReadModDates(string path)
     {
-        string search = ModSearch.Text?.Trim() ?? "";
-        foreach (var row in _mods) row.IsShown = row.Matches(search);
+        try
+        {
+            var file = new FileInfo(path);
+
+            return file.Exists ? (file.CreationTimeUtc, file.LastWriteTimeUtc) : default;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return default;
+        }
+    }
+
+    /// <summary>
+    /// Updates the display order when the sort choice changes.
+    /// </summary>
+    void ModSortBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_languageReady) ShowModSort();
+    }
+
+    /// <summary>
+    /// Shows the chosen ordering. Only the load order view uses the live collection so manual moves remain edits to that order.
+    /// </summary>
+    void ShowModSort()
+    {
+        int sort = ModSortBox.SelectedIndex;
+        bool loadOrder = sort <= 0;
+
+        foreach (var row in _mods) row.CanReorder = loadOrder;
+
+        var byName = StringComparer.CurrentCultureIgnoreCase;
+        ModListBox.ItemsSource = sort switch
+        {
+            1 => _mods.OrderBy(m => m.Name, byName)
+                .ToList(),
+            2 => _mods.OrderByDescending(m => m.Dates.Added)
+                .ThenBy(m => m.Name, byName)
+                .ToList(),
+            3 => _mods.OrderByDescending(m => m.Dates.Modified)
+                .ThenBy(m => m.Name, byName)
+                .ToList(),
+            _ => _mods,
+        };
+    }
+
+    /// <summary>
+    /// Updates visibility when the search text changes.
+    /// </summary>
+    void ModSearch_TextChanged(object? sender, TextChangedEventArgs e) => ApplyModFilters();
+
+    /// <summary>
+    /// Updates visibility when the compatibility filter changes.
+    /// </summary>
+    void ModFilter_Click(object? sender, RoutedEventArgs e) => ApplyModFilters();
+
+    /// <summary>
+    /// Shows only rows passing the search and compatibility filters, with an empty message when no rows pass.
+    /// </summary>
+    void ApplyModFilters()
+    {
+        var test = ModSearchTest(out string? error);
+        bool wasInvalid = ModSearch.Classes.Contains("invalid");
+        ModSearch.Classes.Set("invalid", error is not null);
+
+        // An invalid regular expression keeps the rows the last valid search showed, rims the box in red and says what is wrong.
+        if (error is not null)
+        {
+            Status(Tr("Invalid regular expression: {1}", error));
+            return;
+        }
+        if (wasInvalid) StatusText.Inlines = [];
+        bool hidePlugins = HideIncompatiblePlugins?.IsChecked == true;
+
+        foreach (var row in _mods)
+            row.IsShown = (!hidePlugins || !row.HasIncompatiblePlugin) && row.Matches(test);
+
+        if (ModListBox?.SelectedItems is { } selected)
+        {
+            var hiddenSelection = selected.OfType<ModRow>()
+                .Where(m => !m.IsShown)
+                .ToList();
+
+            foreach (var row in hiddenSelection) selected.Remove(row);
+        }
+
+        ShowModsSummary();
 
         // Until a load ends the empty line is the load's own (its error, or nothing).
         if (!_modsReady) return;
 
         bool none = _mods.Count == 0;
         ModsEmpty.IsVisible = !_mods.Any(m => m.IsShown);
-        ModsEmpty.Text = Tr(!none ? "No mods match the search."
-            : _install is null ? "Set the Kenshi folder in Settings to list its mods."
-            : "No mods found in Kenshi's mods folder or among its Steam workshop items.");
+        ModsEmpty.Text = !none
+            ? Tr(hidePlugins ? "No mods match the filters." : "No mods match the search.")
+            : Tr(_install is null ? "Set the Kenshi folder in Settings to list its mods."
+                : "No mods found in Kenshi's mods folder or among its Steam workshop items.");
+    }
+
+    /// <summary>
+    /// What a name must pass to stay shown: holding the search text, ignoring case, or with the Regex box ticked matching it as a regular
+    /// expression, ignoring case. An empty search passes everything; an invalid pattern passes everything and sets <paramref name="error"/>.
+    /// </summary>
+    Predicate<string> ModSearchTest(out string? error)
+    {
+        error = null;
+        string search = ModSearch.Text?.Trim() ?? "";
+
+        if (search.Length == 0) return _ => true;
+        if (ModSearchRegex.IsChecked != true) return text => text.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            // At most 50 ms per name, so a pattern that backtracks without end cannot hang the launcher.
+            var timeout = TimeSpan.FromMilliseconds(50);
+            var regex = new Regex(search, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, timeout);
+            return text => RegexMatches(regex, text);
+        }
+        catch (ArgumentException ex)
+        {
+            error = ex.Message;
+            return _ => true;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="regex"/> matches <paramref name="text"/>; a match that runs out of time counts as none.
+    /// </summary>
+    static bool RegexMatches(Regex regex, string text)
+    {
+        try
+        {
+            return regex.IsMatch(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -1286,6 +1482,8 @@ public sealed partial class MainWindow : Window
     {
         ShowDependencyProblems();
         QueueBlankingCheck();
+        ShowModDetails();
+        ShowModsSummary();
         if (_checksSuspended || !_modsReady || _toggleSavePending) return;
 
         _toggleSavePending = true;
@@ -1345,21 +1543,55 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Ticks every mod the search shows.
+    /// The Select all button's icon: a ticked box.
     /// </summary>
-    void SelectAll_Click(object? sender, RoutedEventArgs e) { foreach (var m in _mods.Where(m => m.IsShown)) m.Enabled = true; }
+    static readonly Avalonia.Media.Geometry SelectAllIcon = Avalonia.Media.Geometry.Parse("F0 M0,0 H14 V14 H0 Z M3.5,6 L2.5,7 L6,10.5 L11.5,5 L10.5,4 L6,8.5 Z");
 
     /// <summary>
-    /// Unticks every mod the search shows.
+    /// The Select none button's icon: an empty box.
     /// </summary>
-    void SelectNone_Click(object? sender, RoutedEventArgs e) { foreach (var m in _mods.Where(m => m.IsShown)) m.Enabled = false; }
+    static readonly Avalonia.Media.Geometry SelectNoneIcon = Avalonia.Media.Geometry.Parse("F0 M0,0 H14 V14 H0 Z M2,2 V12 H12 V2 Z");
+
+    /// <summary>
+    /// Ticks every mod the search shows, or unticks them all when every one is ticked.
+    /// </summary>
+    void SelectToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        bool tick = !AllShownEnabled();
+        foreach (var m in _mods.Where(m => m.IsShown)) m.Enabled = tick;
+    }
+
+    /// <summary>
+    /// Whether the search shows mods and every one of them is ticked.
+    /// </summary>
+    bool AllShownEnabled() => _mods.Any(m => m.IsShown) && _mods.Where(m => m.IsShown).All(m => m.Enabled);
+
+    /// <summary>
+    /// The header's count (the mods, those the search shows, those enabled) and the Select all / Select none button for the shown mods.
+    /// </summary>
+    void ShowModsSummary()
+    {
+        int shown = _mods.Count(m => m.IsShown);
+        int enabled = _mods.Count(m => m.Enabled);
+        string count = shown == _mods.Count
+            ? Tr("{1} mods, {2} enabled", _mods.Count, enabled)
+            : Tr("{1} of {2} mods shown, {3} enabled", shown, _mods.Count, enabled);
+
+        // An inline, as SetText's: the language pass when the window opens would put a plain Text back to its first value.
+        ModCount.Inlines = [new Run(count)];
+
+        bool untick = AllShownEnabled();
+        SetText(SelectToggleText, untick ? "Select none" : "Select all");
+        SelectToggleIcon.Data = untick ? SelectNoneIcon : SelectAllIcon;
+        ToolTip.SetTip(SelectToggle, Tr(untick ? "Untick every mod the search shows" : "Tick every mod the search shows"));
+    }
 
     /// <summary>
     /// Alt+Up / Alt+Down move the selected mods one place, as dragging does.
     /// </summary>
     void ModListBox_KeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.KeyModifiers != KeyModifiers.Alt || e.Key is not (Key.Up or Key.Down)) return;
+        if (ModSortBox.SelectedIndex > 0 || e.KeyModifiers != KeyModifiers.Alt || e.Key is not (Key.Up or Key.Down)) return;
 
         _modDrag.MoveSelection(e.Key == Key.Up ? -1 : 1);
         e.Handled = true;
@@ -1368,7 +1600,10 @@ public sealed partial class MainWindow : Window
     /// <summary>
     /// A press on a row's drag handle starts dragging the row (<see cref="ModListDrag"/>).
     /// </summary>
-    void DragHandle_PointerPressed(object? sender, PointerPressedEventArgs e) => _modDrag.Press(sender, e);
+    void DragHandle_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (ModSortBox.SelectedIndex <= 0) _modDrag.Press(sender, e);
+    }
 
     /// <summary>
     /// A click on a workshop mod's link icon opens its Steam workshop page; a local mod's row has no icon.
@@ -1398,26 +1633,55 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// A mod selected: its details (description, the dependencies with those not enabled above it, folder).
+    /// A mod selected: its details in the side pane.
     /// </summary>
-    void ModListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    void ModListBox_SelectionChanged(object? sender, SelectionChangedEventArgs e) => ShowModDetails();
+
+    /// <summary>
+    /// The Details button shows or hides the side pane; the choice is kept in <c>launcher.json</c>.
+    /// </summary>
+    void ModDetailsToggle_Click(object? sender, RoutedEventArgs e)
     {
-        if (ModListBox.SelectedItem is not ModRow row)
-        {
-            ModDetails.Text = "";
-            return;
-        }
-        var header = row.Mod.Header;
-        var parts = new List<string>();
-        if (header is { Description.Length: > 0 }) parts.Add(header.Description.ReplaceLineEndings(" "));
-        if (header is { Dependencies.Count: > 0 })
-        {
-            var missing = header.Dependencies.Where(d => !IsAvailableBefore(d, row)).ToList();
-            string notEnabled = missing.Count > 0 ? Tr(" (not enabled above it: {1})", string.Join(", ", missing)) : "";
-            parts.Add(Tr("Needs {1}", string.Join(", ", header.Dependencies)) + notEnabled);
-        }
-        parts.Add(row.Mod.Folder);
-        ModDetails.Text = string.Join(" · ", parts);
+        _config.ModDetailsShown = ModDetailsToggle.IsChecked == true;
+        _config.Save();
+        ShowModDetails();
+    }
+
+    /// <summary>
+    /// The side pane's width when open: its rule with the margins around it, then the details.
+    /// </summary>
+    const double ModDetailsWidth = 381;
+
+    /// <summary>
+    /// How long the side pane takes to slide open or shut.
+    /// </summary>
+    static readonly TimeSpan ModDetailsSlideTime = TimeSpan.FromMilliseconds(220);
+
+    /// <summary>
+    /// Makes the side pane slide (its width) and fade from now on; set after the first <see cref="ShowModDetails"/>, so the window opens with
+    /// the pane already where it was left.
+    /// </summary>
+    void AnimateModDetails()
+    {
+        var easing = new CubicEaseOut();
+        ModDetailsSlide.Transitions =
+        [
+            new DoubleTransition { Property = WidthProperty, Duration = ModDetailsSlideTime, Easing = easing },
+            new DoubleTransition { Property = OpacityProperty, Duration = ModDetailsSlideTime, Easing = easing },
+        ];
+    }
+
+    /// <summary>
+    /// The side pane: open with the selected mod's details (<see cref="ModDetailsView"/>) while Details is on and a mod is selected, else shut.
+    /// </summary>
+    void ShowModDetails()
+    {
+        var row = _config.ModDetailsShown ? ModListBox.SelectedItem as ModRow : null;
+        ModDetailsSlide.Width = row is null ? 0 : ModDetailsWidth;
+        ModDetailsSlide.Opacity = row is null ? 0 : 1;
+
+        // Shutting, the pane keeps the last mod's details while it slides away.
+        if (row is not null) ModDetails.Content = ModDetailsView.Render(row, dependency => IsAvailableBefore(dependency, row), OpenLink);
     }
 
     /// <summary>
@@ -1463,11 +1727,43 @@ public sealed partial class MainWindow : Window
         }
         if (!ModsReady()) return;
         _config.Presets.RemoveAll(p => p.Name == name);
-        _config.Presets.Add(new ModPreset { Name = name, Mods = [.. _mods.Select(m => new PresetMod { Name = m.Name, Enabled = m.Enabled })] });
-        _config.Save();
+        var preset = new ModPreset { Name = name };
+        _config.Presets.Add(preset);
+        SavePreset(preset);
         PresetName.Text = "";
         RefreshPresets(name);
-        Status(Tr("Preset '{1}' saved.", name));
+    }
+
+    /// <summary>
+    /// Enables updating a preset when one is selected and the mod list is available.
+    /// </summary>
+    void PresetBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_languageReady) UpdateSaveCurrentPreset();
+    }
+
+    /// <summary>
+    /// Keeps the save button in sync with preset selection and list loading.
+    /// </summary>
+    void UpdateSaveCurrentPreset() =>
+        SaveCurrentPresetButton.IsEnabled = _install is not null && _modsReady && PresetBox.SelectedItem is ModPreset;
+
+    /// <summary>
+    /// Updates the selected preset with the current mod list and load order.
+    /// </summary>
+    void SaveCurrentPreset_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_install is not null && PresetBox.SelectedItem is ModPreset preset && ModsReady()) SavePreset(preset);
+    }
+
+    /// <summary>
+    /// Stores the full load order and enabled flags in the preset.
+    /// </summary>
+    void SavePreset(ModPreset preset)
+    {
+        preset.Mods = [.. _mods.Select(m => new PresetMod { Name = m.Name, Enabled = m.Enabled })];
+        _config.Save();
+        Status(Tr("Preset '{1}' saved.", preset.Name));
     }
 
     /// <summary>
@@ -1515,6 +1811,7 @@ public sealed partial class MainWindow : Window
         {
             _checksSuspended = false;
         }
+        ShowModSort();
         ShowDependencyProblems();
         SaveMods();
         return missing;

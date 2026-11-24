@@ -32,6 +32,10 @@ sealed partial class PlayerInterface
     /// </summary>
     internal bool InfoExpanded;
     /// <summary>
+    /// Told the panel's new state at each press of its ^ button, to keep it for the next start (<see cref="UserConfig.KeepInfoPanel"/>).
+    /// </summary>
+    internal Action<bool>? InfoExpandedChanged;
+    /// <summary>
     /// The original's HUD, <c>Kenshi_MainPanel.layout</c> expanded.
     /// </summary>
     internal MyGuiLayout FaithfulHud = null!;
@@ -47,6 +51,10 @@ sealed partial class PlayerInterface
     /// The interface's own UI extension's registration, removed in <see cref="DisposeUi"/>.
     /// </summary>
     IDisposable? _uiRegistration;
+    /// <summary>
+    /// The Squad XP label's registration (<see cref="SquadXpLabel"/>), removed in <see cref="DisposeUi"/>.
+    /// </summary>
+    IDisposable? _xpLabelRegistration;
     /// <summary>
     /// Paints the arranged controls; null before <see cref="CreateUiPainter"/> or after <see cref="DisposeUi"/>.
     /// </summary>
@@ -119,6 +127,11 @@ sealed partial class PlayerInterface
     #endregion
 
     #region Loading and binding
+
+    /// <summary>
+    /// The roster's name texts' keys (<c>squad.0.name</c> to <c>squad.7.name</c>), made once.
+    /// </summary>
+    static readonly string[] RosterNameKeys = [.. Enumerable.Range(0, 8).Select(i => $"squad.{i}.name")];
 
     /// <summary>
     /// The original layouts the faithful mode opens as screens: id, layout file, modal.
@@ -204,6 +217,7 @@ sealed partial class PlayerInterface
         FaithfulScreens.Activated += ScreenRouter.FaithfulAction;
         _uiHost.Diagnostic += d => Console.Error.WriteLine($"ui        {d.Extension} {d.Operation}: {d.Error.Message}");
         _uiRegistration = _uiHost.Register(new PlayerUiExtension(ExecuteUiAction));
+        _xpLabelRegistration = _uiHost.Register(new SquadXpLabel(() => XpLabel));
     }
 
     /// <summary>
@@ -240,6 +254,8 @@ sealed partial class PlayerInterface
         UiPainter = null;
         _uiRegistration?.Dispose();
         _uiRegistration = null;
+        _xpLabelRegistration?.Dispose();
+        _xpLabelRegistration = null;
     }
 
     /// <summary>
@@ -264,6 +280,63 @@ sealed partial class PlayerInterface
     /// </summary>
     internal IReadOnlyList<UiBuildingAction> ModBuildingActions(UiSelectedBuilding building, WorldSnapshot snapshot) =>
         _uiHost.BuildingActions(new UiBuildingContext(building, snapshot, () => Session.World.Tick, Say));
+
+    /// <summary>
+    /// Whether any UI extension adds bars to the building panel.
+    /// </summary>
+    internal bool HasModBuildingRows => _uiHost.HasBuildingRows;
+
+    /// <summary>
+    /// The bars the interface extensions add under the Condition of <paramref name="building"/> (<see cref="UiHost.BuildingRows"/>), given the
+    /// snapshot the panel is laid out from.
+    /// </summary>
+    internal IReadOnlyList<UiBuildingRow> ModBuildingRows(UiSelectedBuilding building, WorldSnapshot snapshot) =>
+        _uiHost.BuildingRows(new UiBuildingContext(building, snapshot, () => Session.World.Tick, Say));
+
+    /// <summary>
+    /// The lines the interface extensions add to an item's tooltip (<see cref="UiHost.ItemTooltipLines"/>); none without an extension that adds any.
+    /// </summary>
+    internal IReadOnlyList<UiItemTooltipLine> ModItemTooltipLines(UiItemTooltipContext item) =>
+        _uiHost.ItemTips.Any ? _uiHost.ItemTooltipLines(item) : [];
+
+    /// <summary>
+    /// Whether any UI extension adds lines to the town panel.
+    /// </summary>
+    internal bool HasModTownLines => _uiHost.HasTownLines;
+
+    /// <summary>
+    /// The lines the interface extensions add to the town panel for <paramref name="town"/> (<see cref="UiHost.TownLines"/>), given whether the
+    /// player's faction owns it and the snapshot the panel is laid out from.
+    /// </summary>
+    internal IReadOnlyList<UiTownLine> ModTownLines(Simulation.Production.OutpostSnapshot town, bool owned, WorldSnapshot snapshot) =>
+        _uiHost.TownLines(new UiTownContext(town, owned, snapshot, () => Session.World.Tick, Say));
+
+    /// <summary>
+    /// Whether any UI extension adds lines to the character panel.
+    /// </summary>
+    internal bool HasModCharacterLines => _uiHost.HasCharacterPanelLines;
+
+    /// <summary>
+    /// The lines the interface extensions add to the character panel for <paramref name="character"/> (<see cref="UiHost.CharacterPanelLines"/>).
+    /// </summary>
+    internal IReadOnlyList<UiCharacterLine> ModCharacterLines(CharacterSnapshot character) =>
+        _uiHost.CharacterPanelLines(CharacterContext(character));
+
+    /// <summary>
+    /// Whether any UI extension adds buttons beside the jobs list.
+    /// </summary>
+    internal bool HasModJobButtons => _uiHost.HasJobPanelButtons;
+
+    /// <summary>
+    /// The buttons the interface extensions add beside the jobs list for <paramref name="character"/> (<see cref="UiHost.JobPanelButtons"/>).
+    /// </summary>
+    internal IReadOnlyList<UiJobButton> ModJobButtons(CharacterSnapshot character) => _uiHost.JobPanelButtons(CharacterContext(character));
+
+    /// <summary>
+    /// What a character panel's mod source gets for <paramref name="character"/>: the snapshot on screen, the tick and the command queue.
+    /// </summary>
+    UiCharacterContext CharacterContext(CharacterSnapshot character) =>
+        new(character, Session.CurrentSnapshot, () => Session.World.Tick, Say);
 
     /// <summary>
     /// Future code-mod loader entry point; disposal removes the extension's owned registrations.
@@ -297,7 +370,7 @@ sealed partial class PlayerInterface
         if (!_uiHost.HasMenuVerbs) return [];
 
         var context = new UiMenuContext(target, SelectedIds(), Mouse, () => SlowModifier, () => Session.World.Tick, Say);
-        return _uiHost.CharacterMenuVerbs(context).Select(v => (v.Caption, v.Choose));
+        return _uiHost.CharacterMenuVerbs(context).Select(v => ContextMenuWindow.Available(v.Caption, v.Choose, !v.Unavailable));
     }
 
     /// <summary>
@@ -323,6 +396,7 @@ sealed partial class PlayerInterface
         // The original sizes the HUD's template parts by height / 1080 (Observed: the squad tabs' 37 px HeaderPlace at 1440 lines,
         // docs/game/ui-screens.md).
         var b = new UiBindings { TemplateScale = UiScale };
+        PresizeBindings(b);
         var lead = Lead();
         BindStatusTexts(b, lead);
         BindShortcutButtons(b);
@@ -364,14 +438,45 @@ sealed partial class PlayerInterface
             : "No character selected";
         b.Text["blood"] = lead?.Body is { } blood ? $"Blood   {blood.Blood * 100:0}%" : "Blood --";
         b.Text["body"] = lead?.Body is { } worst ? $"Worst body part   {worst.WorstPart * 100:0}%" : "Body --";
-        var roster = Session.CurrentSnapshot.Characters.Where(c => c.IsPlayer).ToArray();
-        b.Text["squad.count"] = roster.Length.ToString(CultureInfo.InvariantCulture);
-        for (int i = 0; i < Math.Min(8, roster.Length); i++) b.Text[$"squad.{i}.name"] = roster[i].Name;
+        BindRoster(b);
         b.Text["members"] = $"{PlayerCharacters().Count} members | {Selected().Count} selected";
         b.Text["ExtendedStatsText"] = "";
 
         // The exe sets the money label without the layout's colon (docs/game/ui-screens.md section 4).
         b.Text["MoneyLabelText"] = "Money";
+    }
+
+    /// <summary>
+    /// Sizes the HUD bindings' main maps and sets as the last bindings filled them, so that binding does not grow them from empty.
+    /// </summary>
+    void PresizeBindings(UiBindings b)
+    {
+        if (_hudBindings is not { } last) return;
+
+        b.Text.EnsureCapacity(last.Text.Count);
+        b.Actions.EnsureCapacity(last.Actions.Count);
+        b.Properties.EnsureCapacity(last.Properties.Count);
+        b.Hidden.EnsureCapacity(last.Hidden.Count);
+        b.Disabled.EnsureCapacity(last.Disabled.Count);
+        b.Positions.EnsureCapacity(last.Positions.Count);
+        b.Progress.EnsureCapacity(last.Progress.Count);
+    }
+
+    /// <summary>
+    /// The squad roster's texts: the count of the player's characters and the first eight names.
+    /// </summary>
+    void BindRoster(UiBindings b)
+    {
+        int count = 0;
+        foreach (var c in Session.CurrentSnapshot.Characters)
+        {
+            if (!c.IsPlayer) continue;
+
+            if (count < 8) b.Text[RosterNameKeys[count]] = c.Name;
+            count++;
+        }
+
+        b.Text["squad.count"] = count.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -430,6 +535,15 @@ sealed partial class PlayerInterface
         }
 
         b.Text["LoadingPanel"] = Loc.Tr("Loading...");
+    }
+
+    /// <summary>
+    /// The information panel's ^ button: extends or collapses it and reports the new state.
+    /// </summary>
+    void ToggleInfoPanel()
+    {
+        InfoExpanded = !InfoExpanded;
+        InfoExpandedChanged?.Invoke(InfoExpanded);
     }
 
     /// <summary>
@@ -540,6 +654,14 @@ sealed partial class PlayerInterface
     /// When <see cref="_uiBase"/> was arranged (a <see cref="System.Diagnostics.Stopwatch"/> timestamp).
     /// </summary>
     long _uiBaseAt;
+    /// <summary>
+    /// The frame's name tags, ground item labels and task bars while they are gathered (<see cref="AddUnderLayers"/>); empty between frames.
+    /// </summary>
+    readonly List<UiControl> _nameTagLayer = [];
+    /// <summary>
+    /// The frame's floaters and speech bubbles while they are gathered (<see cref="AddUnderLayers"/>); empty between frames.
+    /// </summary>
+    readonly List<UiControl> _dialogLayer = [];
 
     /// <summary>
     /// What a base was arranged from: when it changes, the base is arranged again.
@@ -575,6 +697,7 @@ sealed partial class PlayerInterface
         InventoryWindows.SyncClosedInventories();
         TradeWindows.SyncTradeScreens();
         Production.SyncMachineScreens();
+        Production.ShareShownMachines();
         TradeWindows.SyncLootScreen();
         InventoryWindows.SyncPinnedInventories();
         TradeWindows.SyncInventoryLayouts();
@@ -595,7 +718,7 @@ sealed partial class PlayerInterface
     {
         var b = BindUi();
         var controls = hud ? ArrangeHud(b) : [];
-        UiRect FaithfulSlot(string name) => controls.FirstOrDefault(c => c.Name == name)?.Bounds ?? default;
+        UiRect FaithfulSlot(string name) => FindControl(controls, name)?.Bounds ?? default;
         var slots = new Dictionary<string, UiRect>
         {
             [UiSlots.Overlay] = new(0, 0, Width, Height),
@@ -603,13 +726,16 @@ sealed partial class PlayerInterface
             [UiSlots.Selection] = FaithfulSlot("InformationPanel"),
             [UiSlots.Squad] = FaithfulSlot("SquadPanel"),
         };
-        controls.AddRange(RecordPortraits.Resolve(hud ? _uiHost.Arrange(UiMode, Width, Height, b, slots) : []));
+        var overlay = hud ? _uiHost.Arrange(UiMode, Width, Height, b, slots).ToList() : [];
+        FaithfulScreens.ArrangeOverlayEdits(overlay);
+        controls.AddRange(RecordPortraits.Resolve(overlay));
         PortraitBar.SquadBarRow = 0;
-        if (controls.FirstOrDefault(c => c.Name == "SquadPanel") is { } squadPanel)
+        if (FindControl(controls, "SquadPanel") is { } squadPanel)
             PortraitBar.AddSquadPortraits(controls, squadPanel.Bounds);
         HudPanels.AddHudText(controls);
         if (hud) OrdersPanel.AddJobScrollBar(controls);
         OrdersPanel.AddJobRowParts(controls);
+        if (hud) OrdersPanel.ModButtons.AddContent(controls);
         if (hud) TutorialWindow.AddTutorialPanel(controls);
         AddScreens(controls);
         return controls;
@@ -660,19 +786,32 @@ sealed partial class PlayerInterface
         InventoryWindows.AddInventoryDrag(controls);
         ItemsWindow.AddDrag(controls);
 
-        var nameTags = new List<UiControl>();
-        GroundItemPicks.AddItemLabels(nameTags);
-        StealthView.AddNameTags(nameTags);
-        StealthView.AddTaskBars(nameTags);
-        var dialogLayer = new List<UiControl>();
-        DamageFloaters.AddFloaters(dialogLayer);
-        SpeechBubbles.AddSpeech(dialogLayer);
-        controls.InsertRange(0, [.. nameTags, .. dialogLayer]);
+        AddUnderLayers(controls);
 
         Build.AddBuildReadout(controls);
         PointerPanel.AddPointerChance(controls);
         ContextMenuWindow.AddContextMenu(controls);
         FeedbackPanel.AddFeedbackButton(controls);
+    }
+
+    /// <summary>
+    /// Puts the name tags, ground item labels and task bars, then the floaters and speech bubbles, under <paramref name="controls"/> (gathered in
+    /// lists kept across frames, inserted with one move).
+    /// </summary>
+    void AddUnderLayers(List<UiControl> controls)
+    {
+        _nameTagLayer.Clear();
+        GroundItemPicks.AddItemLabels(_nameTagLayer);
+        StealthView.AddNameTags(_nameTagLayer);
+        StealthView.AddTaskBars(_nameTagLayer);
+        _dialogLayer.Clear();
+        DamageFloaters.AddFloaters(_dialogLayer);
+        SpeechBubbles.AddSpeech(_dialogLayer);
+
+        _nameTagLayer.AddRange(_dialogLayer);
+        controls.InsertRange(0, _nameTagLayer);
+        _nameTagLayer.Clear();
+        _dialogLayer.Clear();
     }
 
     /// <summary>
@@ -696,9 +835,8 @@ sealed partial class PlayerInterface
     List<UiControl> ArrangedBase(bool hud)
     {
         var key = BaseKey(hud);
-        var screens = FaithfulScreens.OpenScreens.ToArray();
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool fresh = _uiBaseKey is { } kept && kept == key && screens.AsSpan().SequenceEqual(_uiBaseScreens) && !UiAnimating
+        bool fresh = _uiBaseKey is { } kept && kept == key && FaithfulScreens.OpenScreensAre(_uiBaseScreens) && !UiAnimating
             && System.Diagnostics.Stopwatch.GetElapsedTime(_uiBaseAt, now).TotalSeconds < UiReuseSeconds;
         if (!fresh)
         {
@@ -787,9 +925,15 @@ sealed partial class PlayerInterface
             else ScrollBars.HudScrollAction(key, c.Action);
             return true;
         }
+        if (FaithfulScreens.PressOverlayEdit(c, p)) return true;
         _uiHost.Dispatch(c);
         return true;
     }
+
+    /// <summary>
+    /// A mod overlay text box's event (<see cref="UiHost.DispatchText"/>); false for a screen's.
+    /// </summary>
+    internal bool OverlayText(MyGuiEvent e) => _uiHost.DispatchText(e);
 
     /// <summary>
     /// The F1 key and the HLP button share one handler: toggle the Tutorials window (FUN_1406e1f20; ui-screens.md).
@@ -837,7 +981,7 @@ sealed partial class PlayerInterface
             }
         }
         else if (action == "help") ToggleHelpWindow();
-        else if (action == "extendedstats") InfoExpanded = !InfoExpanded;
+        else if (action == "extendedstats") ToggleInfoPanel();
         else if (action is "floor-up" or "floor-down") Floor?.Step(action == "floor-up" ? 1 : -1);
         else if (action == "build") Build.ToggleBuildMode();
         else if (action == "context") ContextMenuWindow.ContextAction(argument);
@@ -857,6 +1001,8 @@ sealed partial class PlayerInterface
         else if (action == "rescue") Say(new Simulation.Carrying.RescueJobCommand(SelectedIds(), SlowModifier) { Tick = Session.World.Tick });
         else if (action == "prospect") Prospecting.ProspectAction();
         else if (action == BuildingModButtons.Action) BuildingSelection.ModButtons.Press(argument);
+        else if (action == CharacterModLines.Action) HudPanels.ModLines.Press(argument);
+        else if (action == JobModButtons.Action) OrdersPanel.ModButtons.Press(argument);
         else if (action.StartsWith("building-", StringComparison.Ordinal) || action.StartsWith("machine-", StringComparison.Ordinal))
             BuildingSelection.BuildingAction(action);
         else if (action == "tutorial") TutorialWindow.TutorialAction(argument);

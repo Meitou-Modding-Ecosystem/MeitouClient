@@ -235,7 +235,7 @@ sealed class TitleMenu(PlayerInterface player)
         if (DataProblems == 0) return;
 
         float s = MenuScale;
-        string text = DataProblems == 1 ? "1 game data problem, see log.txt" : $"{DataProblems} game data problems, see log.txt";
+        string text = Loc.Plural("{1,num} game data problem, see log.txt", "{1,num} game data problems, see log.txt", DataProblems, DataProblems);
         var bounds = new UiRect(player.Width - 420 * s, player.Height - MenuBottom * s - 20 * s, 400 * s, 20 * s);
         controls.Add(new("MeitouDataProblems", "TextBox", bounds, text, "", "", true,
             new Dictionary<string, string> { ["TextAlign"] = "Right VCenter" }, Vector4.Zero, InkDanger, Pickable: false, TextScale: 13 * s / 16));
@@ -328,9 +328,10 @@ sealed class TitleMenu(PlayerInterface player)
         }
 
         if (_continueInfo.Info is not { } i) return (slot.Name, "");
-        var line = string.Join(" · ", new[] { slot.Name, $"Day {i.Day}", i.Area }.Where(p => !string.IsNullOrWhiteSpace(p)));
+        var line = string.Join(" · ", new[] { slot.Name, Loc.Tr("Day {1,num}", i.Day), i.Area }.Where(p => !string.IsNullOrWhiteSpace(p)));
         string squad = string.Equals(i.Faction, slot.Name, StringComparison.OrdinalIgnoreCase) ? "" : i.Faction;
-        string money = $"c.{i.Funds.ToString("N0", CultureInfo.InvariantCulture)} · {i.Members} {(i.Members == 1 ? "member" : "members")}";
+        string members = Loc.Plural("{1,num} member", "{1,num} members", i.Members, i.Members);
+        string money = $"c.{i.Funds.ToString("N0", CultureInfo.InvariantCulture)} · {members}";
         string meta = string.IsNullOrWhiteSpace(squad) ? money : $"{squad} · {money}";
         return (line, meta);
     }

@@ -48,6 +48,12 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
     /// The original's iteration limit.
     /// </summary>
     public const int MaxIterations = 100000;
+    /// <summary>
+    /// The most polygons a dead end round the start may hold to be left through exits too narrow for the radius (<see cref="SqueezeOut"/>; engine
+    /// choice: the failed searches from #1025's ledge closed 2, #1032's pocket between two generators 4 and 5, those of walkers really shut out
+    /// 143 and 2012).
+    /// </summary>
+    public const int SqueezeCluster = 8;
 
     /// <summary>
     /// The counters behind <see cref="Stats"/>, updated with <see cref="Interlocked"/>.
@@ -64,6 +70,16 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
     /// Havok units (5000 Kenshi units) and the goal face within about 30 (Observed, docs/game/pathfinding.md, "Path queries").
     /// </summary>
     public const float StartSnap = 60, GoalSnap = 30;
+    /// <summary>
+    /// How far (units) above or below the goal a polygon is still on the goal's floor (<see cref="NavWorld.TryFindGoalPolygon"/>; engine choice:
+    /// about half a storey of about 78, over the up to 31 a polygon sags under a hillside or a stair's mesh lies off its steps).
+    /// </summary>
+    public const float GoalFloorSlack = 40;
+    /// <summary>
+    /// How far (units, X/Z) from the goal a polygon on the goal's floor is looked for when the one found is on another floor
+    /// (<see cref="NavWorld.TryFindGoalPolygon"/>): the original's goal face search box, half size 30 Havok units (<b>Verified</b>, decompile).
+    /// </summary>
+    public const float GoalFloorReach = 300;
     /// <summary>
     /// How near (units) a walker shut out of its goal must stand to its start polygon's point nearest the goal to have no way toward it (engine
     /// choice).
@@ -120,6 +136,10 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
         /// Whether the node has been expanded.
         /// </summary>
         public bool Closed;
+        /// <summary>
+        /// Whether the polygon is part of the start's dead end, left through exits too narrow for the radius (<see cref="SqueezeOut"/>).
+        /// </summary>
+        public bool Squeezed;
     }
 
     /// <summary>
@@ -175,6 +195,7 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
             var node = _made[_used++];
             (node.Ref, node.Position, node.G, node.F, node.Parent, node.Closed) = (at, position, g, f, -1, false);
             node.Through = float.MaxValue;
+            node.Squeezed = false;
             return node;
         }
     }
@@ -215,10 +236,9 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
         public readonly float MinFactor = Math.Min(1f, agent.Water.Min);
 
         /// <summary>
-        /// A start polygon none of whose exits leaves the radius clear (a sliver by a stair or a wall the walker was pushed into) is left through the
-        /// narrow ones: the walker stands in it already (docs/game/pathfinding.md, "Own builder").
+        /// How many polygons of the start's dead end were opened to their narrow exits (<see cref="SqueezeOut"/>; 0: none yet).
         /// </summary>
-        public bool SqueezeOut;
+        public int Squeezed;
     }
 
     /// <summary>
@@ -238,7 +258,7 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
             return PathResult.NotFound;
         }
         if (s_searchScratch is { } last) last.Exhaustive = false;
-        if (!World.TryFindPolygon(to, GoalSnap, out var goal, out var goalPoint)) return PathResult.NotFound;
+        if (!World.TryFindGoalPolygon(to, out var goal, out var goalPoint)) return PathResult.NotFound;
         var corridor = FindCorridor(start, startPoint, goal, goalPoint, agent);
         if (corridor is null) return PathResult.NotFound;
         return new PathResult(Pull(corridor, agent));
@@ -283,7 +303,7 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
     public Vector3? ClosedDoorOnTheWay(Vector3 from, Vector3 to, Vector3 near, NavAgent agent)
     {
         if (!World.TryFindPolygon(from, StartSnap, out var start, out var startPoint)) return null;
-        if (!World.TryFindPolygon(to, GoalSnap, out var goal, out var goalPoint)) return null;
+        if (!World.TryFindGoalPolygon(to, out var goal, out var goalPoint)) return null;
         if (new NavQuery(World).FindCorridor(start, startPoint, goal, goalPoint, agent) is not { } open) return null;
 
         Vector3? best = null;
@@ -307,7 +327,7 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
     {
         agent ??= NavAgent.Human;
         if (!World.TryFindPolygon(from, StartSnap, out var start, out var startPoint)) return PathResult.NotFound;
-        if (!World.TryFindPolygon(to, GoalSnap, out var goal, out var goalPoint))
+        if (!World.TryFindGoalPolygon(to, out var goal, out var goalPoint))
             (goal, goalPoint) = (new NavRef(-1, -1), to);
         var corridor = FindCorridor(start, startPoint, goal, goalPoint, agent, partial: true);
         return corridor is null ? PathResult.NotFound : new PathResult(Pull(corridor, agent));
@@ -387,14 +407,31 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
             if (partial && Vector3.Distance(NavWorld.ClosestPoint(mesh, p, goalPoint), goalPoint) is var d && d < nearestDistance)
                 (nearest, nearestDistance) = (node, d);
             Expand(ref search, node, mesh, p);
-            if (node == first && open.Count == 0 && last is null && !search.SqueezeOut)
-            {
-                search.SqueezeOut = true;
-                first.Closed = false;
-                open.Enqueue(first, first.F);
-            }
+            if (open.Count == 0) SqueezeOut(ref search);
         }
         return (last, nearest, iterations);
+    }
+
+    /// <summary>
+    /// A search that ran dry in a dead end of at most <see cref="SqueezeCluster"/> polygons round its start, none of whose exits leaves the radius
+    /// clear (a sliver by a stair or a wall the walker was pushed into, or a ledge of a few), opens them again to leave through the narrow exits:
+    /// the walker stands there already (docs/game/pathfinding.md, "Own builder"). Again for each dead end the way out leads into, while the count
+    /// holds.
+    /// </summary>
+    static void SqueezeOut(ref CorridorSearch search)
+    {
+        var nodes = search.Scratch.Nodes;
+        if (nodes.Count > SqueezeCluster || nodes.Count == search.Squeezed) return;
+
+        search.Squeezed = nodes.Count;
+        foreach (var node in nodes.Values)
+        {
+            if (node.Squeezed) continue;
+
+            node.Squeezed = true;
+            node.Closed = false;
+            search.Scratch.Open.Enqueue(node, node.F);
+        }
     }
 
     /// <summary>
@@ -437,8 +474,8 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
         // Only an end on a wall takes the radius off the portal (as Pull insets it); a tile-border, seam or area-change end has walkable ground
         // beyond.
         float width = Vector2.Distance(new(left.X, left.Z), new(right.X, right.Z));
-        if (width < ((leftWall ? 1 : 0) + (rightWall ? 1 : 0)) * agent.Radius && !(search.SqueezeOut && from == search.First))
-            return;
+        if (width < ((leftWall ? 1 : 0) + (rightWall ? 1 : 0)) * agent.Radius && !from.Squeezed) return;
+
         var mid = BestCrossing(from.Position, left, right, search.GoalPoint);
         float g = from.G + Vector3.Distance(from.Position, mid) * factor;
         if (area == NavArea.Door) g += OpenDoorCost;
@@ -455,12 +492,28 @@ public sealed class NavQuery(NavWorld world, NavDoors? doors = null)
         float through = g + toGoal * Factor(area, agent);
         if (node.Closed || through >= node.Through) return;
 
+        // A dead end's polygons are open again while nodes reached through them stand (SqueezeOut): entered from one of those, the two would be
+        // each other's parent and the corridor's walk back to the start would never end.
+        if (node.Squeezed && Descends(nodes, from, node)) return;
+
         node.Through = through;
         node.G = g;
         node.Position = mid;
         node.Parent = from.Ref.Key;
         node.F = g + toGoal * search.MinFactor;
         search.Scratch.Open.Enqueue(node, node.F);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="node"/> is <paramref name="ancestor"/> or was reached through it.
+    /// </summary>
+    static bool Descends(Dictionary<long, Node> nodes, Node node, Node ancestor)
+    {
+        for (var n = node; ; n = nodes[n.Parent])
+        {
+            if (n == ancestor) return true;
+            if (n.Parent < 0) return false;
+        }
     }
 
     /// <summary>

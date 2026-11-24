@@ -70,6 +70,22 @@ public sealed class BuildSite
     /// </summary>
     public string? Parent { get; set; }
     /// <summary>
+    /// Whether this parented building sits outside its parent (such as an exterior wall light snapped to a building's light node): stays visible
+    /// while the parent's interior is closed and writes <c>flags</c> bit 0 (<c>is outside</c>).
+    /// </summary>
+    public bool Outside { get; set; }
+    /// <summary>
+    /// The id of the building a loaded turret is mounted on (the save's <c>mounted</c> handle, TurretBuilding <c>+0x478</c>; a placed building's
+    /// id or a town building's key), null with none. One placed in Meitou names what it stands on as <see cref="Parent"/>.
+    /// </summary>
+    public string? MountedOn { get; init; }
+
+    /// <summary>
+    /// The building this one is in or on (Building slot 59 <c>FUN_140547530</c>: the building it stands in, else for a turret the one it is
+    /// mounted on); null with neither.
+    /// </summary>
+    public string? Container => Parent ?? MountedOn;
+    /// <summary>
     /// The id of the wall this short piece, connector or wedge is attached to (the original's WallBuilding+0x368): work, deliveries and orders go to
     /// that wall and its progress sets this one's (<see cref="ConstructionSystem.AttachWalls"/>). Rebuilt when placed or loaded; not saved, not
     /// hashed.
@@ -120,6 +136,11 @@ public sealed class BuildSite
     /// Whether building it is paused.
     /// </summary>
     public bool Paused { get; set; }
+    /// <summary>
+    /// The name the player gave a building of its own (<see cref="RenameSite"/>; save key <c>meitou custom name</c>), shown in place of its
+    /// record's name wherever the interface names it; null for none. Engine setting, not in the original.
+    /// </summary>
+    public string? CustomName { get; set; }
     /// <summary>
     /// Open to the public (the original's Building+0xc8, saved as <c>is public day</c>; the stats panel's toggle).
     /// </summary>
@@ -191,6 +212,8 @@ public sealed class BuildSite
         h.Add(Rotation.W);
         h.Add(Floor);
         h.Add(Parent is null ? 0UL : Rng.StableHash(Parent));
+        if (Outside) h.Add(0x4f757473);
+        if (MountedOn is not null) { h.Add(0x4d6f756e); h.Add(Rng.StableHash(MountedOn)); }
         h.Add(Owner);
         h.Add(Progress);
         h.Add(Target);
@@ -202,6 +225,7 @@ public sealed class BuildSite
         if (ForeignTown is not null) { h.Add(0x466F7265); h.Add(InNoTown); }
         if (!Public) h.Add(0x50726976);
         if (Upgrading) h.Add(0x55706772);
+        if (CustomName is not null) { h.Add(0x4e616d65); h.Add(Rng.StableHash(CustomName)); }
         h.Add(Materials.Length);
         foreach (var m in Materials)
         {
@@ -546,8 +570,9 @@ public sealed partial class BuildingRegistry
                 materials[i] = new MaterialView(s.Materials[i].Item, s.Materials[i].Required, s.Materials[i].Delivered);
 
             list.Add(new BuildingSnapshot(s.Id, s.Record, s.Position, s.Rotation, s.Floor, s.Parent, s.Owner, s.Progress, s.Target, materials,
-                s.Complete, s.Paused) { Dismantling = s.Dismantling, WallParent = s.WallParent, Public = s.Public,
-                TownName = s.LevelTownName ?? FindTown(s.Town)?.Name, LevelPlacement = s.LevelPlacement, Destroyed = s.Destroyed, Name = s.Name });
+                s.Complete, s.Paused) { Dismantling = s.Dismantling, WallParent = s.WallParent, Public = s.Public, Outside = s.Outside,
+                TownName = s.LevelTownName ?? FindTown(s.Town)?.Name, LevelPlacement = s.LevelPlacement, Destroyed = s.Destroyed, Name = s.Name,
+                CustomName = s.CustomName });
         }
 
         _publishedVersion = Version;

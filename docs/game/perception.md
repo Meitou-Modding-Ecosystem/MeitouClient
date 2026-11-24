@@ -44,7 +44,11 @@ The request byte `+0xdc` is raised by the sight test `FUN_140852f70`:104-112 on 
 
 Meitou (`SightMap`): every sight test (aggro, dialogue sightings, crime witnesses, bounty spotting, slave catching, loot witnesses) uses these
 rules. Rooms are the registered towns' buildings' `interior mask` volumes and lamps their lights, plus the lanterns characters carry
-(`CharacterAppearance.Lights` at the owner, its place and floor) and the lamps of completed player buildings (outdoor lights; ruins and the player's buildings have no room); a lit lamp of another building's interior is not counted indoors (floors are
+(`CharacterAppearance.Lights` at the owner, its place and floor) and the lamps of completed player buildings (outdoor lights, except that
+one in a town building with the building over it, or hung from its ceiling, lights that building's room on the floor it was placed on, as
+the original's `FUN_140a0af10` counts a building's lights as indoor while its location is a building and its outside flag (`+0x240`, set at
+placement when nothing is over it) is clear; the `interiorlamps` switch leaves these to their own rule, as drawn; ruins and the player's
+buildings have no room); a lit lamp of another building's interior is not counted indoors (floors are
 compared only within the character's building). With the `interiorlamps` switch on (Meitou, default) interior lamps count at
 any daylight, as the renderer draws them; off, night-only ones count at daylight <= 0.1 as in the game. The ray for a pair where the target or the looker is the player's (not both) or the target sneaks (`SightRay`, aggro's plain test included; the town
 early return and the other target states are left out; headless, one player character among 34 NPCs: no measurable tick cost); no weather, no posture factor; the 0.75 / 0.5 light gate is
@@ -66,8 +70,15 @@ and stealth x 5). Each looker keeps a meter per target (`SensoryData::SpottingPe
 **Verified** literals, flow **Observed**:
 
 - In view with line of sight: the meter fills by dt / T, T = lerp(v, 0.5 + 5 s, 0.5) x lerp(f, 4, 1). f is the looker's
-  alertness: 0.5 without a current goal, else a goal float (+0x3c); 0 when it is KO'd, busy
-  (+0x2f8 count > 0) or in state 1, and then the meter does not fill and the target is not seen.
+  alertness (`FUN_1408529c0`, literals **Verified**): the TaskData `+0x3c` of the task it runs (**Observed**: CharBody `+0x68`, set by its
+  set-task slot 3 `FUN_1405c6ec0`; its TaskData at `+0x70`), 0.5 with none; 0 when it is KO'd, busy (+0x2f8 count > 0) or in state 1. At 0 or less, awake (StateBroadcast `+0xb4` 0), the meter does not fill and
+  the target is not seen.
+- **Alertness per task** (**Verified**: 0.4 from the TaskData constructor `FUN_14061d350`, the rest written by the registrations of
+  `FUN_140319a60`): 1 for 17 Protection, 38 / 157 / 268 the guard nodes, 45 Bodyguard, 47 Stand at general node, 51 Stand at node,
+  146 Use turret, 176 Hunting bloodsmell; 0.8 for 36 Patrol town; 0.75 for 22 Patrol; 0.5 for 260 New slave processing; 0.25 for 181 and 182
+  (stripping a captive); 0.2 for 25, 60, 249 and 269 (first aid, splint, heal my legs); 0.1 for 97 Use training dummy; 0 for 98 / 258 Use bed
+  and 175 / 261 Sleep on floor; every other task 0.4. So the spot time is x1 for a guard on its post, x2.8 for one walking, x2.5 for one
+  with no task. Meitou: `TaskDataTable.Alertness` of the plan's running step (`Orders.Alertness`), for the sneak and the disguise meters.
 - Seen (result 1) when the meter was above 1 before this check; else result 2 (noticing). No line of sight: result 0.
 - Not in view: the meter empties by dt / 260 (`FUN_140853aa0`) and is dropped at 0.
 - The target keeps a watcher list (+0x1f0, `FUN_140855f30`): level and time per looker; level 0 removes it. Its only two writers are the spot
@@ -98,7 +109,7 @@ and stealth x 5). Each looker keeps a meter per target (`SensoryData::SpottingPe
 - Stealth XP: see [character-stats](character-stats.md#levelling-xp).
 
 Meitou: `AggroSystem` keeps one meter per looker and sneaker for every awake NPC of another faction (one that picks no fights
-looks for sneakers only, when one is in range; not in bed, asleep, carried, caged or fighting), f = 0.5,
+looks for sneakers only, when one is in range; not in bed, asleep, carried, caged or fighting), f its running step's alertness,
 dt = the scan interval; a meter decays also when the target is out of range. Crime
 witnesses and the stealth knock-out read the same meters. Line of sight (`SightRay.Clear`, #588, #655): the meter's ray `FUN_1408533a0` (**Verified** literals) runs from 18 over the
 looker's feet to 9 over the target's (half the start offset) and blocks when it hits more than 2 short of the target; its mask is `0x87f9e04` (terrain 2, building parts 9..12, stairs 15..18,
@@ -113,7 +124,7 @@ sense `AggroSystem.Notice` (level seen, for a player-side target of another fact
 conscious victim (engine choice: not when it goes down). Not wired: the forced sense of the AI tasks, the body drop and dialogue events 0x21 / 0x37, and a hit's `param_4`
 gate. Whether the arrows read well in game (the mesh is 10 units long) was not checked with a run.
 Every player character within the 1.2e8 range gets the `Kenshi_CharacterNamePanel` over its head (name in `Kenshi_StandardFont_Large` with shadow, selected: white in [brackets], else #b3b3b3 (**Observed**); the icon only while sneaking); NPCs get none
-(**Observed** in the original). **Verified** (`FUN_1406e8100`, `FUN_1406e2fd0`, `FUN_1406e2900`, `FUN_1405cc310`, `FUN_1403eca90`): a tag is made when a character with a faction whose `+0x250` is set (and a relation test against the player's faction object) enters the world; the `Show names` option (`DAT_142133508`, saved by `FUN_1403eca90`) is copied into each tag (`+0x20`), and off hides the name text and sizes the panel to the two icons (Meitou: `PlayerInterface.ShowNames`, Interface settings "Show names", default on); a carried character's tag is lifted by the name's height (Meitou draws none for a carried one). A dead squad member has no tag over the body (**Observed** in the original 1.0.68: a squad member who bled out from a cut-off leg lost it as they died); Meitou draws none for a dead character. Meitou puts it 22 over the feet, moving it over the drawn head as the head drops from 12 to 8 above them (crouching, sitting on the ground, a sleeper laid onto the mattress away from its feet; `PlayerInterface.TagAnchor`, also for task bars and speech).
+(**Observed** in the original). **Verified** (`FUN_1406e8100`, `FUN_1406e2fd0`, `FUN_1406e2900`, `FUN_1405cc310`, `FUN_1403eca90`): a tag is made when a character with a faction whose `+0x250` is set (and a relation test against the player's faction object) enters the world; the `Show names` option (`DAT_142133508`, saved by `FUN_1403eca90`) is copied into each tag (`+0x20`), and off hides the name text and sizes the panel to the two icons (Meitou: `PlayerInterface.ShowNames`, Interface settings "Show names", default on); a carried character's tag is lifted by the name's height (Meitou anchors it over the carrier's feet and lifts it by the tag's height the same way). A dead squad member has no tag over the body (**Observed** in the original 1.0.68: a squad member who bled out from a cut-off leg lost it as they died); Meitou draws none for a dead character. Meitou puts it 22 over the feet, moving it over the drawn head as the head drops from 12 to 8 above them (crouching, sitting on the ground, a sleeper laid onto the mattress away from its feet; `PlayerInterface.TagAnchor`, also for task bars and speech).
 
 ## Disguise
 
@@ -127,7 +138,7 @@ State on the character's status object (Character `+0x1a0`): level `+0x100`, uni
 - **Seeing through** (`SensoryData::disguiseMods` `FUN_140856f00`, **Observed**; literals **Verified**): per looker and frame, nothing when the looker is asleep, the target is
   farther than 400, or two flags (looker slot `0x248`, target `+0x3d4`) or target `+0x2f8` = 2 are set. A working disguise starts the check with m = level and
   b = 5 (two other branches: an escaped / ex-slave with m = 1 - looks-like-slave and b = 1, and an undisguised character the looker's faction has crimes on with m = 1, b = 5;
-  [economy](economy.md) 11.8). Then x 0.5 when the looker's squad has a grudge on it (long tag & 0x2b0, mark 2), x 0.6 when the uniform is the looker's faction's (mark 0), x 0.5
+  [economy](economy.md) 11.8); a partial or blown disguise matches none and gets nothing (**Verified**). Then x 0.5 when the looker's squad has a grudge on it (long tag & 0x2b0, mark 2), x 0.6 when the uniform is the looker's faction's (mark 0), x 0.5
   when the looker's faction owns it as a slave (mark 1), x 0.75 inside the walls of a town that is not public, x 2 unless the looker stands in a town (no nest) of a real faction other
   than the player's that it is not hostile to; k = lerp(stealth, 1, 2) x m x those (stealth = the raw stat / 100). a = 40 k + b feeds the spot meter of [spotting a sneaker](#spotting-a-sneaker)
   (`FUN_140856cb0` with a and 4a: T = lerp(v, 5a, a) x lerp(f, 4, 1)), the same per-looker map. Once it is full (or the cooldown already runs), and the looker is awake, not
@@ -139,8 +150,8 @@ State on the character's status object (Character `+0x1a0`): level `+0x100`, uni
 - Not traced: `sellingUniformDetectionCheck` (selling a uniform, `CRIME_UNIFORM_THEFT`), the dialogue gates of "regards as enemy".
 
 Meitou (`ArrestSystem.Disguise.cs`, every spot sweep): the level and faction from the worn head, armour and legs; lookers are awake NPCs not of the player's faction within 400 that see
-the character (`SightMap.Sees`), with their own meter per pair (not shared with the sneak meters, engine choice), alertness 0.5; the town tests read the town the point stands in
-(engine reading of the status object's hysteresis), inside the walls by the gate regions. The slave and bounty branches stay the arrest system's (a working disguise hides the bounty
+the character (`SightMap.Sees`), with their own meter per pair (not shared with the sneak meters, engine choice), the looker's alertness as above; the town tests read the town the point stands in
+(engine reading of the status object's hysteresis), inside the walls by the gate regions. The slave and bounty branches stay the arrest system's (any uniform piece hides the bounty
 from its spotting); `AggroSystem` and the arrest spotting take `ArrestSystem.SeenFaction`.
 
 ## Hearing
@@ -180,7 +191,7 @@ Hearing does not imply ordinary visual cone/line-of-sight eligibility.
   and the nearest's squared distance at `+0x0`; else tagged NEUTRAL and not down, dead or carried: `numNeutrals` `+0x98`. At a refresh an ALLY standing (posture 0), not out and not dead
   counts at `+0x4c` (conscious allies), any other ALLY at `+0x48`.
 - **Threats** (`addToThreatsAndFlockingList` `FUN_140854370`, at a refresh only): see [combat](combat.md#fight-lifecycle-and-orders). The list `+0x50` is the characters whose intended
-  target is the looker; `+0x88` sums their positive aggression, `+0x8c` the aggression of those whose target is of the looker's faction other than the looker itself (`FUN_140854370`, **Verified**: a target equal to the looker adds to `+0x88` only), `+0x90` all sensed others' intended aggression.
+  target is the looker; `+0x88` sums their positive aggression, `+0x8c` the aggression of those whose target is of the looker's faction other than the looker itself (`FUN_140854370`, **Verified**: a target equal to the looker adds to `+0x88` only), `+0x90` the intended aggression (status `+0xac`) of every sensed character of another faction not ragdolled or carried (`FUN_1407d1440`), fighting or not (**Verified**; Meitou `SenseBlock.Aggression`).
 - **Decay** (`FUN_140859010`): seen and heard cleared; age = (now − time) in sense units (hours × 3600 / 33 × 0.5, 2 s at 1x); while under 8 (25 when the character is in no building,
   vfunc 0x78 null, that reading **Observed**) the place follows the character's real one; dropped past 30 units, 60 when it is in combat mode, the looker's squad holds a long tag of mask 0x232 on it or it is the
   looker's slave, 120 for a player-faction character inside the looker's home building (the looker's faction not "not real", `+0x1d0`). A character whose vfunc 0x240 holds is dropped at once.
@@ -195,7 +206,7 @@ A carried or knocked-out character runs `FUN_140859220` instead of the sense upd
 Meitou (`SenseBlock`, `CharacterFacts.Senses`): written by `AggroSystem`'s look in `Act` for every living character not carried or knocked out (`AwakeLying` aside) on its turn (one in `ScanEveryTicks` = 15, by slot), the looker's
 own slot only, and by `AggroSystem.Force` (serial: the alert, a landed blow, a bolt, an alarm; it also takes an existing entry's threat at once, standing for the pass the original runs before
 its chooser). Engine choices: at most 40 entries (`SenseBlock.Cap`; a new one replaces the one sensed
-longest ago; when all were sensed at this look a kin or enemy entry replaces a neutral's and an enemy one an ally's, `AggroSystem.Insert`, so a squad
+longest ago; when all were sensed at this look a kin or enemy entry replaces a neutral's and an enemy one an ally's, `AggroSystem.Insert`; a forced sense the full block refuses makes no entry and runs no witness function, so a squad
 of more than 40 does not fill its blocks with its own mates and miss the enemy it fights, **Measured** on the #412 save: 75 of 88 Holy Nation
 attackers had no target before, none after; a block can fill with enemies and lose allies in a large battle), the gather takes up to 60 new characters within 250 then up to 40 in all within reach (every character it visits counts, sensed or not, in the grid's order; **Measured** in the
 sandbox with 250 idle neutrals round a player squad: the player's characters kept 0 entries, so a squad mate never sensed its attacked mate and none joined, 15 Protect allies reading
@@ -225,7 +236,7 @@ Where a vanilla NPC does run (**Observed**, base data and decompile, 2026-10):
 - *Dialogue DA 34 RUN_AWAY* (`FUN_140680560`, a target-needing effect: the branch sits under the target-resolved test, so an event with no target runs nothing). 186 records carry it, 156 reachable from a `DIALOGUE_PACKAGE`; nearly all are not fights (witnessing crimes: 43, 41; talks: 1, 3; slave escapes: 54, 55; 13). The combat-flavoured ones: 4 lines of events 5 and 66 (`Swamper Gang Bad Relations`: a stronger enemy, a squad-size and a relation condition; their `chance` fields are 0 too) and 2 get-up lines (event 24, `Get up fight bandit`: outnumbered and a stronger enemy, or a squad down). All four have `chance permanent` and `chance temporary` 0 (a roll that never passes under the line check, **Observed**), and event 24 has no target. Meitou has the effect (`DialogueSystem.RunAway`) and events 3, 66, 24; event 5 (unnamed in the editor) has no known source.
 - *Event 50 SQUAD_BROKEN*: `FUN_1407a5be0` (the platoon's intact refresh) fires it at each member that is not down, at the member's own attack target, on the tick the flag goes from intact to not. Base data binds it once: the `Dust bandit base` package (3 templates), root `defeated in player town- mark for raid` (taunt bubbles, no effect). Not built in Meitou.
 - *Packages*: the retreat package above.
-Nothing else issues `Task_Runaway` for a fighting NPC that I could find; a scan for `FUN_1405d20d0` calls with task 0x23 found only `FUN_140353c50`. Meitou's `FleeSystem` squad break (everyone standing runs) is therefore off by default; the AI's own requests (a lone crippled runner, a goal 35) run regardless. Leash/home/running state must
+Nothing else issues `Task_Runaway` for a fighting NPC that I could find; a scan for `FUN_1405d20d0` calls with task 0x23 found only `FUN_140353c50`, which gives it to the eater, from a prisoner that is not caged and is getting up ([order givers](ai-tasks.md#order-givers), **Verified**). Meitou's `FleeSystem` squad break (everyone standing runs) is therefore off by default; the AI's own requests (a lone crippled runner, a goal 35) run regardless. Leash/home/running state must
 not be equated with the attack planner or discarded immediately after a lost sighting.
 - `Task_Runaway`'s centre (`FUN_14034b440`, **Verified**): the mean position of the runner's sense entries tagged NEUTRAL or ENEMY (include 6) and not KO, bit 4 or bit 9 (exclude 0x218; `FUN_140853960` keeps an entry when `(tag & include) != 0 && (tag & exclude) == 0`), neutrals included, but an entry counts only when its status float `+0xac` (intended aggression of its current goal) is above 0. With none counted it uses its own position. Meitou: `FleeSystem.Centre` (`TaskAggression.OfGoal`; no senses: the enemies in sight range).
 
@@ -238,7 +249,8 @@ are set by `FUN_1408580d0` (**Verified**): 4 dead (the only bit then set), 3 dow
 staying low and not in combat mode, 15 carried (`+0x3d4`), 7 the status object's `+0xdc` (vfunc 0x70) 1 or 2, 5 / 6 slave state 1 / 2, 9 imprisoned (`+0x2f8` 2). A tag filter `FUN_140853960(m1, m2)` keeps entries with `tag & m1` non-zero and `tag & m2` zero. The combat finders read it ([ai-tasks](ai-tasks.md#combat-goals)).
 - Not the looker's enemy (Character slot 125, `vfunc_125` at 0x3e8): ALLY when slot 126 (0x3f0) says ally, else NEUTRAL.
 - Enemy: NEUTRAL when the target has diplomatic status (`Character::isDiplomaticStatus` `FUN_140796240`, flag = the looker is not with the player, `FUN_140856bc0`), else ENEMY (unless the looker's platoon object lacks a sensor that accepts it); a TEMP_ENEMY tag does not change it. **Verified** by disassembly: the function returns NPC class (`+0x1a0` -> `+0xdc`) = 5 Diplomat and, with the flag, `FactionWarMgr::isBiomeHomeTerritory` (`FUN_1409c3b30`: the BIOME_GROUP at the target's position is in its faction's war manager list `+0x88`, filled from FACTION `biomes` by `FUN_1409cabd0`); the war manager forces lookup it also makes is discarded. So a player-side looker never senses an enemy diplomat as ENEMY, another looker not while the diplomat stands in its faction's biomes; a campaign force's member is sensed like anyone. Meitou `AggroSystem.Regards`, `CharacterFacts.DiplomaticStatus`.
-- **Slot 125** (`CharacterAnimal::vfunc_125`, shared by all characters): never the same faction. Across platoons the looker's squad's
+- **Slot 125** (`CharacterAnimal::vfunc_125`, shared by all characters): never the same faction (**Verified** `FUN_14079c950`: its first test, on the
+  real factions, before the disguise is read, so a uniform never turns a faction on its own member; Meitou `AggroSystem.RegardsEnemy` and the finders' `TakenAsEnemy`, #1057). Across platoons the looker's squad's
   TEMP_ENEMY tag (or, for a looker whose faction has +0x250, the target's tag on it) makes an enemy and TEMP_ALLY prevents one. A disguise
   (uniform faction at +0x108 while +0x100 > 0.6 and +0x110 <= 0) stands in for the target's faction. A slave target: not when its owner
   is the looker's, and only when the looker is hostile to the owner's faction; it then still takes the faction test below on its own faction,
@@ -296,7 +308,7 @@ is not the looker's ally becomes a target only when both tests pass:
   `AI::setManuveringFreedomLevel` from standing orders 8/9 ([combat](combat.md#fight-lifecycle-and-orders)); the centre by
   `AI::setCenterOfMovement`, which every player order calls with its point (`Character::addOrder`) and which in
   HOLD_GROUND / STAY_CLOSE also installs the hold-position task 30 / 31. The radii are the constructor's (`AI::AI`: meiDistance 18, tolerance 5; no other writer found), so HOLD_GROUND reaches 63 and STAY_CLOSE 223.
-  **Meitou** (`Orders.InArea`, `AggroSystem.InAttackArea`, `CharacterCold.Manoeuvre` / `CentreOfMovement`, not saved like `HoldPoint`): the own-building pass, the area by mode and the fighting-the-looker pass run for the finders 16, 21 and 144 (not 34). Standing orders FAR (8) and NEAR (9) are `ManoeuvreCommand` (FAR: ROAM_FAR, centre cleared; NEAR: STAY_CLOSE, centre at the character; a ground move order moves the centre while the mode is not ROAM_FAR); the orders panel has no buttons for them because the original has none ([combat](combat.md#fight-lifecycle-and-orders)), and nothing sets HOLD_GROUND (**Verified**: no writer of AI +0x2bc but `FUN_140596680`, called only by `setStandingOrder` with 2 and 1); the `s^2` term is implemented in `Orders.InArea`. With the default ROAM_FAR the test never fails (sight 1500 is well inside 6517), so for a sensed target it only bites on player characters with a standing order. The target score's range term takes the mode's reach (`TargetScore.RangeOf`).
+  **Meitou** (`Orders.InArea`, `AggroSystem.InAttackArea`, `CharacterCold.Manoeuvre` / `CentreOfMovement`, not saved, as the original's, [precedence](ai-tasks.md#precedence)): the own-building pass, the area by mode and the fighting-the-looker pass run for the finders 16, 21 and 144 (not 34). Standing orders FAR (8) and NEAR (9) are `ManoeuvreCommand` (FAR: ROAM_FAR, centre cleared; NEAR: STAY_CLOSE, centre at the character; a ground move order moves the centre while the mode is not ROAM_FAR); the orders panel has no buttons for them because the original has none ([combat](combat.md#fight-lifecycle-and-orders)), and nothing sets HOLD_GROUND (**Verified**: no writer of AI +0x2bc but `FUN_140596680`, called only by `setStandingOrder` with 2 and 1); the `s^2` term is implemented in `Orders.InArea`. With the default ROAM_FAR the test never fails (sight 1500 is well inside 6517), so for a sensed target it only bites on player characters with a standing order. The target score's range term takes the mode's reach (`TargetScore.RangeOf`).
 - **Post** (`AI::isTargetInRangeForHOLDMode_hostiles` `FUN_140598630`): only for a character on Hold (`CharStats::holdPositionMode`
   `FUN_1402b2b90`: CharStats +0x12b and not sneaking) that is not `FUN_1407f2840` (**Verified**: Ranged toggle on, posture 0, and manning a turret, or both arms working with a ranged weapon in hand or on the back; Meitou `Orders.RangedExempt`): a target slower than 2 (movement
   +0xb8), or in its own state > 1 (crawling, playing dead), or with the movement's animation-driven flag +0x37c set (every swing sets it, [combat](combat.md), "A swing has no steering"), must be within 40 of the looker; a target more than 80 from the hold point
@@ -338,17 +350,31 @@ channels: blood (rise 1/60, decay 1/240 per second) and eggs (rise 1/240, decay 
 non-zero, body state 0), 3 eggs. The zone update (`FUN_14090cef0`, **Verified** by disassembly) accumulates only kinds 1 and 3, so bleeders count for nothing: blood target =
 corpses (the 0.25 bleeder share multiplies a count that stays 0); position = the corpses' centroid, else the zero vector (a hunter still on such a zone runs to the world origin
 until the value falls below its threshold). A zone record is freed when its zone is not loaded and both channels' targets are 0 (`FUN_1408f85f0`). The value moves toward the target at the rates, clamped. Corpse flies: [character-stats](character-stats.md#corpses).
-176 HUNTING_BLOODSMELL (`AI::scoreHuntingBlood` `FUN_140794b60`, `Task_HuntingSmell`): animals only; the blackboard keeps a zone (`+0xf8`) while its blood is at least the animal's
 Cadence (`FUN_1408f85f0`, **Verified**): a timer collects the speed-scaled frame time until 10 s; each kick then steps ONE zone record (cursor `DAT_1421352f8`) with dt = the frozen timer (10 s plus the overshoot), and when the cursor passes the last record timer and cursor reset. So a zone steps about once per cycle with dt >= 10 game seconds, in lumps of 10 s x rate, and the posted-entry map is cleared after each step. Meitou (`SmellSystem`): all zones step together every 10 game seconds with the time gathered since the last step.
-ANIMAL_CHARACTER `smell blood` (`smell eggs` is the eggs threshold); else the best of its zone and its active island's, x0.8 for a neighbour, x0.5 otherwise, above the threshold;
-desire 1 with one. The task runs (movement mode 2) to the smell's position; no end of its own. Data: "Smell Hunter" in the two Blood Hunter packages. SQUAD_TEMPLATE `blood smell mult`
-is read into the platoon's patrol settings; its consumer was not traced.
+176 HUNTING_BLOODSMELL (`AI::scoreHuntingBlood` `FUN_140794b60`, AI slot 49, `Task_HuntingSmell`; **Verified**, decompile): 0 for a character that is not an animal;
+the squad blackboard's zone (`+0xf8`) is kept while its blood is at least the animal's ANIMAL_CHARACTER `smell blood` (`smell eggs` is the eggs threshold), else
+the best of its zone and its active island's, x0.8 for a neighbour, x0.5 otherwise, above the threshold, is picked (`FUN_1408f58e0`) and stored even when it found
+none; the desire is then 1.0 (`DAT_14167c308`) with a zone, else 0, never more. The desire runs whenever the chooser scores the goal, so it rewrites the zone
+whether 176 wins or not; the zone is read only by the two smell desires (176's and the eggs' `FUN_140794ce0`, slot 50) and by `Task_HuntingSmell`'s start
+(`FUN_140333bd0`), which runs (movement mode 2) to the smell's position and has no end of its own (**Verified**: every function that reads the blackboard through its
+accessors `FUN_140507070` and `FUN_140791ba0` and then its `+0xf8`). Data (**Verified**, `gamedata_base.txt`): the AI_TASK "Smell Hunter" (176, classification 2)
+is listed only in the `Leader AI Goals` of `Blood Hunter day` and `Blood Hunter nocturnal` (`Smell Hunter=0,23,4`: hours 0 to 23, weight 0.04; their `Squad AI
+Goals` have Follow leader 141 instead), used by the templates `Lone Wolf`, `Mountain Wolf Pack`, `Wolf Pack nocturnal` and `Wolf pack patrol day`; no other
+package, race or faction list names it. The same Leader lists hold `Patrol=0,50,50` (22 Patrol, classification 2, weight 0.5); Patrol's desire is AI slot 40
+`FUN_140641570`, 0.25 (`DAT_141696c80`), its row has no finder and its list B is !26, 60, !157 (**Verified**). So in tier 2 Patrol scores 0.125 and Smell Hunter
+0.04, at most 0.0625 as the current goal with both x1.25 ([desire and commitment](ai-tasks.md#desire-and-commitment)): the leader hunts blood only when Patrol does
+not plan (its list B fails), and its members follow it (**Verified** from these functions and the data; not checked in the running game). They still go to
+corpses they sense: 230 eating corpses (both packages' Squad lists, and the `AI Goals` of the races `Bonedog` and `Boneyard Wolf`, weight 1) scores 1 with a
+corpse found and beats Patrol's 0.125 (**Verified**, `gamedata_base.txt`).
+Patrol's own walk does not seek blood: its sector weight adds the zone's smell x PatrolInfo `+0x34` (`FUN_1408f5ad0`), which the platoon fills from the
+template's `blood smell mult` looked up in the boolean fields (`FUN_1407ecdc0`, `FUN_1407ee130`; `FUN_14006c7c0` is the boolean fields' lookup, which adds a
+false entry for a name it lacks), and the base data has the field only as a number (0, or 4 on `Mountain Wolf Pack`), so the factor is 0 (**Verified**).
 
 ## Unknowns
 
 - Slot 14 `+0xb4`, slot 60's `+0xd5`, the hearing re-roll factor.
 - The writer of a character's location handle `+0x80`; the building rules of can-hear;
-  the alertness goal float and the +0x3f0 (green pointer) test of spotting.
+  the +0x3f0 (green pointer) test of spotting.
 
 ## Evidence index
 

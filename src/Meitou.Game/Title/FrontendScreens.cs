@@ -120,6 +120,16 @@ sealed class FrontendScreens(PlayerInterface player)
         /// Only ButtonA, captioned Ok (the original's message box with button mask 1, <c>FUN_140742130</c>).
         /// </summary>
         public bool OkOnly { get; init; }
+
+        /// <summary>
+        /// The split stack dialog's slider in place of the text (<see cref="StackSplitDialog"/>).
+        /// </summary>
+        public bool SplitAmount { get; init; }
+
+        /// <summary>
+        /// The rename dialog's text box in place of the text (<see cref="Building.RenameBuildingDialog"/>).
+        /// </summary>
+        public bool NameEntry { get; init; }
     }
 
     /// <summary>
@@ -457,10 +467,14 @@ sealed class FrontendScreens(PlayerInterface player)
     }
 
     /// <summary>
-    /// A button of the message box: ButtonA confirms, ButtonB takes the middle choice when there is one; any button closes it.
+    /// A button of the message box: ButtonA confirms, ButtonB takes the middle choice when there is one; any button closes it. The split stack
+    /// dialog's slider and arrows only change its amount; the rename dialog's text box only its text.
     /// </summary>
     void MessageAction(MyGuiEvent e)
     {
+        if (PendingConfirmation is { SplitAmount: true } && player.StackSplitDialog.AmountAction(e)) return;
+        if (PendingConfirmation is { NameEntry: true } && player.RenameBuildingDialog.NameAction(e)) return;
+
         var confirm = PendingConfirmation;
         PendingConfirmation = null;
         player.FaithfulScreens.Close("message");
@@ -991,6 +1005,9 @@ sealed class FrontendScreens(PlayerInterface player)
     internal void StyleMessageBox(List<UiControl> controls)
     {
         if (controls.FirstOrDefault(c => c.Name == "Root") is not { } root) return;
+
+        if (PendingConfirmation is { SplitAmount: true }) player.StackSplitDialog.AddAmountRow(controls);
+        if (PendingConfirmation is { NameEntry: true }) player.RenameBuildingDialog.AddNameRow(controls);
 
         string[] buttons = [.. new[] { "ButtonA", "ButtonB", "ButtonC" }.Where(n => controls.Any(c => c.Name == n))];
 

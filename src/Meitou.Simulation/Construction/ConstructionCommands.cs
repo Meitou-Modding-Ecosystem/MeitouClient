@@ -4,10 +4,11 @@ using Meitou.Simulation.Player;
 namespace Meitou.Simulation.Construction;
 
 /// <summary>
-/// One confirmed ghost: the BUILDING record, its absolute position, its rotation (tilt included), floor and parent building instance (null outdoors).
+/// One confirmed ghost: the BUILDING record, its absolute position, its rotation (tilt included), floor, parent building instance (null outdoors),
+/// bounds size, and whether a parented attachment sits outside its parent (such as an exterior wall light snapped to a building's light node).
 /// </summary>
 public sealed record PlannedBuilding(string Record, Vector3 Position, Quaternion Rotation, int Floor = 0, string? Parent = null,
-    Vector3 BoundsSize = default);
+    Vector3 BoundsSize = default, bool Outside = false);
 
 /// <summary>
 /// Build mode's Confirm: creates a site per plan, in order, for the player faction (docs/simulation.md "Buildings"). A plan failing the data rules is
@@ -40,6 +41,32 @@ public sealed record CancelSite(string Site) : SimCommand;
 /// The site's <c>pause</c> flag: auto-jobs skip a paused site.
 /// </summary>
 public sealed record PauseSite(string Site, bool Paused) : SimCommand;
+
+/// <summary>
+/// The panel's Rename on a building the player built: its <see cref="BuildSite.CustomName"/> becomes <see cref="Name"/> (trimmed, at most
+/// <see cref="MaxLength"/> characters, control characters dropped); a blank or null name gives back the record's name. Engine setting, not in the
+/// original.
+/// </summary>
+public sealed record RenameSite(string Site, string? Name) : SimCommand
+{
+    /// <summary>
+    /// The most characters a custom name keeps.
+    /// </summary>
+    public const int MaxLength = 40;
+
+    /// <summary>
+    /// <paramref name="name"/> as a building keeps it: control characters dropped, trimmed, cut to <see cref="MaxLength"/>; null when blank.
+    /// </summary>
+    public static string? Clean(string? name)
+    {
+        if (name is null) return null;
+
+        string kept = new string([.. name.Where(c => !char.IsControl(c))]).Trim();
+        if (kept.Length > MaxLength) kept = kept[..MaxLength].TrimEnd();
+
+        return kept.Length > 0 ? kept : null;
+    }
+}
 
 /// <summary>
 /// The panel's [UPGRADE]: the site becomes its record's <c>upgrades to</c> BUILDING in place and is built up to it (<see cref="BuildingUpgrades"/>).

@@ -72,6 +72,10 @@ internal sealed class AssetPart
     /// </summary>
     public bool IsWeapon;
     /// <summary>
+    /// The part's attach slot, if it has one (a code mod's glow on a slot, <see cref="CharacterGlow"/>).
+    /// </summary>
+    public AttachSlot? Slot;
+    /// <summary>
     /// When it shows by the bolts loaded in its crossbow (<see cref="CharacterPart.ShownShots"/>).
     /// </summary>
     public int ShownShots;
@@ -351,6 +355,14 @@ internal sealed class PartMaterial
     /// </summary>
     public int Slot = -1;
     /// <summary>
+    /// A body's code mod tints (<see cref="CharacterAppearance.Tints"/>), drawn from a companion record (<see cref="CharacterLookTints"/>).
+    /// </summary>
+    public IReadOnlyList<LookTint> Tints = [];
+    /// <summary>
+    /// The companion record's slot in <see cref="CharacterMaterialTable"/> (-1: none), placed with <see cref="Slot"/>.
+    /// </summary>
+    public int TintSlot = -1;
+    /// <summary>
     /// The renderer's update stamp in which the material was last drawn; <see cref="CharacterMaterialTable"/> retires slots unused since a given
     /// stamp.
     /// </summary>
@@ -444,6 +456,11 @@ internal sealed class CharacterAsset
     /// How far the body shape lifts the feet in the bind pose (negative: sinks them); the renderer lowers the character by it.
     /// </summary>
     public float GroundOffset;
+    /// <summary>
+    /// The worn boots' or leg replacements' lift (<see cref="CharacterShape.FeetLiftOf"/>): all a sleeper in a bed is raised by, as the original
+    /// lays the skeleton's root at the bed's node whatever the body shape (docs/game/locks.md "Heights").
+    /// </summary>
+    public float FeetLift;
     /// <summary>
     /// The skeleton's <c>Bip01 Head</c> (-1: none), which the portrait camera looks at.
     /// </summary>
@@ -1667,6 +1684,7 @@ internal sealed class CharacterContent : IDisposable
         var setup = Rigs.For(c);
         asset.Shape = setup?.Shape;
         asset.GroundOffset = setup?.GroundOffset ?? 0;
+        asset.FeetLift = CharacterShape.FeetLiftOf(c.Parts);
         asset.HeadBone = rig.Handle("Bip01 Head") ?? -1;
         AddMorph(asset, c, body, bodyPath);
         AddBody(asset, c, body, bodyPath);
@@ -1795,6 +1813,7 @@ internal sealed class CharacterContent : IDisposable
                 BoundsRadius = loaded.Radius,
                 Shown = part.Shown,
                 IsWeapon = part.Slot == AttachSlot.Weapon,
+                Slot = part.Slot,
                 ShownShots = part.ShownShots,
                 Muzzle = part is { Field: "live ammo", ShownShots: 1, Shown: WeaponShown.RangedDrawn },
                 HideSide = part.HideSide,
@@ -2106,6 +2125,7 @@ internal sealed class CharacterContent : IDisposable
             Mechanical = c.Race.GetBool("is robot"),
             SkinDefault = CharacterRenderer.SkinByDefault(c.Race),
             Race = c.Race.StringId,
+            Tints = c.Tints,
         };
 
         // Animal meshes put the mirrored half of the body at u 1..2 (goat, bull, beak thing: Observed, the meshes' texture coordinates), so their

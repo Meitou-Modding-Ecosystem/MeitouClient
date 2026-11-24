@@ -309,6 +309,9 @@ static partial class WorldFrame
         }
 
         if (gpu.Gi is { } tracedScene) tracedScene.Traced = gpu.Traced;
+
+        // Without the probes the GI's parameters stay the published zeros (no GI, traced or contact sun); with the shadow pass off its term is 1.
+        LeanLighting.Active = LeanLighting.Enabled && gpu.Probes is null && gpu.Shadow is not { Enabled: true };
     }
 
     #endregion
@@ -462,6 +465,8 @@ static partial class WorldFrame
 
         // The game's exposure (0.55 over the mean luminance, clamped to its band) goes with the game's sky and light.
         post.AutoExposure = (gpu.Sky.MinLuminance, gpu.Sky.MaxLuminance);
+        post.ShadeExposure = post.Options.AdaptiveExposure ? ShadeExposure(gpu.Sky, post.Options.AdaptiveExposureStrength) : default;
+
         // A room lit by its probes (Indoor GI) is as dark as its lamps leave it: the exposure follows it under the game's minimum.
         if (post is PostProcess exposed)
         {
@@ -487,6 +492,19 @@ static partial class WorldFrame
         // so a high eye sees the sea fade into the sky instead of a cut-off edge.
         var camera = f.Camera;
         camera.ViewDistance = Math.Min(Math.Max(camera.MinViewDistance, f.Light.FogDistance / 0.7f), gpu.ViewCap ?? float.MaxValue);
+    }
+
+    /// <summary>
+    /// Adaptive exposure (Meitou, docs/render-post.md "Adaptive exposure"): a scene darker than an open desert by day is exposed as that desert is
+    /// (the scale is the game's daytime minimum over <see cref="PostProcess.ShadeExposureReference"/>, the same at every hour, so dusk still
+    /// darkens), down to the daytime minimum over <paramref name="strength"/> (at most that many times brighter) but never under the night's
+    /// minimum; at night the band's minimum is the floor and nothing changes.
+    /// </summary>
+    static (float Scale, float Floor) ShadeExposure(SkyRenderer sky, float strength)
+    {
+        float night = KenshiLighting.MinLuminance(-1, sky.Exposure.Min, sky.Exposure.NightDarkness);
+        float floor = MathF.Min(MathF.Max(sky.Exposure.Min / Math.Max(strength, 1), night), sky.MinLuminance);
+        return (sky.Exposure.Min / PostProcess.ShadeExposureReference, floor);
     }
 
     /// <summary>
@@ -1451,6 +1469,8 @@ static partial class WorldFrame
         if (gpu.Particles is not { } particles || f.ParticleNear <= 0) return;
 
         particles.RangeFade = particles.Lit = post.Options.MeitouFog;
+        particles.LitDust = post.Options.LitDust;
+        particles.DustNoon = gpu.Sky.NoonLight;
         particles.InteriorCut = gpu.InteriorMask;
         particles.SunShade = ShaftDarkening(post.Options, f.Light, f.Sun.Y) * ShaftCloudFade(Overcast(gpu));
         float pixelsPerUnit = post.ParticlePixelsPerUnit(f.Camera.Projection(f.Aspect, 1, 10).M22);
@@ -1529,6 +1549,13 @@ static partial class WorldFrame
         if (gpu.NavmeshOverlay is { Visible: true } navOverlay && post.Target is { } navPicture)
         {
             navOverlay.Record(navPicture, width, height, post.SceneDepth, post.RenderWidth, post.RenderHeight,
+                f.RelativeRotation * SceneProjection().Projection, eye);
+        }
+
+        // The outposts' build limit rings while a building is held (Meitou only).
+        if (gpu.TownRangeOverlay is { Visible: true } ringOverlay && post.Target is { } ringPicture)
+        {
+            ringOverlay.Record(ringPicture, width, height, post.SceneDepth, post.RenderWidth, post.RenderHeight,
                 f.RelativeRotation * SceneProjection().Projection, eye);
         }
 
