@@ -5760,3 +5760,33 @@ msgid "{1} mod"
 msgid_plural "{1} mods"
 msgstr[0] "{1} Mod"
 msgstr[1] "{1} Mods"
+msgid "Put priority:"
+msgstr "Einlagerpriorität:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "Entnahmepriorität:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Träger und Arbeiter legen Dinge zuerst in das Lager mit der höchsten Einlagerpriorität, bei Gleichstand in das nächste. Verboten: nie. Klicken zum Erhöhen, Umschalt-Klick zum Senken."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Arbeiter und Bauarbeiter nehmen Dinge zuerst aus dem Lager mit der höchsten Entnahmepriorität, bei Gleichstand aus dem nächsten. Verboten: nie. Klicken zum Erhöhen, Umschalt-Klick zum Senken."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "Verboten"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "Zurückgestellt"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "Bevorzugt"
+
+#. machine-translated
+msgid "Important"
+msgstr "Wichtig"
