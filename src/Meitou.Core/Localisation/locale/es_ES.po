@@ -5097,3 +5097,35 @@ msgstr "Filas de menú no disponibles"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "Atenuadas: una fila del menú que tu selección no puede hacer ahora, como Primeros auxilios sin botiquín, aparece atenuada; haz Mayús+clic para asignar la tarea igualmente. Fiel: cada fila como en el juego."
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "Prioridad de depósito:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "Prioridad de retirada:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Los porteadores y trabajadores guardan las cosas primero en el almacén con mayor prioridad de depósito y, a igualdad, en el más cercano. Prohibido: nunca. Clic para subir, Mayús+clic para bajar."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Los trabajadores y constructores toman las cosas primero del almacén con mayor prioridad de retirada y, a igualdad, del más cercano. Prohibido: nunca. Clic para subir, Mayús+clic para bajar."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "Prohibido"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "Aplazado"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "Preferente"
+
+#. machine-translated
+msgid "Important"
+msgstr "Importante"

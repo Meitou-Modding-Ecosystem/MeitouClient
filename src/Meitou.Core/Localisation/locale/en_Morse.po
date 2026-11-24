@@ -5002,3 +5002,35 @@ msgstr "..- -. .- ...- .- .. .-.. .- -... .-.. . / -- . -. ..- / .-. --- .-- ...
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "--. .-. . -.-- . -.. ---... / .- / -- . -. ..- / .-. --- .-- / -.-- --- ..- .-. / ... . .-.. . -.-. - .. --- -. / -.-. .- -. .----. - / -.. --- / -. --- .-- --..-- / ... ..- -.-. .... / .- ... / ..-. .. .-. ... - / .- .. -.. / .-- .. - .... --- ..- - / .- / -- . -.. -.- .. - --..-- / .. ... / --. .-. . -.-- . -.. -.-.-. / ... .... .. ..-. - -....- -.-. .-.. .. -.-. -.- / .. - / - --- / ... . - / ..- .--. / - .... . / .--- --- -... / .- -. -.-- .-- .- -.-- .-.-.- / ..-. .- .. - .... ..-. ..- .-.. ---... / . ...- . .-. -.-- / .-. --- .-- / .- ... / .. -. / - .... . / --. .- -- . .-.-.-"
+
+#. machine-translated
+msgid "Put priority:"
+msgstr ".--. ..- - / .--. .-. .. --- .-. .. - -.-- ---..."
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "- .- -.- . / .--. .-. .. --- .-. .. - -.-- ---..."
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr ".... .- ..- .-.. . .-. ... / .- -. -.. / .-- --- .-. -.- . .-. ... / .--. ..- - / - .... .. -. --. ... / .. -. - --- / - .... . / ... - --- .-. .- --. . / --- ..-. / - .... . / .... .. --. .... . ... - / .--. ..- - / .--. .-. .. --- .-. .. - -.-- / ..-. .. .-. ... - --..-- / - .... . / -. . .- .-. . ... - / .- -- --- -. --. / . --.- ..- .- .-.. ... .-.-.- / ..-. --- .-. -... .. -.. -.. . -. ---... / -. . ...- . .-. .-.-.- / -.-. .-.. .. -.-. -.- / - --- / .-. .- .. ... . --..-- / ... .... .. ..-. - .-.-. -.-. .-.. .. -.-. -.- / - --- / .-.. --- .-- . .-. .-.-.-"
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr ".-- --- .-. -.- . .-. ... / .- -. -.. / -... ..- .. .-.. -.. . .-. ... / - .- -.- . / - .... .. -. --. ... / ..-. .-. --- -- / - .... . / ... - --- .-. .- --. . / --- ..-. / - .... . / .... .. --. .... . ... - / - .- -.- . / .--. .-. .. --- .-. .. - -.-- / ..-. .. .-. ... - --..-- / - .... . / -. . .- .-. . ... - / .- -- --- -. --. / . --.- ..- .- .-.. ... .-.-.- / ..-. --- .-. -... .. -.. -.. . -. ---... / -. . ...- . .-. .-.-.- / -.-. .-.. .. -.-. -.- / - --- / .-. .- .. ... . --..-- / ... .... .. ..-. - .-.-. -.-. .-.. .. -.-. -.- / - --- / .-.. --- .-- . .-. .-.-.-"
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "..-. --- .-. -... .. -.. -.. . -."
+
+#. machine-translated
+msgid "Deferred"
+msgstr "-.. . ..-. . .-. .-. . -.."
+
+#. machine-translated
+msgid "Preferred"
+msgstr ".--. .-. . ..-. . .-. .-. . -.."
+
+#. machine-translated
+msgid "Important"
+msgstr ".. -- .--. --- .-. - .- -. -"

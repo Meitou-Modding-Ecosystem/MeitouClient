@@ -5101,3 +5101,35 @@ msgstr "Недоступные пункты меню"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "Серые: пункт меню, который выбранные персонажи сейчас не могут выполнить (например, первая помощь без аптечки), показан серым; Shift+щелчок всё равно назначит работу. Как в оригинале: все пункты как в игре."
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "Приоритет закладки:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "Приоритет выдачи:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Носильщики и рабочие сначала кладут вещи в хранилище с наивысшим приоритетом закладки, при равенстве — в ближайшее. Запрещено: никогда. Щелчок повышает, Shift+щелчок понижает."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "Рабочие и строители сначала берут вещи из хранилища с наивысшим приоритетом выдачи, при равенстве — из ближайшего. Запрещено: никогда. Щелчок повышает, Shift+щелчок понижает."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "Запрещено"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "Отложено"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "Предпочтительно"
+
+#. machine-translated
+msgid "Important"
+msgstr "Важно"

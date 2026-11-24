@@ -5093,3 +5093,35 @@ msgstr "사용할 수 없는 메뉴 항목"
 
 msgid "Greyed: a menu row your selection can't do now, such as First Aid without a medkit, is greyed; Shift-click it to set up the job anyway. Faithful: every row as in the game."
 msgstr "회색 표시: 선택한 캐릭터가 지금 할 수 없는 메뉴 항목(구급 키트 없는 응급 처치 등)은 회색으로 표시됩니다. Shift+클릭하면 작업을 그대로 지정할 수 있습니다. 원작대로: 모든 항목을 게임과 같이 표시합니다."
+
+#. machine-translated
+msgid "Put priority:"
+msgstr "넣기 우선순위:"
+
+#. machine-translated
+msgid "Take priority:"
+msgstr "꺼내기 우선순위:"
+
+#. machine-translated
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "운반꾼과 일꾼은 넣기 우선순위가 가장 높은 저장고에 먼저 물건을 넣고, 같으면 가장 가까운 곳에 넣습니다. 금지: 사용 안 함. 클릭하면 올리고, Shift+클릭하면 내립니다."
+
+#. machine-translated
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
+msgstr "일꾼과 건설꾼은 꺼내기 우선순위가 가장 높은 저장고에서 먼저 물건을 꺼내고, 같으면 가장 가까운 곳에서 꺼냅니다. 금지: 사용 안 함. 클릭하면 올리고, Shift+클릭하면 내립니다."
+
+#. machine-translated
+msgid "Forbidden"
+msgstr "금지"
+
+#. machine-translated
+msgid "Deferred"
+msgstr "미룸"
+
+#. machine-translated
+msgid "Preferred"
+msgstr "선호"
+
+#. machine-translated
+msgid "Important"
+msgstr "중요"
