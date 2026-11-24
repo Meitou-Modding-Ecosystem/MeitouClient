@@ -5034,3 +5034,15 @@ msgstr ".--. .-. . ..-. . .-. .-. . -.."
 #. machine-translated
 msgid "Important"
 msgstr ".. -- .--. --- .-. - .- -. -"
+
+#. machine-translated
+msgid "Rename"
+msgstr ".-. . -. .- -- ."
+
+#. machine-translated
+msgid "Give the building a name of your own, shown on its panel, its inventory and the jobs that use it."
+msgstr "--. .. ...- . / - .... . / -... ..- .. .-.. -.. .. -. --. / .- / -. .- -- . / --- ..-. / -.-- --- ..- .-. / --- .-- -. --..-- / ... .... --- .-- -. / --- -. / .. - ... / .--. .- -. . .-.. --..-- / .. - ... / .. -. ...- . -. - --- .-. -.-- / .- -. -.. / - .... . / .--- --- -... ... / - .... .- - / ..- ... . / .. - .-.-.-"
+
+#. machine-translated
+msgid "Leave it empty for the building's own name."
+msgstr ".-.. . .- ...- . / .. - / . -- .--. - -.-- / ..-. --- .-. / - .... . / -... ..- .. .-.. -.. .. -. --. .----. ... / --- .-- -. / -. .- -- . .-.-.-"

@@ -5034,3 +5034,15 @@ msgstr "Eferredpray"
 #. machine-translated
 msgid "Important"
 msgstr "Importantway"
+
+#. machine-translated
+msgid "Rename"
+msgstr "Enameray"
+
+#. machine-translated
+msgid "Give the building a name of your own, shown on its panel, its inventory and the jobs that use it."
+msgstr "Ivegay ethay uildingbay away amenay ofway ouryay ownway, ownshay onway itsway anelpay, itsway inventoryway andway ethay obsjay atthay useway itway."
+
+#. machine-translated
+msgid "Leave it empty for the building's own name."
+msgstr "Eavelay itway emptyway orfay ethay uildingbay's ownway amenay."
