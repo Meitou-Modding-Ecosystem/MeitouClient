@@ -801,7 +801,7 @@ msgstr ""
 msgid "Built into Meitou: {1}; this mod is not run"
 msgstr ""
 
-#: src/Meitou.Game/PlayerInterface.cs src/Meitou.Game/Title/FrontendScreens.cs src/Meitou.Game/Ui/StackSplitDialog.cs
+#: src/Meitou.Game/Building/RenameBuildingDialog.cs src/Meitou.Game/PlayerInterface.cs src/Meitou.Game/Title/FrontendScreens.cs src/Meitou.Game/Ui/StackSplitDialog.cs
 msgid "CANCEL"
 msgstr ""
 
@@ -1885,6 +1885,10 @@ msgstr ""
 msgid "Give orders and open menus (the game's right button)."
 msgstr ""
 
+#: src/Meitou.Game/Building/BuildingSelection.cs
+msgid "Give the building a name of your own, shown on its panel, its inventory and the jobs that use it."
+msgstr ""
+
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Give the ground texture depth."
 msgstr ""
@@ -2663,6 +2667,10 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Leave fading tracks on the ground after walking through fresh blood."
+msgstr ""
+
+#: src/Meitou.Game/Building/RenameBuildingDialog.cs
+msgid "Leave it empty for the building's own name."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -3971,6 +3979,10 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "Release page"
+msgstr ""
+
+#: src/Meitou.Game/Building/BuildingSelection.cs src/Meitou.Game/Building/RenameBuildingDialog.cs
+msgid "Rename"
 msgstr ""
 
 #: src/Meitou.Game/Settings/SettingHints.cs src/Meitou.Game/SettingsMenu.cs

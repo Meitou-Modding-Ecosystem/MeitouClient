@@ -1480,10 +1480,15 @@ sealed class BuildMode(PlayerInterface player)
     }
 
     /// <summary>
-    /// The name of a site's building, for the menu's title.
+    /// The name of a site's building, for the menu's title: the player's own name for it when they gave one (RenameSite), else the record's.
     /// </summary>
     internal string SiteName(BuildingSnapshot site) =>
-        site.LevelPlacement is not null ? site.Name : Services?.Menu.Catalog.FirstOrDefault(b => b.Id == site.Record)?.Name ?? site.Record;
+        site.CustomName ?? (site.LevelPlacement is not null ? site.Name : RecordName(site));
+
+    /// <summary>
+    /// The build menu's name of the site's record; the record id without one.
+    /// </summary>
+    string RecordName(BuildingSnapshot site) => Services?.Menu.Catalog.FirstOrDefault(b => b.Id == site.Record)?.Name ?? site.Record;
 
     /// <summary>
     /// The verbs the selection has for a site (the original's building branch, docs/game/ui-input.md "Context menu verbs"): Build (2) for an
