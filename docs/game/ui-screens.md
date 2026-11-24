@@ -687,8 +687,8 @@ How a building gets selected: [ui-input](ui-input.md#building-picking-and-select
     +0x115 (`persistent`) set to 0 (`FUN_1407ebdd0`), each order with the clear flag (**Verified**, disassembly; [order givers](ai-tasks.md#order-givers)); `FUN_14038a720` and `FUN_1404d2dd0` with the building;
     "Building purchased!". Meitou: [house purchases](../simulation.md#town-house-purchases).
   - Meitou's addition, not in the original: a complete storage of the player's gets `Put priority:` and `Take priority:` buttons (width 0.4)
-    naming its [storage priority](../modding.md) level (Forbidden in BadBright, above Normal in Good); a click raises the level, Shift+click lowers it,
-    each wrapping (`General_Click`; `SetStoragePriority`).
+    naming its [storage priority](../modding.md) level (Forbidden in BadBright, above Normal in Good); a click raises the level, a right-click
+    or Shift+click lowers it, each wrapping (`General_Click`; `SetStoragePriority`).
   - Meitou's addition, not in the original: a building the player built gets a `Rename` button (Main) after Dismantle. It opens the message box
     titled RENAME with a text box (at most 40 characters) holding the building's name; RENAME sends `RenameSite`, Cancel or Esc changes nothing.
     The name, trimmed and without control characters, replaces the record's name in the panel title, the context menu and inventory titles and

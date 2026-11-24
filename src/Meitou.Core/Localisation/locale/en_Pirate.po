@@ -5012,12 +5012,12 @@ msgid "Take priority:"
 msgstr "Plunderin' priority:"
 
 #. machine-translated
-msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
-msgstr "Haulers an' deckhands stow loot in the hold o' the highest stowin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, Shift+click to lower."
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, right-click or Shift+click to lower."
+msgstr "Haulers an' deckhands stow loot in the hold o' the highest stowin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, right-click or Shift+click to lower."
 
 #. machine-translated
-msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
-msgstr "Deckhands an' builders plunder from the hold o' the highest plunderin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, Shift+click to lower."
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, right-click or Shift+click to lower."
+msgstr "Deckhands an' builders plunder from the hold o' the highest plunderin' priority first, the nearest among equals. Forbidden: never, matey. Click to raise, right-click or Shift+click to lower."
 
 #. machine-translated
 msgid "Forbidden"

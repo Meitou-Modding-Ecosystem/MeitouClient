@@ -5012,12 +5012,12 @@ msgid "Take priority:"
 msgstr "Aketay ioritypray:"
 
 #. machine-translated
-msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
-msgstr "Aulershay andway orkersway utpay ingsthay intoway ethay oragestay ofway ethay ighesthay utpay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, Iftshay+ickclay otay owerlay."
+msgid "Haulers and workers put things into the storage of the highest put priority first, the nearest among equals. Forbidden: never. Click to raise, right-click or Shift+click to lower."
+msgstr "Aulershay andway orkersway utpay ingsthay intoway ethay oragestay ofway ethay ighesthay utpay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, ightray-ickclay orway Iftshay+ickclay otay owerlay."
 
 #. machine-translated
-msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, Shift+click to lower."
-msgstr "Orkersway andway uildersbay aketay ingsthay omfray ethay oragestay ofway ethay ighesthay aketay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, Iftshay+ickclay otay owerlay."
+msgid "Workers and builders take things from the storage of the highest take priority first, the nearest among equals. Forbidden: never. Click to raise, right-click or Shift+click to lower."
+msgstr "Orkersway andway uildersbay aketay ingsthay omfray ethay oragestay ofway ethay ighesthay aketay ioritypray irstfay, ethay earestnay amongway equalsway. Orbiddenfay: evernay. Ickclay otay aiseray, ightray-ickclay orway Iftshay+ickclay otay owerlay."
 
 #. machine-translated
 msgid "Forbidden"
