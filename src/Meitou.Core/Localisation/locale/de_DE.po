@@ -5913,3 +5913,11 @@ msgstr "Bildschirm {1}: {2}"
 #. machine-translated
 msgid "The monitor the game starts and goes full screen on. Automatic: the one its window is on (on Wayland, the first monitor)."
 msgstr "Der Bildschirm, auf dem das Spiel startet und ins Vollbild wechselt. Automatisch: der, auf dem sein Fenster ist (unter Wayland der erste Bildschirm)."
+
+#. machine-translated
+msgid "Mod: {1}"
+msgstr "Mod: {1}"
+
+#. machine-translated
+msgid "Mods: {1}"
+msgstr "Mods: {1}"
