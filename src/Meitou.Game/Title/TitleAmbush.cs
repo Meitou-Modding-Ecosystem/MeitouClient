@@ -549,10 +549,11 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
 
     /// <summary>
     /// A focused attack of <paramref name="attackers"/> on <paramref name="target"/> next tick (row 5, as the player's pick): the fight keeps its target
-    /// rather than choosing again among whoever is attacking it.
+    /// rather than choosing again among whoever is attacking it. It is an order, so an earlier order still holding a fighter (the four's on the Beak
+    /// Thing, for the risers) does not refuse it as a goal's fight.
     /// </summary>
     static AttackOrder Focused(IReadOnlyList<CharacterId> attackers, CharacterId target, World world) =>
-        new(attackers, target) { Row = TaskType.FocusedMeleeAttack, Tick = world.Tick + 1 };
+        new(attackers, target) { Row = TaskType.FocusedMeleeAttack, Source = TaskSource.Order, Tick = world.Tick + 1 };
 
     /// <summary>
     /// The ground gap (world units) between <paramref name="a"/> and <paramref name="b"/>.

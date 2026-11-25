@@ -4,6 +4,7 @@ using Meitou.Data.Characters;
 using Meitou.Data.Gameplay;
 using Meitou.Data.Ogre;
 using Meitou.Game.Title;
+using Meitou.Simulation.Movement;
 using Meitou.Simulation.Population;
 using Xunit;
 
@@ -130,5 +131,6 @@ public class TitleAmbushTests(ITestOutputHelper output)
         Assert.All(new[] { 0, 1, 4, 5 }, f => Assert.True(end[f].Down, $"fighter {f} is up"));
         Assert.All(new[] { 2, 3 }, f => Assert.False(end[f].Down, $"riser {f} is down"));
         Assert.All(new[] { 2, 3 }, f => Assert.True(ambush.Bloodied(end[f].Id.Slot)));
+        Assert.All(new[] { 2, 3 }, f => Assert.Equal(CharacterTask.Attack, end[f].Task));
     }
 }
