@@ -481,6 +481,7 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
     /// </summary>
     void Next(Step step)
     {
+        if (step != Now) Console.WriteLine($"title     beak thing ambush: {step}");
         Now = step;
         _stepSeconds = 0;
     }

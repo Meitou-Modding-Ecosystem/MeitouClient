@@ -202,7 +202,7 @@ sealed class TitleBattle : IDisposable
                 WeaponDrawn = c.WeaponDrawn,
                 RangedDrawn = c.RangedDrawn,
                 Shots = c.CrossbowShots,
-                Scale = c.Scale * DisplayScale,
+                Scale = c.Scale * DisplayScale * (Ambush is { } giant && c.Id == giant.Beak ? BeakSize : 1),
                 DrawDistanceScale = DrawReach,
                 FullRateAnimation = true,
                 Bones = c.Ragdoll,
@@ -210,6 +210,11 @@ sealed class TitleBattle : IDisposable
             });
         }
     }
+
+    /// <summary>
+    /// How much larger again the ambush's Beak Thing is drawn than the fighters: a giant even beside them.
+    /// </summary>
+    const float BeakSize = 1.6f;
 
     /// <summary>
     /// Every body part of a fighter the Beak Thing struck down shows the most blood.
