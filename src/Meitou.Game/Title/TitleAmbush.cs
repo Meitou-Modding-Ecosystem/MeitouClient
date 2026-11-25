@@ -1,4 +1,5 @@
 using System.Numerics;
+using Meitou.Data.Gameplay.Ai;
 using Meitou.Simulation;
 using Meitou.Simulation.Ai;
 using Meitou.Simulation.Bodies;
@@ -14,7 +15,7 @@ namespace Meitou.Game.Title;
 /// A system of the fight's own world (<see cref="TitleBattle"/>): it gives the orders, puts the struck down and moves the Beak Thing on its run; the
 /// fight's combat, animation and ragdolls do the rest. Fighters 2p and 2p + 1 are pair p, pair 0 the furthest.
 /// </summary>
-sealed class TitleAmbush : ICombatHitObserver
+sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
 {
     #region Rolling
 
@@ -57,7 +58,12 @@ sealed class TitleAmbush : ICombatHitObserver
     /// The longest the charge lasts before the smash comes anyway (a blow that never lands, a block), and the longest the Beak Thing fights one of
     /// the four before it goes down anyway.
     /// </summary>
-    const float SmashLatestSeconds = 14, StrikeLatestSeconds = 9;
+    const float SmashLatestSeconds = 14, StrikeLatestSeconds = 6;
+
+    /// <summary>
+    /// The least time between two of the four falling, so one swing that catches two still fells one.
+    /// </summary>
+    const float StrikeGapSeconds = 2;
 
     /// <summary>
     /// The pause after the last of the four falls before the Beak Thing runs for the hill; after it is gone, the pause before two of the fallen get
@@ -167,9 +173,10 @@ sealed class TitleAmbush : ICombatHitObserver
     readonly HashSet<int> _struck = [];
 
     /// <summary>
-    /// The Beak Thing's landed blows since the last tick's inputs (the hit observer may not change the world).
+    /// Who the Beak Thing's blows fell on since the last tick's inputs, landed, blocked or dodged alike: none of the fighters can stop it (the
+    /// observers may not change the world).
     /// </summary>
-    readonly List<CombatHit> _blows = [];
+    readonly List<CharacterId> _blows = [];
 
     /// <summary>
     /// The run's way points in the world (under the wanderer, then under the camera's eye) and where it started.
@@ -240,7 +247,15 @@ sealed class TitleAmbush : ICombatHitObserver
     /// </summary>
     public void HitResolved(World world, in CombatHit hit)
     {
-        if (hit.Attacker == Beak && hit.Source == CombatHitSource.Melee) _blows.Add(hit);
+        if (hit.Attacker == Beak && hit.Source == CombatHitSource.Melee) _blows.Add(hit.Victim);
+    }
+
+    /// <summary>
+    /// The Beak Thing's blocked and dodged blows, kept for the next tick's inputs as if they landed.
+    /// </summary>
+    public void Defended(World world, in CombatDefence defence)
+    {
+        if (defence.Attacker == Beak) _blows.Add(defence.Defender);
     }
 
     /// <summary>
@@ -301,7 +316,7 @@ sealed class TitleAmbush : ICombatHitObserver
     {
         Next(Step.Charge);
         if (world.Characters.Cold(Beak.Slot) is { } beak) beak.CombatRunning = true;
-        world.Commands.Enqueue(new AttackOrder([Beak], _fighters[0]) { Tick = world.Tick + 1 });
+        world.Commands.Enqueue(Focused([Beak], _fighters[0], world));
     }
 
     /// <summary>
@@ -321,7 +336,7 @@ sealed class TitleAmbush : ICombatHitObserver
         }
 
         Next(Step.Melee);
-        world.Commands.Enqueue(new AttackOrder(_fighters[2..], Beak) { Tick = world.Tick + 1 });
+        world.Commands.Enqueue(Focused(_fighters[2..], Beak, world));
         NextTarget(world);
     }
 
@@ -354,7 +369,7 @@ sealed class TitleAmbush : ICombatHitObserver
             return;
         }
 
-        bool struck = _blows.Any(b => b.Victim == _fighters[_target]) || _stepSeconds >= StrikeLatestSeconds;
+        bool struck = _blows.Contains(_fighters[_target]) && _stepSeconds >= StrikeGapSeconds || _stepSeconds >= StrikeLatestSeconds;
         if (!struck) return;
 
         var table = world.Characters;
@@ -377,7 +392,7 @@ sealed class TitleAmbush : ICombatHitObserver
             .OrderBy(f => Gap(world, Beak, _fighters[f]))
             .DefaultIfEmpty(-1)
             .First();
-        if (_target >= 0) world.Commands.Enqueue(new AttackOrder([Beak], _fighters[_target]) { Tick = world.Tick + 1 });
+        if (_target >= 0) world.Commands.Enqueue(Focused([Beak], _fighters[_target], world));
     }
 
     /// <summary>
@@ -420,8 +435,8 @@ sealed class TitleAmbush : ICombatHitObserver
         {
             _fighting = true;
             var (a, b) = (_fighters[Risers[0]], _fighters[Risers[1]]);
-            world.Commands.Enqueue(new AttackOrder([a], b) { Tick = world.Tick + 1 });
-            world.Commands.Enqueue(new AttackOrder([b], a) { Tick = world.Tick + 1 });
+            world.Commands.Enqueue(Focused([a], b, world));
+            world.Commands.Enqueue(Focused([b], a, world));
         }
     }
 
@@ -444,6 +459,13 @@ sealed class TitleAmbush : ICombatHitObserver
         TaskStart.Stand(world.Characters, slot);
         world.Characters.Next[slot].Velocity = Vector3.Zero;
     }
+
+    /// <summary>
+    /// A focused attack of <paramref name="attackers"/> on <paramref name="target"/> next tick (row 5, as the player's pick): the fight keeps its target
+    /// rather than choosing again among whoever is attacking it.
+    /// </summary>
+    static AttackOrder Focused(IReadOnlyList<CharacterId> attackers, CharacterId target, World world) =>
+        new(attackers, target) { Row = TaskType.FocusedMeleeAttack, Tick = world.Tick + 1 };
 
     /// <summary>
     /// The ground gap (world units) between <paramref name="a"/> and <paramref name="b"/>.

@@ -22,6 +22,11 @@ public class TitleAmbushTests(ITestOutputHelper output)
     static readonly TitleStage Flat = new(Vector3.Zero, 2.5f, new(1500, 0, 0), new(-1500, 0, -200), new(-600, 0, 1500), new(-500, 350, 2200));
 
     /// <summary>
+    /// The flat stage's ground height: dry land, above the world's water.
+    /// </summary>
+    const float Ground = 2000;
+
+    /// <summary>
     /// The three fight centres on the flat stage, the first the furthest.
     /// </summary>
     static readonly Vector3[] Centres = [new(-150, 0, -250), new(0, 0, 0), new(150, 0, 250)];
@@ -83,7 +88,7 @@ public class TitleAmbushTests(ITestOutputHelper output)
         var assets = new AssetLocator(install!);
         var data = PopulationData.Create(db, [], new GeneratedAppearances(db, install!.Root));
         var lengths = AnimationLengths.Load(install.Root, db, assets.Find);
-        using var battle = TitleBattle.Create(data, (_, _) => 0, Centres, lengths, AnimationLibrary.FromDatabase(db), Flat,
+        using var battle = TitleBattle.Create(data, (_, _) => Ground, Centres, lengths, AnimationLibrary.FromDatabase(db), Flat,
             CharacterRigs.For(db, assets));
         Assert.NotNull(battle);
         var ambush = battle.Ambush!;
@@ -95,7 +100,7 @@ public class TitleAmbushTests(ITestOutputHelper output)
         {
             battle.Advance(0.05);
             int down = world.Snapshot.Characters.Take(6).Count(c => c.Down);
-            if (seen.Count == 0 || seen[^1].Step != ambush.Now || down != downs || frame % 20 == 0)
+            if (seen.Count == 0 || seen[^1].Step != ambush.Now || down != downs)
             {
                 seen.Add((frame * 0.05f, ambush.Now));
                 output.WriteLine($"{frame * 0.05f,6:0.00} s {ambush.Now,-8} down {down} beak {world.Snapshot.Characters[6].Position}");
