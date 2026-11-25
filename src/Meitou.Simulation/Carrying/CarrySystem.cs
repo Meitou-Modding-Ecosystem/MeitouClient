@@ -234,6 +234,25 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
             : Settings.Reach;
 
     /// <summary>
+    /// How near a looter must come to the character it loots or opens: <see cref="ReachOf"/> for a down or carried one or a pickpocket target; for
+    /// one of the player's own standing, at least the original's arrival test on a character, row 26's <c>isAtLocation</c> (<c>FUN_1405a2450</c>
+    /// over <c>FUN_14059c6d0</c>, <b>Observed</b>): the target's radius + <see cref="Dialogue.DialogueSystem.TalkReach"/>, doubled once the
+    /// looter stops. With the flat reach, a follower backing off from its approaching leader and body contact with a big animal kept the looter
+    /// walking after its bag for seconds (#1247).
+    /// </summary>
+    float LootReach(World world, int looter, int target)
+    {
+        var body = world.Characters.Cold(target)!;
+        float reach = ReachOf(world, body);
+        if (!body.IsPlayer || CanBeLooted(body)) return reach;
+
+        bool stopped = (world.Characters.Next[looter].Flags & (ushort)MoveFlags.AnyPath) == 0;
+        float stride = stopped ? Dialogue.DialogueSystem.TalkReach * 2 : Dialogue.DialogueSystem.TalkReach;
+
+        return MathF.Max(reach, CombatSteering.Radius(body) + stride);
+    }
+
+    /// <summary>
     /// A character that may be looted: knocked out, dead, playing dead or carried, with an inventory (the bedded and imprisoned that the original's
     /// <c>isItemLootable</c> also takes are opened as a pickpocket, <see cref="CanBePickpocketed"/>).
     /// </summary>
@@ -514,6 +533,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
             return cold.Medical is { Incapacitated: false } ? OrderCheck.Run : OrderCheck.Blocked();
         }
         if (order.Row == TaskType.LootAnimalsJob) return ForageEntryCheck(world, slot, cold);
+        if (order.Row == TaskType.FindWeapon) return FindWeaponCheck(world, slot, cold);
         if (!table.TryResolveNext(order.Target, out int target) || target == slot) return OrderCheck.Gone;
         var tc = table.Cold(target)!;
         switch (order.Row)
@@ -544,6 +564,9 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         }
         switch (order.Row)
         {
+            case TaskType.FindWeapon:
+                StartFindWeapon(world, slot, cold);
+                break;
             case TaskType.PutDownObject:
                 BeginPutDown(world, slot, TaskSource.Order);
                 break;
@@ -674,7 +697,8 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         var table = world.Characters;
         if (table.Next[slot].Task != (byte)CharacterTask.Loot || !table.TryResolveNext(table.Cold(slot)!.CarryTarget, out int t)) return false;
 
-        return !InReach(world, table.Next[slot], table.Next[t], Settings.Reach) && WalkFails(world, slot, Settings.Reach);
+        float reach = LootReach(world, slot, t);
+        return !InReach(world, table.Next[slot], table.Next[t], reach) && WalkFails(world, slot, reach);
     }
 
     /// <summary>
@@ -840,7 +864,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
                 continue;
             }
             const ushort path = (ushort)MoveFlags.AnyPath;
-            if (InReach(world, next[i], next[t], lifting ? ReachOf(world, table.Cold(t)!) : Settings.Reach))
+            if (InReach(world, next[i], next[t], lifting ? ReachOf(world, table.Cold(t)!) : LootReach(world, i, t)))
             {
                 if ((n.Flags & path) != 0)
                 {
@@ -938,8 +962,10 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
 
     /// <summary>
     /// The carries a save held (see <see cref="RestoreLinks"/>), linked from either side with the roles the side's <c>carrying</c> bool names (the
-    /// reader <c>FUN_140627b30</c>, <b>Verified</b>): a body whose carrier's record no longer holds the link (its squad was destroyed or unloaded
-    /// first) is taken up again by it.
+    /// reader <c>FUN_140627b30</c>, <b>Verified</b>): an NPC body whose carrier's record no longer holds the link (its squad unloaded first) is taken
+    /// up again by it. Neither a player squad nor a squad carrying a player character unloads (<c>FUN_1404febd0</c>, <b>Verified</b>), so a link
+    /// involving a player-faction character must be mutual; a one-sided link on a player character is stale and dropped instead of teleporting it
+    /// (#1300).
     /// </summary>
     void RestoreSavedLinks(World world)
     {
@@ -963,19 +989,36 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
                 for (int s = 0; s < table.HighWater; s++)
                     if (next[s].Alive && table.Cold(s)?.Save is { } other) bySave[(other.Source.Handle.C, other.Source.Handle.I)] = s;
             }
+
             var hand = link.CarryPartner;
             if (!bySave.TryGetValue((hand.C, hand.I), out int b) || b == i) continue;
+
+            var partnerCold = table.Cold(b)!;
+            var partnerSave = partnerCold.Save!;
             link.CarryPartner = Meitou.Data.Save.Hand.Null;
-            table.Cold(b)!.Save?.CarryPartner = Meitou.Data.Save.Hand.Null;
-            if (link.CarryIsCarrier) Relink(world, i, b);
-            else Relink(world, b, i);
+            if (!SameCharacterHandle(hand, partnerSave.Source.Handle)) continue;
+
+            bool mutual = SameCharacterHandle(partnerSave.CarryPartner, link.Source.Handle) && partnerSave.CarryIsCarrier != link.CarryIsCarrier;
+            var (carrier, body) = link.CarryIsCarrier ? (i, b) : (b, i);
+            if (mutual) partnerSave.CarryPartner = Meitou.Data.Save.Hand.Null;
+            else if (PlayerSide(world, cold) || PlayerSide(world, partnerCold)) continue;
+            else if (SameCharacterHandle(partnerSave.CarryPartner, link.Source.Handle)) partnerSave.CarryPartner = Meitou.Data.Save.Hand.Null;
+
+            Relink(world, carrier, body);
         }
     }
 
     /// <summary>
+    /// Whether two character save handles name the same saved character (both non-null, matching container, container serial, slot and serial).
+    /// </summary>
+    static bool SameCharacterHandle(Meitou.Data.Save.Hand a, Meitou.Data.Save.Hand b) =>
+        !a.IsNull && !b.IsNull && a.C == b.C && a.Cs == b.Cs && a.I == b.I && a.S == b.S;
+
+    /// <summary>
     /// The links a squad kept when it left the world carrying or carried (<see cref="CharacterCold.CarryRelink"/>): once the partner is in the
     /// world again the carrier takes it up, from either side (the reader <c>FUN_140627b30</c> links with the roles its <c>carrying</c> bool names,
-    /// <b>Verified</b>); a partner not in the world is waited for (<c>FUN_140797ec0</c> has no give-up).
+    /// <b>Verified</b>); a partner not in the world is waited for (<c>FUN_140797ec0</c> has no give-up). A one-sided link involving a player-faction
+    /// character is dropped (as in <see cref="RestoreSavedLinks"/>).
     /// </summary>
     void RestoreUnloadLinks(World world)
     {
@@ -995,10 +1038,14 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
 
             if (!byCold.TryGetValue(partner, out int p) || p == i) continue;
 
+            bool mutual = ReferenceEquals(partner.CarryRelink, cold) && partner.CarryRelinkIsCarrier != cold.CarryRelinkIsCarrier;
+            var (carrier, body) = cold.CarryRelinkIsCarrier ? (i, p) : (p, i);
             cold.CarryRelink = null;
-            if (ReferenceEquals(partner.CarryRelink, cold)) partner.CarryRelink = null;
-            if (cold.CarryRelinkIsCarrier) Relink(world, i, p);
-            else Relink(world, p, i);
+            if (mutual) partner.CarryRelink = null;
+            else if (PlayerSide(world, cold) || PlayerSide(world, partner)) continue;
+            else if (ReferenceEquals(partner.CarryRelink, cold)) partner.CarryRelink = null;
+
+            Relink(world, carrier, body);
         }
     }
 
@@ -1277,8 +1324,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
             return;
         }
         // still walking (Schedule ends a loot whose target went)
-        if (!table.TryResolveNext(cold.CarryTarget, out int t)
-            || !InReach(world, table.Next[i], table.Next[t], ReachOf(world, table.Cold(t)!)))
+        if (!table.TryResolveNext(cold.CarryTarget, out int t) || !InReach(world, table.Next[i], table.Next[t], LootReach(world, i, t)))
             return;
         var victim = table.Cold(t)!;
         bool opening = Opening(world, i);
@@ -1313,11 +1359,12 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         bool seen = Looted(world, table, i, t, taken, left, crime: true);
         if (cold.IsPlayer)
         {
+            string looter = world.ShownName(cold), body = world.ShownName(victim);
             string report = left > 0
-                ? $"{cold.Name} took {taken} items from {victim.Name}; {left} did not fit"
-                : $"{cold.Name} took {taken} items from {victim.Name}";
+                ? $"{looter} took {taken} items from {body}; {left} did not fit"
+                : $"{looter} took {taken} items from {body}";
             world.Post(report);
-            if (seen) world.Post($"{cold.Name} was seen looting {victim.Name}");
+            if (seen) world.Post($"{looter} was seen looting {body}");
         }
         End(world, i);
     }
@@ -1343,7 +1390,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         var cold = table.Cold(i)!;
         if (table.Next[i].Task != (byte)CharacterTask.Loot || !Opening(world, i) || cold.Inventory is null) return;
         if (!table.TryResolveNext(cold.CarryTarget, out int t) || !Openable(table, t)) return;
-        if (InReach(world, table.Next[i], table.Next[t], ReachOf(world, table.Cold(t)!))) OpenWindow(world.Player, cold);
+        if (InReach(world, table.Next[i], table.Next[t], LootReach(world, i, t))) OpenWindow(world.Player, cold);
     }
 
     /// <summary>
@@ -1389,7 +1436,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
     /// <summary>
     /// The open loot window (<see cref="PlayerState.OpenLoot"/>, engine choices): a walk to open one is dropped when the walker gets another task; an
     /// open one closes when the body can no longer be opened (it came round, or is gone; a carried body stays lootable) or the looter is down,
-    /// carried, gone or farther than 1.5 x <see cref="CarrySettings.Reach"/>.
+    /// carried, gone or farther than 1.5 x <see cref="LootReach"/>.
     /// </summary>
     void LootWindow(World world)
     {
@@ -1410,10 +1457,10 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
     {
         var player = world.Player;
         var table = world.Characters;
-        return table.TryResolveNext(player.OpenLoot, out int t) && table.Cold(t) is { } body && Openable(table, t)
+        return table.TryResolveNext(player.OpenLoot, out int t) && Openable(table, t)
             && table.TryResolveNext(player.LootOpener, out int o)
             && table.Cold(o) is { Medical.Incapacitated: false, Inventory: not null } looter && looter.CarriedBy.IsNone
-            && InReach(world, table.Next[o], table.Next[t], ReachOf(world, body) * 1.5f) ? (o, t) : null;
+            && InReach(world, table.Next[o], table.Next[t], LootReach(world, o, t) * 1.5f) ? (o, t) : null;
     }
 
     /// <summary>
@@ -1464,7 +1511,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         if (owner.Items.Contains(item)) item.Mark = mark;   // what stays keeps its mark
         if (moved == 0)
         {
-            if (cold.IsPlayer) world.Post($"{cold.Name} has no room for {item.Name}.");
+            if (cold.IsPlayer) world.Post($"{world.ShownName(cold)} has no room for {item.ShownName()}.");
             return;
         }
         Crime.GoodsTakenObservers.Report(world, table.IdOf(i), victim.Faction, table.IdOf(t), "", record, moved, caught: false);
@@ -1496,7 +1543,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         }
 
         if (npcOwner) Crimes?.PendPickpocket(world, looter, body, kind);
-        if (cold.IsPlayer) world.Post($"{cold.Name} has no room for {item.Name}.");
+        if (cold.IsPlayer) world.Post($"{world.ShownName(cold)} has no room for {item.ShownName()}.");
         return true;
     }
 
@@ -1544,7 +1591,8 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         bool first = _seenLoot != world.Player.OpenLoot;
         if (Looted(world, table, looter, body, 1, left, crime: false))
         {
-            if (first && table.Cold(looter)!.IsPlayer) world.Post($"{table.Cold(looter)!.Name} was seen looting {table.Cold(body)!.Name}");
+            if (first && table.Cold(looter)!.IsPlayer)
+                world.Post($"{world.ShownName(table.Cold(looter)!)} was seen looting {world.ShownName(table.Cold(body)!)}");
             _seenLoot = world.Player.OpenLoot;
         }
     }
@@ -1568,7 +1616,7 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         {
             medical.Butcher();
             DeathObservers.Report(world, t, world.Characters.IdOf(i), DeathSite.Butchered);
-            world.Post($"{victim.Name} has been butchered");
+            world.Post($"{world.ShownName(victim)} has been butchered");
         }
         Seen(world, i, t, 0);
     }
@@ -1595,7 +1643,8 @@ public sealed partial class CarrySystem(GameConstants constants, BodyOptions opt
         if (victim.Medical is not { Dead: false } medical || !CharacterFacts.Down(victim) || DeathUnits(victim.Inventory!) >= before) return;
         medical.Butcher();
         DeathObservers.Report(world, body, table.IdOf(looter), DeathSite.Butchered);
-        if (table.Cold(looter)!.IsPlayer || victim.IsPlayer) world.Post($"{victim.Name} has been butchered");
+        if (table.Cold(looter)!.IsPlayer || victim.IsPlayer)
+            world.Post($"{world.ShownName(victim)} has been butchered");
     }
 
     /// <summary>

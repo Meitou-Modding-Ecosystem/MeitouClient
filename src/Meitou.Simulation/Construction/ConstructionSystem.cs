@@ -397,9 +397,7 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
                 else Remove(world, cancelled);
                 break;
             case UpgradeSite up:
-                if (reg.Find(up.Site) is { LevelPlacement: null } upgraded && CanUpgrade(world, upgraded) is { } higher)
-                    Swap(world, upgraded, higher, UpgradeProgressCap, upgrade: true);
-
+                if (reg.Find(up.Site) is { } picked) Upgrade(world, WallOf(reg, picked));
                 break;
             case DowngradeSite down:
                 if (reg.Find(down.Site) is { LevelPlacement: null } downgraded && CanDowngrade(world, downgraded) is { } lower)
@@ -423,15 +421,57 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
         foreach (var plan in place.Plans)
             if (Place(world, plan) is { } site) placed.Add(site);
 
-        TownForWalls(world, placed);
-        AssignFinalTowns(world, placed);
-        AttachWalls(world.Buildings, Data, placed);
-        // Once, with the last placed building's town (FUN_1404d72a0), not once per town the batch touched.
-        if (placed.Count > 0 && !placed[^1].InNoTown)
-            TownRefit.Reassess(world, TownLookup.PlayerTownOf(world, placed[^1]), this);
+        Settle(world, placed);
 
         // Confirm ends by sending the selection to build the last building created (FUN_1404d72a0: order 2 through FUN_1407f9e20, Shift ignored).
         if (placed.Count > 0) OrderBuild(world, world.Player.Selection.ToArray(), Root(reg, placed[^1]), queued: false);
+    }
+
+    /// <summary>
+    /// A code mod's buildings for the player's faction (engine API, not in the original): a site for each plan, in order, as build mode's Confirm
+    /// makes them (<see cref="PlaceBuildings"/>: the same town block, the same player town or new outpost, walls joined, the town reassessed once),
+    /// without research's gate, without a message and without sending anyone to build. <paramref name="complete"/> makes every site standing
+    /// already: built to its target with all its materials delivered (as a saved complete building is, so dismantling it refunds them), with no
+    /// "construction complete" message; else each waits for builders as a placed ghost does. The game gives a standing site its doors, beds,
+    /// seats and machine on its next step. Furniture goes inside a building by a plan whose <see cref="PlannedBuilding.Parent"/> is that
+    /// building's site id, so place the building first and its furniture in a second call; the position is absolute, and nothing checks that it
+    /// lies inside. A plan's <see cref="PlannedBuilding.BoundsSize"/> moves a new outpost's centre as a ghost's does (zero: the building's
+    /// position). Returns the sites in plan order (<see cref="BuildSite.Id"/> for <c>SetSquadHome</c> or a parent, <see cref="BuildSite.Town"/>
+    /// for <see cref="BuildingRegistry.FindTown"/>), null for a plan refused: a record that is not a BUILDING, a position that is not finite, too
+    /// close to a town (<see cref="PlacementRules.TownBlock"/>), and every plan when the world has no player faction or during the parallel
+    /// phase. Serial phases and <see cref="IWorldReady"/>; costs as much as build mode's Confirm.
+    /// </summary>
+    public BuildSite?[] PlaceSites(World world, IReadOnlyList<PlannedBuilding> plans, bool complete)
+    {
+        var sites = new BuildSite?[plans.Count];
+        if (world.Characters.Phase == TablePhase.Parallel || world.Player.Faction < 0) return sites;
+
+        var placed = new List<BuildSite>(plans.Count);
+        for (int i = 0; i < plans.Count; i++)
+        {
+            var plan = plans[i];
+            if (!float.IsFinite(plan.Position.X) || !float.IsFinite(plan.Position.Y) || !float.IsFinite(plan.Position.Z)) continue;
+            if (Data(plan.Record) is not { } data || Blocked(data, plan) != PlacementFailure.None) continue;
+
+            sites[i] = NewSite(world, plan, data, complete);
+            placed.Add(sites[i]!);
+        }
+
+        Settle(world, placed);
+        return sites;
+    }
+
+    /// <summary>
+    /// Settles a batch of new sites into towns: queued walls take their town, every site its final town, walls are joined, and the last site's town
+    /// is reassessed once (FUN_1404d72a0), not once per town the batch touched.
+    /// </summary>
+    void Settle(World world, List<BuildSite> placed)
+    {
+        TownForWalls(world, placed);
+        AssignFinalTowns(world, placed);
+        AttachWalls(world.Buildings, Data, placed);
+        if (placed.Count > 0 && !placed[^1].InNoTown)
+            TownRefit.Reassess(world, TownLookup.PlayerTownOf(world, placed[^1]), this);
     }
 
     /// <summary>
@@ -524,30 +564,64 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
 
     /// <summary>
     /// The BUILDING a site of the player's can be upgraded to (docs/game/buildings-production.md "Upgrades"): its record's upgrade, unlocked by
-    /// research. Engine scope: not walls (the original's WallBuilding upgrades the whole wall line; a gate is a GatewayBuilding and upgrades alone);
-    /// a building with a machine gets one for the new record that keeps its stock (<see cref="Production.ProductionSystem"/>).
+    /// research (<see cref="UpgradeTarget"/>). A building with a machine gets one for the new record that keeps its stock
+    /// (<see cref="Production.ProductionSystem"/>).
     /// </summary>
-    public string? CanUpgrade(World world, BuildSite site) =>
-        Swappable(world, site) && BuildingUpgrades.UpgradeOf(_db, site.Record) is { } target && world.Research.IsUnlocked(target)
-            && Data(target) is not null
-                ? target
+    public string? CanUpgrade(World world, BuildSite site) => Swappable(world, site) ? UpgradeTarget(world, site) : null;
+
+    /// <summary>
+    /// The BUILDING an unfinished site of the player's goes back to (the one that upgrades to it), shown while it is not complete. Not walls: the
+    /// WallBuilding panel offers no downgrade (slot 116 <c>FUN_1402ff760</c>).
+    /// </summary>
+    public string? CanDowngrade(World world, BuildSite site) =>
+        !site.Complete && Swappable(world, site) && !IsWallBuilding(site) && BuildingUpgrades.DowngradeOf(_db, site.Record) is { } lower
+            && Data(lower) is not null
+                ? lower
                 : null;
 
     /// <summary>
-    /// The BUILDING an unfinished site of the player's goes back to (the one that upgrades to it), shown while it is not complete; same scope as
-    /// <see cref="CanUpgrade"/>.
+    /// Whether a site may be upgraded or downgraded: the player's, standing, no attached piece (its button upgrades its wall, <see cref="WallOf"/>).
     /// </summary>
-    public string? CanDowngrade(World world, BuildSite site) =>
-        !site.Complete && Swappable(world, site) && BuildingUpgrades.DowngradeOf(_db, site.Record) is { } lower && Data(lower) is not null
-            ? lower
+    bool Swappable(World world, BuildSite site) => site.Owner == world.Player.Faction && !site.Destroyed && site.WallParent is null;
+
+    /// <summary>
+    /// A site's upgrade target with build data (Building slot 77, <see cref="BuildingUpgrades.UnlockedUpgradeOf"/>), whoever owns it.
+    /// </summary>
+    string? UpgradeTarget(World world, BuildSite site) =>
+        BuildingUpgrades.UnlockedUpgradeOf(_db, site.Record, IsWallBuilding(site), world.Research.IsUnlocked) is { } target && Data(target) is not null
+            ? target
             : null;
 
     /// <summary>
-    /// Whether a site may be upgraded or downgraded: the player's, standing, no attached piece, not a wall (a wall gate is).
+    /// Whether the site is a WallBuilding: its record links together and is no wall gate (a gate is a GatewayBuilding and upgrades alone).
     /// </summary>
-    bool Swappable(World world, BuildSite site) =>
-        site.Owner == world.Player.Faction && !site.Destroyed && site.WallParent is null
-            && Data(site.Record) is { LinksTogether: false } or { IsWallGate: true };
+    bool IsWallBuilding(BuildSite site) => Data(site.Record) is { LinksTogether: true, IsWallGate: false };
+
+    /// <summary>
+    /// The site an upgrade button acts on: an attached piece's wall (<b>Verified</b>, WallBuilding slot 116 <c>FUN_1402ff760</c> binds the button to
+    /// the building its parent handle names, else to itself), else the site.
+    /// </summary>
+    static BuildSite WallOf(BuildingRegistry reg, BuildSite site) =>
+        site.WallParent is { } parent && reg.Find(parent) is { } wall ? wall : site;
+
+    /// <summary>
+    /// Upgrades a site of the player's in place (Building slot 75). A wall first upgrades each attached piece that has an upgrade of its own to it,
+    /// then itself (<b>Verified</b>, WallBuilding slot 75 <c>FUN_1402a5e20</c>: only when the wall itself has a target; pieces without one stay).
+    /// </summary>
+    void Upgrade(World world, BuildSite site)
+    {
+        if (site.LevelPlacement is not null || CanUpgrade(world, site) is not { } higher) return;
+
+        if (IsWallBuilding(site))
+        {
+            foreach (var piece in world.Buildings.All.Where(c => c.WallParent == site.Id).ToList())
+            {
+                if (UpgradeTarget(world, piece) is { } pieceTarget) Swap(world, piece, pieceTarget, UpgradeProgressCap, upgrade: true);
+            }
+        }
+
+        Swap(world, site, higher, UpgradeProgressCap, upgrade: true);
+    }
 
     /// <summary>
     /// Makes a site the BUILDING <paramref name="record"/> in place (Building slots 75 / 76, docs/game/buildings-production.md "Upgrades"): no longer
@@ -641,17 +715,37 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
             return null;
         }
 
-        // A plan with a parent stands in a building the host found ours.
-        var fail = PlacementRules.TownBlock(data, new Vector2(plan.Position.X, plan.Position.Z), _towns, _playerFactionId, plan.Parent is not null);
+        var fail = Blocked(data, plan);
         if (fail != PlacementFailure.None)
         {
             world.Post(PlacementRules.Message(fail));
             return null;
         }
 
+        return NewSite(world, plan, data, complete: false);
+    }
+
+    /// <summary>
+    /// Whether a town keeps the plan off its ground (<see cref="PlacementRules.TownBlock"/>); a plan with a parent stands in a building the host
+    /// found ours.
+    /// </summary>
+    PlacementFailure Blocked(BuildingBuildData data, PlannedBuilding plan) =>
+        PlacementRules.TownBlock(data, new Vector2(plan.Position.X, plan.Position.Z), _towns, _playerFactionId, plan.Parent is not null);
+
+    /// <summary>
+    /// Adds the plan's site for the player's faction, in its town (<see cref="TownFor"/>): a ghost, or <paramref name="complete"/> built to its
+    /// target with every material delivered. A record whose target is 0 is complete at once.
+    /// </summary>
+    BuildSite NewSite(World world, PlannedBuilding plan, BuildingBuildData data, bool complete)
+    {
         var reg = world.Buildings;
         var materials = new MaterialSlot[data.Materials.Count];
-        for (int i = 0; i < materials.Length; i++) materials[i] = new MaterialSlot(data.Materials[i].Item, data.Materials[i].Required);
+        for (int i = 0; i < materials.Length; i++)
+        {
+            float required = data.Materials[i].Required;
+            materials[i] = new MaterialSlot(data.Materials[i].Item, required) { Delivered = complete ? required : 0 };
+        }
+
         var site = new BuildSite
         {
             Id = reg.NewId(WorldLayout.ZoneOf(plan.Position.X, plan.Position.Z), _levelIds),
@@ -667,7 +761,8 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
             Target = data.Target,
             Rate = data.Rate,
         };
-        site.Complete = site.Target <= 0;   // a total of 0 completes at once (Verified)
+        site.Complete = complete || site.Target <= 0;   // a total of 0 completes at once (Verified)
+        if (complete) site.Progress = site.Target;
         site.Town = TownFor(world, site, data, plan.BoundsSize);
         reg.Add(site);
         return site;
@@ -1124,13 +1219,27 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
 
     /// <summary>
     /// Whether the worker is near enough its goal (<see cref="SiteReach.Within"/>): a site by its footprint, a ground item by its position (within
-    /// <see cref="PickUps.PickUpReach"/>, twice that once stopped).
+    /// <see cref="PickUps.PickUpReach"/>, twice that once stopped); for a site also on its floor (<see cref="OnSiteFloor"/>).
     /// </summary>
-    bool Arrived(World world, in CharacterHot n, (Vector3 At, BuildSite? Site, float Reach) goal) =>
+    bool Arrived(World world, int slot, in CharacterHot n, (Vector3 At, BuildSite? Site, float Reach) goal) =>
         SiteReach.Within(n, goal.Site is { } site
             ? SiteReach.Gap(Settings.EdgeGap, site, n.Position)
             : Vector2.Distance(new(n.Position.X, n.Position.Z), new(goal.At.X, goal.At.Z)), goal.Reach)
-        && (goal.Site is not { } high || SiteReach.AtHeight(n, high, FloorHeight(world, high), HasDoor(world, high)));
+        && (goal.Site is not { } high || OnSiteFloor(world, slot, n, high));
+
+    /// <summary>
+    /// The floor half of <c>AI::isWithinChoppingRange</c>: the same floor whatever the height, else within <see cref="SiteReach.HeightLimit"/>
+    /// (<see cref="SiteReach.AtHeight(in CharacterHot, BuildSite, float, bool)"/>). The floors compared are the worker's (0 outdoors) and the site's
+    /// <c>floornum</c> (Building <c>+0xa4</c>, <b>Verified</b>: the state reader <c>FUN_140552b70</c> and writer <c>FUN_140552320</c>). Meitou knows the floor
+    /// of neither a player building nor one standing in it, so only an outdoor worker at a floor-0 site outdoors counts as the same floor: a site
+    /// whose origin lies far below the ground it stands on is built from that ground (#1255: a sunk Outpost s-V big, 219 under its slab), and a
+    /// light snapped to a building's outside wall from the ground under it (#1246: a Spotlight 56 over the builders).
+    /// </summary>
+    bool OnSiteFloor(World world, int slot, in CharacterHot n, BuildSite site)
+    {
+        if ((site.Parent is null || site.Outside) && site.Floor == 0 && world.Sight.Outdoors(slot)) return true;
+        return SiteReach.AtHeight(n, site, FloorHeight(world, site), HasDoor(world, site));
+    }
 
     /// <summary>
     /// Whether the site is a building with a door, for <see cref="SiteReach.HeightLimit"/>.
@@ -1199,7 +1308,7 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
         if (task == CharacterTask.Build && FetchFirst(world, slot, cold, site)) return;
 
         var goal = (site.Position, (BuildSite?)site, ReachOf(site));
-        if (!Arrived(world, n, goal)) WalkTo(world, ref n, cold, goal);
+        if (!Arrived(world, slot, n, goal)) WalkTo(world, ref n, cold, goal);
     }
 
     /// <summary>
@@ -1353,7 +1462,7 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
         }
 
         const ushort path = (ushort)MoveFlags.AnyPath;
-        if (Arrived(world, n, goal))
+        if (Arrived(world, i, n, goal))
         {
             // There: stand still and let the slow world work.
             if ((n.Flags & path) != 0)
@@ -1494,7 +1603,7 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
             return;
         }
 
-        if (!Arrived(world, n, goal)) return;
+        if (!Arrived(world, i, n, goal)) return;
         if (cold.StaggeredUntil > world.Tick) return;   // a stagger interrupts the work
 
         if (n.Velocity.X == 0 && n.Velocity.Z == 0) n.Yaw = MathF.Atan2(goal.At.X - n.Position.X, goal.At.Z - n.Position.Z);
@@ -1577,7 +1686,8 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
         world.Buildings.Changed();
         SyncChildren(world, site);
         SetBroken(world, site, false);
-        if (site.Owner == world.Player.Faction) world.Post(Loc.Tr("Building '{1}' construction complete.", site.Name));
+        if (site.Owner == world.Player.Faction)
+            world.Post(Loc.Tr("Building '{1}' construction complete.", world.ShownName("place", site.Record, site.Name)));
     }
 
     /// <summary>
@@ -2122,8 +2232,8 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
     /// <summary>
     /// What the engineer job (125) works next (<b>Verified</b>, <c>BuildingFinderForEngineers</c> <c>FUN_1409a6900</c> / <c>FUN_1409a6c10</c>):
     /// of the character's faction's unpaused, not dismantled sites, not a destroyed house (function 19; any other destroyed building is ruined by
-    /// the engineer's first touch), one that needs work is itself a candidate, a complete one that needs none puts in its doors that need work
-    /// (its door list, Building <c>+0x1c0</c>; slot 101, progress below target: a damaged or broken door); score
+    /// the engineer's first touch), and the town houses it owns, one that needs work is itself a candidate, a complete one that needs none puts in
+    /// its doors that need work (its door list, Building <c>+0x1c0</c>; slot 101, progress below target: a damaged or broken door); score
     /// <c>max(2 (1 - d^2/9000^2), 0.0001) / (n + 1)</c>, d the 3D distance, n the others working it; the highest wins (the first on a tie). A
     /// stalled site the character carries nothing for counts only when <see cref="Source"/> finds a material; a door never stalls. Null: none.
     /// </summary>
@@ -2179,7 +2289,13 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
             if (!EngineerCandidate(world, cold, site)) continue;
 
             if (site.NeedsWork) WeighSite(world, slot, cold, site, ref best, ref bestScore);
-            else WeighDoors(world, slot, site, ref best, ref bestScore);
+            else WeighDoors(world, slot, site.Id, ref best, ref bestScore);
+        }
+
+        // The town houses the faction owns are its buildings too; one that is a site was weighed above.
+        foreach (var house in world.Fixtures.OwnedPropertyKeys(cold.Faction))
+        {
+            if (reg.Find(house) is null && !IsUnreachable(world, cold, house)) WeighDoors(world, slot, house, ref best, ref bestScore);
         }
 
         return (best, bestScore);
@@ -2204,11 +2320,11 @@ public sealed class ConstructionSystem : ITickSystem, ITaskOwner, ITaskHandler, 
     }
 
     /// <summary>
-    /// Weighs the doors of a complete site that need work (<see cref="DoorNeedsWork"/>), each at its leaf (its own node in the original).
+    /// Weighs the doors of a complete building that need work (<see cref="DoorNeedsWork"/>), each at its leaf (its own node in the original).
     /// </summary>
-    static void WeighDoors(World world, int slot, BuildSite site, ref EngineerTarget? best, ref float bestScore)
+    static void WeighDoors(World world, int slot, string building, ref EngineerTarget? best, ref float bestScore)
     {
-        foreach (var door in world.Fixtures.OfBuilding(site.Id))
+        foreach (var door in world.Fixtures.OfBuilding(building))
         {
             if (door.Kind != Locks.FixtureKind.Door || !DoorNeedsWork(door)) continue;
 

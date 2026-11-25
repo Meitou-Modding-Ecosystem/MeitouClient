@@ -657,6 +657,7 @@ sealed partial class GameHost(
         Session.World.PrisonPoseFix = Config.FixPrisonPose;
         Session.World.CagedAnimalFix = Config.FixCagedAnimals;
         Session.World.BagSearchFix = Config.FixBagSearch;
+        Session.World.PickUpTheftFix = Config.FixPickUpTheft;
         Session.World.CounterTalk = Config.CounterTalk;
         Session.World.AnimalTargetFix = Config.FixAnimalTarget;
         Session.World.TakeIntoBackpack = Config.TakeIntoBackpack;
@@ -734,6 +735,9 @@ sealed partial class GameHost(
                 SquadXp = Config.SquadXp,
                 SquadSkillXp = SkillXp.Rates(Config.SquadSkillXp),
                 OthersXp = Config.OthersXp,
+                MaxFactionSize = Config.MaxFactionSize,
+                MaxSquadSize = Config.MaxSquadSize,
+                MaxSquads = Config.MaxSquads,
             },
             ZoneReady = ready =>
             {
@@ -818,7 +822,7 @@ sealed partial class GameHost(
             bindings.Set(InputAction.ToggleDebugMenu, EngineKey.F10);
         }
 
-        // F9 is the game's quickload now (F5 quicksave); older saved configs took F9 for the fps counter, which is on Ctrl+F9 and unbound here.
+        // F9 is the game's quickload now (F5 quicksave); older saved configs took F9 for the fps counter, which is on Shift+F9 and unbound here.
         if (BoundOnlyTo(InputAction.ToggleFps, Binding.Of(EngineKey.F9))) bindings.Set(InputAction.ToggleFps);
 
         // Tab is the game's change_squad, not the settings (they open from the Esc menu); older saved configs bound Tab to them.
@@ -856,6 +860,7 @@ sealed partial class GameHost(
         Player.ShowNames = Config.ShowNames;
         Player.Floaters = Config.Floaters;
         Player.GreyUnavailableVerbs = Config.GreyUnavailableVerbs;
+        Player.FixLockpickLabel = Config.FixLockpickLabel;
         Player.FeedbackButtonInPlay = Config.FeedbackButton;
         Player.XpLabel = SkillXp.Label(Config);
         Player.Frontend.FixLoadButton = Config.FixLoadButton;
@@ -973,7 +978,7 @@ sealed partial class GameHost(
         if (start is not null)
         {
             PlayerSquad = Population.StartPlayer(Session.World, start);
-            Session.World.TellReady(fromSave: false);
+            Session.World.TellReady(new Simulation.WorldStart(Simulation.WorldStartKind.NewGame));
             var lead = Session.World.Characters.Previous[PlayerSquad.Leader.Slot].Position;
             target = lead;
             Console.WriteLine($"player    {PlayerSquad.Members.Count} characters, leader at {lead.X:0}, {lead.Z:0}");
@@ -1083,7 +1088,7 @@ sealed partial class GameHost(
         // The region (BIOME_GROUP) under a point, for the biome banner.
         ui.BiomeBanner.RegionAt = (x, z) => ActiveWeather?.World.RegionAt(x, z).Def is { } def ? (def.StringId, def.Name) : null;
         ui.Build.BuildHost = BuildingSync.MakeBuildServices();
-        ui.SquadWindows.SquadLimits = () => PopData?.Bodies.Constants;
+        ui.SquadWindows.SquadLimits = () => PopData?.Bodies;
         ui.Furniture.Rocks = () => PopData?.ResourceNodes;
 
         ConnectFactions(ui);
@@ -1165,7 +1170,7 @@ sealed partial class GameHost(
     {
         ui.FactionName = FactionNameOf;
         ui.OwnerName = (faction, town) => BuildingSync.OwnerName(faction, town);
-        ui.PlayerFactionName = () => ui.FactionName?.Invoke(Session.World.Player.Faction) ?? "";
+        ui.PlayerFactionName = () => ui.ShownFactionName(Session.World.Player.Faction) ?? "";
 
         // The rename's test (FUN_1402e7950, as RenameFactionCommand's): another faction of the data has the name.
         ui.FactionWindow.FactionNameTaken = name =>
@@ -1182,7 +1187,7 @@ sealed partial class GameHost(
             return [.. d.Relations.Factions
                 .Select((f, i) => (f, i))
                 .Where(p => p.i != own && known.Contains(p.i) && !p.f.NotReal && p.f.Id != "GENERATION_TEMPLATE_FACTION")
-                .Select(p => new FactionListRow(p.i, p.f.Name, d.Relations.Get(own, p.i)))];
+                .Select(p => new FactionListRow(p.i, d.ShownFactionName(p.i), d.Relations.Get(own, p.i)))];
         };
 
         // Its info panel's contracts and events, read from the live world as the list above is (a collection changed mid-read shows the panel empty
@@ -1222,7 +1227,8 @@ sealed partial class GameHost(
         selection.BuildTarget = record => BuildingDataOf(record)?.Materials.Sum(m => m.Required);
 
         // The upgrade chain of a BUILDING (the panel's [UPGRADE] / [DOWNGRADE]) and its build data (their tooltips' materials).
-        selection.UpgradeOf = record => PopData is { } d ? Simulation.Construction.BuildingUpgrades.UpgradeOf(d.Db, record) : null;
+        selection.UnlockedUpgradeOf = (record, wall, unlocked) =>
+            PopData is { } d ? Simulation.Construction.BuildingUpgrades.UnlockedUpgradeOf(d.Db, record, wall, unlocked.Contains) : null;
         selection.DowngradeOf = record => PopData is { } d ? Simulation.Construction.BuildingUpgrades.DowngradeOf(d.Db, record) : null;
         selection.BuildingData = BuildingDataOf;
         selection.PowerOutput = record => PopData?.Db.Find(record)?.GetInt("power output");
@@ -1251,7 +1257,7 @@ sealed partial class GameHost(
                 return null;
 
             var revealed = Simulation.Items.MapItems.Reveals(d, map, Session.CurrentSnapshot.Towns, Session.World.Seed);
-            return [.. revealed.Select(i => d.Sites[i].Town.Name)];
+            return [.. revealed.Select(i => ShownText.Record(d.Sites[i].Town.Id, d.Sites[i].Town.Name))];
         };
     }
 
@@ -1264,14 +1270,14 @@ sealed partial class GameHost(
 
         var faction = d.Factions[town];
         if (Session.World.Player.Faction is not (>= 0 and var mine))
-            return new MapFaction(faction.Name, 0, MapStanding.Neutral, faction.NotReal);
+            return new MapFaction(d.ShownFactionName(town), 0, MapStanding.Neutral, faction.NotReal);
 
         float relation = d.Relations.Get(mine, town);
         var standing = town == mine ? MapStanding.Player
             : d.Relations.IsAlly(mine, town) ? MapStanding.Ally
             : relation < -30 ? MapStanding.Enemy
             : MapStanding.Neutral;
-        return new MapFaction(faction.Name, relation, standing, faction.NotReal);
+        return new MapFaction(d.ShownFactionName(town, FactionNameOf(town)), relation, standing, faction.NotReal);
     }
 
     /// <summary>
@@ -1280,15 +1286,23 @@ sealed partial class GameHost(
     void ConnectItems(PlayerInterface ui)
     {
         ui.ArmourOf = record => PopData?.Combat.Armour(record);
-        ui.RecordName = id => PopData?.Db.Find(id)?.Name;
+        ui.RecordName = id => PopData?.Db.Find(id)?.ShownName();
         ui.PopulationOf = () => PopData;
         ui.PricesOf = PriceLookup();
         ui.GroundItemPicks.ArtifactOf = id => PopData?.Db.Find(id)?.GetBool("artifact") == true;
 
-        var specialFoodRaces = new System.Collections.Concurrent.ConcurrentDictionary<string, string>(StringComparer.Ordinal);
+        // Kept per item with the shown text revision it was made at, since the race names in it are shown text.
+        var specialFoodRaces = new System.Collections.Concurrent.ConcurrentDictionary<string, (int Revision, string Text)>(StringComparer.Ordinal);
         ui.TooltipRuntime.ItemRecordOf = id => PopData?.Db.Find(id);
         ui.TooltipRuntime.SpecialFoodRaces = id =>
-            PopData is { } d ? specialFoodRaces.GetOrAdd(id, item => Data.Gameplay.Bodies.SpecialFood.EatenBy(d.Db, item)) : "";
+        {
+            if (PopData is not { } d) return "";
+            int revision = ShownText.Revision;
+            if (specialFoodRaces.TryGetValue(id, out var known) && known.Revision == revision) return known.Text;
+            string text = Data.Gameplay.Bodies.SpecialFood.EatenBy(d.Db, id);
+            specialFoodRaces[id] = (revision, text);
+            return text;
+        };
         ui.TooltipRuntime.CombatOf = () => PopData?.Combat;
         ui.TooltipRuntime.RangedDamageMultiplier = () => PopData?.BodyOptions.GlobalDamageMultiplier ?? 1;
     }
@@ -1662,7 +1676,10 @@ sealed partial class GameHost(
         UpdateWakes();
         UpdateSplashes();
         Modding.UpdateModHits();
+        Modding.UpdateModFrames();
+        Modding.UpdateModProjectiles();
         Modding.UpdateModEffects();
+        Modding.UpdateModTrails();
         Modding.UpdateModGlows();
         Modding.UpdateModFaults();
         Rendering.Profiling.StageClock.Lap(Rendering.Profiling.StageClock.Blood, "blood marks");

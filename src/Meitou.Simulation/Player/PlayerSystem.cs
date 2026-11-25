@@ -258,7 +258,9 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
                 break;
             case Items.ArrangeInventory arrange:
                 if (table.TryResolveNext(arrange.Character, out int character)
-                    && table.Cold(character) is { IsPlayer: true, Inventory: { } carried } && !Items.InventoryCommands.Arrange(carried, arrange.Bag))
+                    && table.Cold(character) is { IsPlayer: true, Inventory: { } carried }
+                    && !Items.InventoryCommands.Arrange(world, carried, Items.ItemOwner.Of(arrange.Character), Items.InventoryArrangeReason.Button,
+                        arrange.Bag))
                 {
                     world.Post("Cannot arrange inventory: the items do not fit.");
                 }
@@ -316,10 +318,8 @@ public sealed class PlayerSystem(PopulationData? data = null) : ITickSystem, ITa
         var player = world.Player;
         foreach (var id in stop.Characters.Count > 0 ? stop.Characters : player.Selection.ToArray())
         {
-            if (!table.TryResolveNext(id, out int slot) || !table.Cold(slot)!.IsPlayer) continue;
-            PlayerOrders.Wipe(table.Cold(slot)!);
-            TaskStart.End(world, slot, TaskEnd.Stopped);
-            table.Cold(slot)!.FollowOrder = CharacterId.None;
+            if (!table.TryResolveNext(id, out int slot) || table.Cold(slot) is not { IsPlayer: true } cold) continue;
+            PlayerOrders.Stop(world, slot, cold);
         }
     }
 

@@ -87,7 +87,6 @@ public sealed class FeedSystem(ItemFactory items, FeedSettings? settings = null)
         if (!world.Beat(Settings.CheckEveryTicks, TickPhases.Feed)) return;
         var table = world.Characters;
         var state = table.Next;
-        var options = world.Player.SquadAi;
         for (int i = 0; i < table.HighWater; i++)
         {
             if (!state[i].Alive || table.Cold(i) is not { Medical: { Dead: false } med, Race: { } race, Inventory: { } own } cold)
@@ -103,13 +102,13 @@ public sealed class FeedSystem(ItemFactory items, FeedSettings? settings = null)
                 continue;
             }
 
-            if (animal && (options & SquadAi.Feed) == 0) continue;
+            if (animal && (SquadAiRules.For(world, cold) & SquadAi.Feed) == 0) continue;
             if (!WantsFood(world, cold, med) || med.Fed > 0 || !(med.Hunger < HungryBelow)) continue;
             Inventory? from = own;
             var food = Best(own.Items, race, animal);
             if (food is null && own.Backpack?.Contents is { } bag && Best(bag.Items, race, animal) is { } packed)
                 (from, food) = (bag, packed);
-            if (food is null && playerSide && med.Hunger < ShareBelow && (options & SquadAi.Share) != 0)
+            if (food is null && playerSide && med.Hunger < ShareBelow && (SquadAiRules.For(world, cold) & SquadAi.Share) != 0)
                 (from, food) = FromMates(world, i, cold, race, animal);
             if (food is null || from is null) continue;
             Eat(world, i, med, from, food);
@@ -415,7 +414,7 @@ public sealed class FeedSystem(ItemFactory items, FeedSettings? settings = null)
 
         med.Fed = amount * 0.01f;
         var at = world.Characters.Next[slot].Position;
-        world.Floaters?.Enqueue(Floater.Text(world.Characters.IdOf(slot), at, Loc.Tr("Ate {1}", item.Name)));
+        world.Floaters?.Enqueue(Floater.Text(world.Characters.IdOf(slot), at, Loc.Tr("Ate {1}", item.ShownName())));
         world.EmitSound(SoundKind.Eat, slot, at);
         ItemUseObservers.Report(world, ItemUseKind.Eaten, item.Record, world.Characters.IdOf(slot), null, amount, finished);
     }

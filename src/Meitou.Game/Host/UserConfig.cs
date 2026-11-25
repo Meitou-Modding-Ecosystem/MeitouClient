@@ -125,6 +125,10 @@ sealed class UserConfig
     /// </summary>
     public const float MinInterfaceScale = 0.5f, MaxInterfaceScale = 2;
     /// <summary>
+    /// The lowest <see cref="SettingsOpacity"/> (25%).
+    /// </summary>
+    public const float MinSettingsOpacity = 0.25f;
+    /// <summary>
     /// The ranges of <see cref="CameraMoveSpeed"/> (150 … 1000) and <see cref="CameraZoomSpeed"/> (10 … 200), the original's.
     /// </summary>
     public const float MinCameraMoveSpeed = 150, MaxCameraMoveSpeed = 1000, MinCameraZoomSpeed = 10, MaxCameraZoomSpeed = 200;
@@ -132,6 +136,15 @@ sealed class UserConfig
     /// The range and default of <see cref="ShiftPanMultiplier"/>.
     /// </summary>
     public const float MinShiftPanMultiplier = 1.25f, MaxShiftPanMultiplier = 5, DefaultShiftPanMultiplier = 2;
+    /// <summary>
+    /// The range and default of <see cref="CorpseFlyRange"/>: 10% to 200% of the game's range; 30% (150 units) is Meitou's choice.
+    /// </summary>
+    public const float MinCorpseFlyRange = 0.1f, MaxCorpseFlyRange = 2, DefaultCorpseFlyRange = 0.3f;
+    /// <summary>
+    /// The Advanced settings' player squad and faction cap sliders: 1 to 256, with the base game's CONSTANTS values (30, 20, 10) as defaults.
+    /// </summary>
+    public const int MinSquadLimit = 1, MaxSquadLimit = 256,
+        DefaultMaxFactionSize = 30, DefaultMaxSquadSize = 20, DefaultMaxSquads = 10;
 
     /// <summary>
     /// The file's layout: <see cref="CurrentVersion"/>, or the newer one of a later release whose file this is (kept, so that release does not
@@ -256,6 +269,10 @@ sealed class UserConfig
     /// </summary>
     public float InterfaceScale { get; set; } = 1;
     /// <summary>
+    /// The opacity of the in-game settings window (25% … 100%, default 100%; header bar and Interface settings).
+    /// </summary>
+    public float SettingsOpacity { get; set; } = 1;
+    /// <summary>
     /// The damage floaters (Interface settings): the original's <c>floaters</c> option, Simple by default; Meitou also floats a green "+N" over a
     /// player character that heals.
     /// </summary>
@@ -337,6 +354,11 @@ sealed class UserConfig
     /// </summary>
     public bool FullScreen { get; set; } = true;
     /// <summary>
+    /// The monitor full screen goes to, 1-based in GLFW's order (as <c>--monitor</c>, which wins for its run), the window starts on too; 0 (or a
+    /// monitor no longer there) is automatic: the one the window is on, else the primary (docs/viewer.md, Alt+Enter).
+    /// </summary>
+    public int Monitor { get; set; }
+    /// <summary>
     /// World ticks per second, 30 by default (the session's fixed-step clock).
     /// </summary>
     public int TickRate { get; set; } = 30;
@@ -389,6 +411,11 @@ sealed class UserConfig
     /// lifts either way, as the game does, and guards at a full station pass the same body round; read at load; <c>ArrestSettings.LiftFix</c>).
     /// </summary>
     public bool FixArrestLifts { get; set; } = true;
+    /// <summary>
+    /// An arrest's guard who lost his target (his senses hold none of it once his fight stopped) gives the arrest up (Fixes settings; off: he takes
+    /// the fight up again however far the target is, as the game does; read at load; <c>ArrestSettings.LostFix</c>).
+    /// </summary>
+    public bool FixArrestChases { get; set; } = true;
     /// <summary>
     /// Wild animals and homeless squads keep their characters while their area is unloaded (Advanced settings; Faithful off: removed and made anew,
     /// as the game does).
@@ -446,6 +473,21 @@ sealed class UserConfig
     /// The XP sliders' range (<see cref="SquadXp"/>, <see cref="OthersXp"/>): none to a thousand times the game's, as the XP mods allow.
     /// </summary>
     public const float MinXpRate = 0, MaxXpRate = 1000;
+    /// <summary>
+    /// How many characters and animals the player faction may recruit (Advanced settings "Max faction size", <see cref="MinSquadLimit"/> …
+    /// <see cref="MaxSquadLimit"/>; null: the loaded CONSTANTS <c>max faction size</c>, 30 in the base game).
+    /// </summary>
+    public int? MaxFactionSize { get; set; }
+    /// <summary>
+    /// How many members one of the player's squads may hold (Advanced settings "Max squad size", <see cref="MinSquadLimit"/> …
+    /// <see cref="MaxSquadLimit"/>; null: the loaded CONSTANTS <c>max squad size</c>, 20 in the base game).
+    /// </summary>
+    public int? MaxSquadSize { get; set; }
+    /// <summary>
+    /// How many squads the player faction may create (Advanced settings "Max squads", <see cref="MinSquadLimit"/> … <see cref="MaxSquadLimit"/>;
+    /// null: the loaded CONSTANTS <c>max squads</c>, 10 in the base game).
+    /// </summary>
+    public int? MaxSquads { get; set; }
     /// <summary>
     /// The mods (by <c>mods.cfg</c> name) whose settings Meitou has taken into its own built-in feature, once each (<c>BuiltInMods</c>); a name
     /// followed by " (again)" marks a second takeover, of settings a later Meitou added to the feature.
@@ -542,6 +584,11 @@ sealed class UserConfig
     /// </summary>
     public bool FixBagSearch { get; set; } = true;
     /// <summary>
+    /// A stolen ground pick-up is a Theft from the item's owner (Fixes settings; off: from the building the thief stands in, as the game does;
+    /// docs/game/economy.md "Fencing, stealing and smuggling").
+    /// </summary>
+    public bool FixPickUpTheft { get; set; } = true;
+    /// <summary>
     /// A shopkeeper at its counter is talked to from the counter's front (Gameplay settings, Meitou; off: the game's talk reach, so the customer
     /// walks round behind the counter; <c>World.CounterTalk</c>).
     /// </summary>
@@ -582,6 +629,11 @@ sealed class UserConfig
     /// settings; off: collapsed at every start, as the game does; docs/game/ui-screens.md "Information panel").
     /// </summary>
     public bool KeepInfoPanel { get; set; } = true;
+    /// <summary>
+    /// The lockpick pointer's chance label shows 0 for a building's lock below the minimum pick chance, as the Pick Lock row does (Fixes settings;
+    /// off: the bare chance, as the game does; docs/game/ui-input.md "Pointer chance label").
+    /// </summary>
+    public bool FixLockpickLabel { get; set; } = true;
     /// <summary>
     /// The information panel was last left extended (its ^ button), written at every press; read at start while <see cref="KeepInfoPanel"/> is on.
     /// </summary>
@@ -662,6 +714,20 @@ sealed class UserConfig
     /// Sounds are heard from the first selected character instead of the camera (Audio settings; off, the default: the camera, as the game does).
     /// </summary>
     public bool HearFromSelected { get; set; }
+    /// <summary>
+    /// The corpse flies make no sound (Audio settings; Meitou only, default off: they buzz, as in the game); the mute-flies mods' feature.
+    /// </summary>
+    public bool MuteCorpseFlies { get; set; }
+    /// <summary>
+    /// The corpse flies are heard only within <see cref="CorpseFlyRange"/> of their range (Audio settings; Meitou only, default off: the full 500
+    /// units); the Immersive Flies mod's feature.
+    /// </summary>
+    public bool QuietCorpseFlies { get; set; }
+    /// <summary>
+    /// With <see cref="QuietCorpseFlies"/>: the corpse flies' range, of the game's (Audio settings, <see cref="MinCorpseFlyRange"/> …
+    /// <see cref="MaxCorpseFlyRange"/>).
+    /// </summary>
+    public float CorpseFlyRange { get; set; } = DefaultCorpseFlyRange;
     /// <summary>
     /// The Windows cursor instead of the game's drawn pointer (the original's <c>hardware_mouse</c>, default off; Interface settings).
     /// </summary>
@@ -772,6 +838,11 @@ sealed class UserConfig
     /// </summary>
     public Dictionary<string, Dictionary<string, string>> ModSettings { get; set; } = [];
     /// <summary>
+    /// The code mods' named setting presets (docs/modding.md "Settings"): mod id to preset name to setting key to the value as text; Restore
+    /// defaults keeps them.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, Dictionary<string, string>>> ModSettingPresets { get; set; } = [];
+    /// <summary>
     /// The feedback form's ticks and Discord name, as last used; null until the form first opens.
     /// </summary>
     public FeedbackSettings? Feedback { get; set; }
@@ -879,6 +950,29 @@ sealed class UserConfig
     /// </summary>
     [JsonIgnore]
     public string Path { get; private set; } = FileName;
+
+    /// <summary>
+    /// A config that is never written (<see cref="Save"/> does nothing): the launcher benchmark's (<c>--benchmark</c>).
+    /// </summary>
+    [JsonIgnore]
+    public bool ReadOnly { get; private set; }
+
+    /// <summary>
+    /// The launcher benchmark's config (docs/bench.md "Launcher benchmark"): the defaults with the tutorials off (else the install's settings.cfg
+    /// decides, and their state file in the working directory carries from run to run), the file neither read nor written.
+    /// </summary>
+    public static UserConfig ForBenchmark() => new()
+    {
+        Path = System.IO.Path.Combine(Directory.GetCurrentDirectory(), FileName),
+        ReadOnly = true,
+        Tutorials = false,
+    };
+
+    /// <summary>
+    /// <see cref="ForBenchmark"/>'s config as compact JSON (the benchmark's fingerprint, BenchmarkSpec).
+    /// </summary>
+    internal static string BenchmarkText() =>
+        JsonSerializer.Serialize(ForBenchmark(), new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
     /// <summary>
     /// Reads the config from the working directory, else from next to the executable; without either file, the defaults, for the working directory.
@@ -1104,6 +1198,16 @@ sealed class UserConfig
     }
 
     /// <summary>
+    /// Keeps a mod's setting presets in <see cref="ModSettingPresets"/> (none: the mod's entry dropped); written with the rest of the config.
+    /// </summary>
+    public void KeepModPresets(ModSettingsGroup group)
+    {
+        var presets = group.PresetValues();
+        if (presets.Count == 0) ModSettingPresets.Remove(group.ModId);
+        else ModSettingPresets[group.ModId] = presets;
+    }
+
+    /// <summary>
     /// Keeps a hand-edited or older config inside the values the Metal path can use.
     /// </summary>
     void Normalize()
@@ -1114,10 +1218,14 @@ sealed class UserConfig
         if (MetalUpscaler is MetalUpscalerMode.Temporal or MetalUpscalerMode.Spatial) MetalRenderScale = Math.Clamp(MetalRenderScale, 0.4f, 1f);
         MetalRenderDivisor = Math.Clamp(MetalRenderDivisor, 1, MetalRenderDivisorMax);
         ModSettings ??= [];
+        ModSettingPresets ??= [];
         AdoptedMods ??= [];
         SquadXp = float.IsFinite(SquadXp) ? Math.Clamp(SquadXp, MinXpRate, MaxXpRate) : 1;
         OthersXp = float.IsFinite(OthersXp) ? Math.Clamp(OthersXp, MinXpRate, MaxXpRate) : 1;
         SquadSkillXp = SkillXp.Kept(SquadSkillXp);
+        MaxFactionSize = MaxFactionSize is { } faction ? Math.Clamp(faction, MinSquadLimit, MaxSquadLimit) : null;
+        MaxSquadSize = MaxSquadSize is { } squad ? Math.Clamp(squad, MinSquadLimit, MaxSquadLimit) : null;
+        MaxSquads = MaxSquads is { } squads ? Math.Clamp(squads, MinSquadLimit, MaxSquadLimit) : null;
         foreach (var (mod, saved) in ModSettings.ToList())
             if (saved is null) ModSettings.Remove(mod);
     }
@@ -1127,6 +1235,8 @@ sealed class UserConfig
     /// </summary>
     public void Save()
     {
+        if (ReadOnly) return;
+
         try
         {
             AtomicFile.WriteAllText(Path, JsonSerializer.Serialize(this, Json));

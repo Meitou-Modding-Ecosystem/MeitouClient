@@ -97,6 +97,8 @@ sealed class GameSaves(GameHost host)
     /// </summary>
     void Autosave(double realDt)
     {
+        if (host.GameOptions.Benchmark is not null) return;   // the launcher benchmark: none during the run
+
         if (_autosaveDue)
         {
             _autosaveDue = false;
@@ -180,6 +182,7 @@ sealed class GameSaves(GameHost host)
             Seed = host.Session.World.Seed ^ (ulong)++_captures << 20,
             View = new SavedView(view.Pivot, view.Yaw, view.Pitch, view.Distance),
             HandlesWritten = host.BloodDecals.NoteHandles,
+            GroundPoses = host.GroundItemSync.DrawnPose,
         };
     }
 
@@ -282,6 +285,7 @@ sealed class GameSaves(GameHost host)
 
             host.Config.ContinueSave = folder;
             host.Config.Save();
+            host.Modding.TellSaveWritten(folder);
         }
     }
 
@@ -423,7 +427,8 @@ sealed class GameSaves(GameHost host)
                 if ((options & ImportOptions.ResetPositions) != 0 && host.Nav is not null && read!.IsCompletedSuccessfully)
                     SaveImport.PlaceOnGround(read.Result, host.Nav.Walkability.GroundHeight);
                 return SwapInSave(read!, interactive: true, out summary,
-                    new SaveLoadOptions { Appearances = data.Appearances, ResetRelations = (options & ImportOptions.Relations) == 0 }, prepared);
+                    new SaveLoadOptions { Appearances = data.Appearances, ResetRelations = (options & ImportOptions.Relations) == 0 }, prepared,
+                    WorldStartKind.Import);
             }),
             GameHost.Stage("finishing", () =>
             {
@@ -474,12 +479,17 @@ sealed class GameSaves(GameHost host)
     }
 
     /// <summary>
+    /// The full path of the folder a load reads (<see cref="ReadingFolder"/>) for <see cref="World.Start"/>; null when none is known.
+    /// </summary>
+    static string? SaveFolderPath(string? folder) => string.IsNullOrEmpty(folder) ? null : Path.GetFullPath(folder);
+
+    /// <summary>
     /// Swaps in a world made from the save (at a tick boundary, the frame loop's) and hooks the host to it: the game clock, the camera on the
     /// player's squad. Returns the navmesh of the zones round the player to wait for before the first tick (<see cref="GameHost.SettleNewWorld"/>);
     /// throws <see cref="GameHost.SceneLoadFailed"/> when the save does not load (the old world stays).
     /// </summary>
     internal Task SwapInSave(Task<SaveGame> read, bool interactive, out string summary, SaveLoadOptions? loadOptions = null,
-        PreparedSystems? prepared = null)
+        PreparedSystems? prepared = null, WorldStartKind start = WorldStartKind.Load)
     {
         var watch = Stopwatch.StartNew();
         LoadedSave? loaded = null;
@@ -507,7 +517,7 @@ sealed class GameSaves(GameHost host)
         }
 
         // After the swap, so a mod's Ready that queues a command or reads the tick reaches this world, not the one it replaced.
-        host.Session.World.TellReady(fromSave: true);
+        host.Session.World.TellReady(new WorldStart(start, SaveFolderPath(ReadingFolder)));
 
         host.PopData = nextData;
         Difficulty = nextDifficulty;
@@ -698,6 +708,8 @@ sealed class GameSaves(GameHost host)
                 (gameplay.Dismemberment, host.Config.Decapitation, host.Config.AdvancedRagdolls);
             (data.BodyOptions.SquadXp, data.BodyOptions.OthersXp) = (host.Config.SquadXp, host.Config.OthersXp);
             data.BodyOptions.SquadSkillXp = SkillXp.Rates(host.Config.SquadSkillXp);
+            (data.BodyOptions.MaxFactionSize, data.BodyOptions.MaxSquadSize, data.BodyOptions.MaxSquads) =
+                (host.Config.MaxFactionSize, host.Config.MaxSquadSize, host.Config.MaxSquads);
         }
 
         foreach (var population in host.Session.World.Systems.OfType<PopulationSystem>())
@@ -748,7 +760,7 @@ sealed class GameSaves(GameHost host)
             },
             Ai = new Simulation.Ai.AiSettings { TownAttacks = Gameplay.TownAttacks },
             Captives = new Simulation.Kidnap.CaptiveSettings { SpareOwnFaction = host.Config.CagesSpareOwn },
-            Arrest = new Simulation.Crime.ArrestSettings { LiftFix = host.Config.FixArrestLifts },
+            Arrest = new Simulation.Crime.ArrestSettings { LiftFix = host.Config.FixArrestLifts, LostFix = host.Config.FixArrestChases },
             Construction = new Simulation.Construction.ConstructionSettings { BuildingSpeed = (settings ?? Difficulty)[5], EdgeGap = SiteEdgeGap },
             Production = new Simulation.Production.ProductionSettings { ProductionOption = (settings ?? Difficulty)[3],
                 ResearchOption = (settings ?? Difficulty)[4], EdgeGap = SiteEdgeGap, UnloadedProduction = host.Config.UnloadedProduction },

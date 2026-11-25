@@ -757,7 +757,7 @@ sealed class FrontendScreens(PlayerInterface player)
         {
             Enable(b, "LeftButton", "RightButton", "BeginButton");
             var start = _starts[_startIndex];
-            b.Text["TitleTextBox"] = start.Name;
+            b.Text["TitleTextBox"] = ShownText.Record(start.Id, start.Name);
         }
     }
 
@@ -859,12 +859,14 @@ sealed class FrontendScreens(PlayerInterface player)
         // fixed at 180; the captions are localised strings (the pot has "Name" and "Date", Unknown which the window uses). Initially sorted by
         // the second, newest first. Meitou adds the save's origin to the name. addColumn takes screen pixels, not the template's (the date is cut
         // off at 1440 lines in the base game).
-        // Meitou: the columns are 170 and 180 pixels at 1080 lines and grow with the UI scale, so the date fits on a 4K screen (#495).
-        b.Columns["GamesList"] = [new("Name", 170, MyGuiResizingPolicy.Fill), new("Date", 180)];
+        // Meitou: the columns are 170 and 180 pixels at 1080 lines and grow with the UI scale, so the date fits on a 4K screen (#495); Faithful
+        // keeps the original's screen pixels.
+        bool faithful = player.UiMode == UiMode.Faithful;
+        float columnScale = faithful ? 1 : player.UiScale;
+        b.Columns["GamesList"] = [new("Name", 170 * columnScale, MyGuiResizingPolicy.Fill), new("Date", 180 * columnScale)];
         b.Sorts["GamesList"] = (1, false);
 
         // Faithful: the folder name as the original shows it; Meitou adds where the save comes from.
-        bool faithful = player.UiMode == UiMode.Faithful;
         b.Lists["GamesList"] = visibleSlots.Select(s => new UiListItem(s.Folder, $"{s.Name}   {SlotDate(s)}",
             [faithful ? s.Name : $"{s.Name}   [{(s.Writable ? "Meitou" : "Kenshi")}]", SlotDate(s)],
             // The original's comparator (FUN_14047cdb0): names without regard to case, dates by their time.
@@ -1044,9 +1046,10 @@ sealed class FrontendScreens(PlayerInterface player)
         var start = _starts[_startIndex];
         AddDatapanel(controls, "DescriptionPanel",
         [
-            (Loc.Tr("Difficulty:"), start.Difficulty), (Loc.Tr("Cash:"), "c." + start.Money.ToString(CultureInfo.InvariantCulture)),
-            (Loc.Tr("Play Style:"), start.Style),
-            (start.Description, ""),
+            (Loc.Tr("Difficulty:"), ShownText.Record(start.Id, start.Difficulty, "difficulty")),
+            (Loc.Tr("Cash:"), "c." + start.Money.ToString(CultureInfo.InvariantCulture)),
+            (Loc.Tr("Play Style:"), ShownText.Record(start.Id, start.Style, "style")),
+            (ShownText.Record(start.Id, start.Description, "description"), ""),
         ], lastWraps: true, rows: 40);
     }
 

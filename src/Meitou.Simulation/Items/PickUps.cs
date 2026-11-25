@@ -240,6 +240,7 @@ public sealed class PickUps : ITaskHandler, IOrderOwner
             int before = item.Item.Quantity;
             var mark = item.Item.Mark;
             if (item.OwnedBy >= 0 && item.OwnedBy != c.Faction) item.Item.Mark = OwnerMark(world, item);
+            var owner = item.Item.Mark.Owner;
 
             // What does not fit stays on the ground (Inventory.Add leaves it in the item); gear or a bag that does not fit is worn when its slot
             // is free.
@@ -251,8 +252,8 @@ public sealed class PickUps : ITaskHandler, IOrderOwner
                 world.GroundItems.Take(id);
 
                 // Task_Pickup: another faction's item taken inside a building is a Theft.
-                if (item.OwnedBy >= 0 && item.OwnedBy != c.Faction && world.Sight.BuildingOf(s) is not null)
-                    world.SystemOf<Crime.CrimeSystem>()?.StolePickUp(world, s, item.OwnedBy);
+                if (item.OwnedBy >= 0 && item.OwnedBy != c.Faction && world.Sight.BuildingOf(s) is { } inside)
+                    world.SystemOf<Crime.CrimeSystem>()?.StolePickUp(world, s, item.OwnedBy, owner, inside);
                 if (wear) assembly?.RefreshEquipment(c);
                 world.EmitSound(SoundKind.PickedUp, s, next[s].Position);
             }
@@ -265,7 +266,7 @@ public sealed class PickUps : ITaskHandler, IOrderOwner
 
                 // The notice is for the player's own characters (engine choice): an NPC or animal whose goal keeps trying an item it has no
                 // room for (ground food, a weapon while unarmed) would post it at every try (#683).
-                if (c.IsPlayer) world.Post($"{c.Name}: Not enough room in my inventory");
+                if (c.IsPlayer) world.Post($"{world.ShownName(c)}: Not enough room in my inventory");
             }
         }
     }

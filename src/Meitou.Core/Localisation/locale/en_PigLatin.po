@@ -5046,3 +5046,587 @@ msgstr "Ivegay ethay uildingbay away amenay ofway ouryay ownway, ownshay onway i
 #. machine-translated
 msgid "Leave it empty for the building's own name."
 msgstr "Eavelay itway emptyway orfay ethay uildingbay's ownway amenay."
+
+msgid "Loading the target builds..."
+msgstr "Oadinglay ethay argettay uildsbay..."
+
+msgid "{1} target builds"
+msgstr "{1} argettay uildsbay"
+
+msgid "Benchmarks site"
+msgstr "Enchmarksbay itesay"
+
+msgid "Benchmark"
+msgstr "Enchmarkbay"
+
+msgid "Benchmark settings"
+msgstr "Enchmarkbay ettingssay"
+
+msgid "Benchmarks always use fixed settings so results stay comparable:"
+msgstr "Enchmarksbay alwaysway useway ixedfay ettingssay osay esultsray aystay omparablecay:"
+
+msgid "• Windowed 1920×1080, Vulkan, VSync & frame limit off, HDR off"
+msgstr "• Indowedway 1920×1080, Ulkanvay, Yncvsay & amefray imitlay offway, HDRAY offway"
+
+msgid "• Chosen quality tier (Meitou look), TAA at 100% scale (Low: no AA at 83%), no upscaler"
+msgstr "• Osenchay alityquay iertay (Eitoumay ooklay), AATAY atway 100% alescay (Owlay: onay AAWAY atway 83%), onay upscalerway"
+
+msgid "• Ray tracing only on Ultra and Extreme"
+msgstr "• Ayray acingtray onlyway onway Ultraway andway Extremeway"
+
+msgid "• Your saved graphics settings and mods are ignored and never modified"
+msgstr "• Ouryay avedsay aphicsgray ettingssay andway odsmay areway ignoredway andway evernay odifiedmay"
+
+msgid "Target builds unknown: {1}"
+msgstr "Argettay uildsbay unknownway: {1}"
+
+msgid "Download the build into the benchmark's own folder and list its benchmarks"
+msgstr "Ownloadday ethay uildbay intoway ethay enchmark'sbay ownway olderfay andway istlay itsway enchmarksbay"
+
+msgid "Target builds (full releases and the daily nightlies) count for comparisons; others can be run but not submitted."
+msgstr "Argettay uildsbay (ullfay eleasesray andway ethay ailyday ightliesnay) ountcay orfay omparisonscay; othersway ancay ebay unray utbay otnay ubmittedsay."
+
+msgid "Build"
+msgstr "Uildbay"
+
+msgid "target"
+msgstr "argettay"
+
+msgid "not a target"
+msgstr "otnay away argettay"
+
+msgid "installed"
+msgstr "installedway"
+
+msgid "Proton runs the Windows build, with its own prefix in the launcher's folder."
+msgstr "Otonpray unsray ethay Indowsway uildbay, ithway itsway ownway efixpray inway ethay auncher'slay olderfay."
+
+msgid "Platform"
+msgstr "Atformplay"
+
+msgid "Install the build to see all the benchmarks it has."
+msgstr "Installway ethay uildbay otay eesay allway ethay enchmarksbay itway ashay."
+
+msgid "Each ticked benchmark is run at each ticked tier."
+msgstr "Eachway ickedtay enchmarkbay isway unray atway eachway ickedtay iertay."
+
+msgid "Benchmarks"
+msgstr "Enchmarksbay"
+
+msgid "~{1} min per tier"
+msgstr "~{1} inmay erpay iertay"
+
+msgid "Needs ray tracing"
+msgstr "Eedsnay ayray acingtray"
+
+msgid "Recommended for this computer"
+msgstr "Ecommendedray orfay isthay omputercay"
+
+msgid "Recommended"
+msgstr "Ecommendedray"
+
+msgid "Medium and {1}, recommended for this computer, are ticked first."
+msgstr "Ediummay andway {1}, ecommendedray orfay isthay omputercay, areway ickedtay irstfay."
+
+msgid "The game's quality presets."
+msgstr "Ethay ame'sgay alityquay esetspray."
+
+msgid "Tiers"
+msgstr "Ierstay"
+
+msgid "Start"
+msgstr "Artstay"
+
+msgid "Submit results automatically when done"
+msgstr "Ubmitsay esultsray automaticallyway enwhay oneday"
+
+msgid "Applies to target builds only."
+msgstr "Appliesway otay argettay uildsbay onlyway."
+
+msgid "Do not use the computer while it runs."
+msgstr "Oday otnay useway ethay omputercay ilewhay itway unsray."
+
+msgid "Tick at least one benchmark and one tier."
+msgstr "Icktay atway eastlay oneway enchmarkbay andway oneway iertay."
+
+msgid "Sessions: {1}, two runs each, about {2} minutes."
+msgstr "Essionssay: {1}, otway unsray eachway, aboutway {2} inutesmay."
+
+msgid "{1} ({2} elapsed)"
+msgstr "{1} ({2} elapsedway)"
+
+msgid "Benchmark finished."
+msgstr "Enchmarkbay inishedfay."
+
+msgid "Your name on the benchmarks site (optional)"
+msgstr "Ouryay amenay onway ethay enchmarksbay itesay (optionalway)"
+
+msgid "Submit your results to the Meitou benchmarks site automatically when the benchmark finishes? Hardware specs, timings and your optional handle are sent; your computer name is not."
+msgstr "Ubmitsay ouryay esultsray otay ethay Eitoumay enchmarksbay itesay automaticallyway enwhay ethay enchmarkbay inishesfay? Ardwarehay ecsspay, imingstay andway ouryay optionalway andlehay areway entsay; ouryay omputercay amenay isway otnay."
+
+msgid "Submitted by"
+msgstr "Ubmittedsay ybay"
+
+msgid "You can change this anytime on the Benchmark page."
+msgstr "Ouyay ancay angechay isthay anytimeway onway ethay Enchmarkbay agepay."
+
+msgid "Don't submit"
+msgstr "On'tday ubmitsay"
+
+msgid "Submit"
+msgstr "Ubmitsay"
+
+msgid "Submit benchmark results?"
+msgstr "Ubmitsay enchmarkbay esultsray?"
+
+msgid "The build is installed."
+msgstr "Ethay uildbay isway installedway."
+
+msgid "A benchmark is already running."
+msgstr "Away enchmarkbay isway alreadyway unningray."
+
+msgid "Wait for the current submission to finish."
+msgstr "Aitway orfay ethay urrentcay ubmissionsay otay inishfay."
+
+msgid "Meitou is running: close it before benchmarking."
+msgstr "Eitoumay isway unningray: oseclay itway eforebay enchmarkingbay."
+
+msgid "Choose a build first."
+msgstr "Oosechay away uildbay irstfay."
+
+msgid "The benchmark stopped."
+msgstr "Ethay enchmarkbay oppedstay."
+
+msgid "Cancelled."
+msgstr "Ancelledcay."
+
+msgid "The benchmark stopped: {1}"
+msgstr "Ethay enchmarkbay oppedstay: {1}"
+
+msgid "Benchmarking: the game window opens and closes by itself."
+msgstr "Enchmarkingbay: ethay amegay indowway opensway andway osesclay ybay itselfway."
+
+msgid "{1} at {2}: run {3} of {4}, launch {5} of {6}"
+msgstr "{1} atway {2}: unray {3} ofway {4}, aunchlay {5} ofway {6}"
+
+msgid "Proton: {1}"
+msgstr "Otonpray: {1}"
+
+msgid "Native Linux build"
+msgstr "Ativenay Inuxlay uildbay"
+
+msgid "This computer's build"
+msgstr "Isthay omputer'scay uildbay"
+
+msgid "No results for this build and platform yet."
+msgstr "Onay esultsray orfay isthay uildbay andway atformplay etyay."
+
+msgid "Open this build's benchmark results folder"
+msgstr "Openway isthay uild'sbay enchmarkbay esultsray olderfay"
+
+msgid "Results"
+msgstr "Esultsray"
+
+msgid "1 session"
+msgstr "1 essionsay"
+
+msgid "{1} sessions"
+msgstr "{1} essionssay"
+
+msgid "1 session · submitted"
+msgstr "1 essionsay · ubmittedsay"
+
+msgid "{1} sessions · all submitted"
+msgstr "{1} essionssay · allway ubmittedsay"
+
+msgid "{1} of {2} submitted"
+msgstr "{1} ofway {2} ubmittedsay"
+
+msgid "All tiers"
+msgstr "Allway ierstay"
+
+msgid "Submitted (#{1})"
+msgstr "Ubmittedsay (#{1})"
+
+msgid "Incomplete ({1} of {2} runs)"
+msgstr "Incompleteway ({1} ofway {2} unsray)"
+
+msgid "Built by {1}, not {2}"
+msgstr "Uiltbay ybay {1}, otnay {2}"
+
+msgid "Not a target build"
+msgstr "Otnay away argettay uildbay"
+
+msgid "Ready to submit"
+msgstr "Eadyray otay ubmitsay"
+
+msgid "Submit results"
+msgstr "Ubmitsay esultsray"
+
+msgid "Not a target build: its results can be seen here but not submitted."
+msgstr "Otnay away argettay uildbay: itsway esultsray ancay ebay eensay erehay utbay otnay ubmittedsay."
+
+msgid "Incomplete: both runs are needed to submit."
+msgstr "Incompleteway: othbay unsray areway eedednay otay ubmitsay."
+
+msgid "Hardware must be probed before submitting."
+msgstr "Ardwarehay ustmay ebay obedpray eforebay ubmittingsay."
+
+msgid "The runs were made by {1}, not {2}: they cannot be submitted."
+msgstr "Ethay unsray ereway ademay ybay {1}, otnay {2}: eythay annotcay ebay ubmittedsay."
+
+msgid "Submitting..."
+msgstr "Ubmittingsay..."
+
+msgid "Submit all ({1})"
+msgstr "Ubmitsay allway ({1})"
+
+msgid "Submit all again"
+msgstr "Ubmitsay allway againway"
+
+msgid "Submit again"
+msgstr "Ubmitsay againway"
+
+msgid "Submitted (#{1})."
+msgstr "Ubmittedsay (#{1})."
+
+msgid "All {1} sessions submitted."
+msgstr "Allway {1} essionssay ubmittedsay."
+
+msgid "1 session ready to submit ({1} incomplete skipped)."
+msgstr "1 essionsay eadyray otay ubmitsay ({1} incompleteway ippedskay)."
+
+msgid "{1} sessions ready to submit ({2} incomplete skipped)."
+msgstr "{1} essionssay eadyray otay ubmitsay ({2} incompleteway ippedskay)."
+
+msgid "{1} of {2} sessions not yet submitted."
+msgstr "{1} ofway {2} essionssay otnay etyay ubmittedsay."
+
+msgid "1 session ready to submit."
+msgstr "1 essionsay eadyray otay ubmitsay."
+
+msgid "{1} sessions ready to submit."
+msgstr "{1} essionssay eadyray otay ubmitsay."
+
+msgid "Submitting {1} of {2}..."
+msgstr "Ubmittingsay {1} ofway {2}..."
+
+msgid "The service refused it: {1}"
+msgstr "Ethay ervicesay efusedray itway: {1}"
+
+msgid "Could not reach the reports service: {1}"
+msgstr "Ouldcay otnay eachray ethay eportsray ervicesay: {1}"
+
+msgid "Submitted 1 session."
+msgstr "Ubmittedsay 1 essionsay."
+
+msgid "Submitted {1} sessions."
+msgstr "Ubmittedsay {1} essionssay."
+
+msgid "Submission failed."
+msgstr "Ubmissionsay ailedfay."
+
+msgid "Submitted {1} of {2} sessions; {3} failed: {4}"
+msgstr "Ubmittedsay {1} ofway {2} essionssay; {3} ailedfay: {4}"
+
+msgid "Machine"
+msgstr "Achinemay"
+
+msgid "Generated when hardware is probed."
+msgstr "Eneratedgay enwhay ardwarehay isway obedpray."
+
+msgid "Kept as it was first submitted, so the site keeps your results together."
+msgstr "Eptkay asway itway asway irstfay ubmittedsay, osay ethay itesay eepskay ouryay esultsray ogethertay."
+
+msgid "Notes (cooling, power plan, ...)"
+msgstr "Otesnay (oolingcay, owerpay anplay, ...)"
+
+msgid "Generated for this computer so the site keeps your results together."
+msgstr "Eneratedgay orfay isthay omputercay osay ethay itesay eepskay ouryay esultsray ogethertay."
+
+msgid "Shown beside your results."
+msgstr "Ownshay esidebay ouryay esultsray."
+
+msgid "The hardware is probed when a benchmark starts."
+msgstr "Ethay ardwarehay isway obedpray enwhay away enchmarkbay artsstay."
+
+msgid "{1}, {2}, {3} GB, {4}"
+msgstr "{1}, {2}, {3} GBAY, {4}"
+
+msgid "{1} skipped: it needs ray tracing, which this graphics card does not have."
+msgstr "{1} ippedskay: itway eedsnay ayray acingtray, ichwhay isthay aphicsgray ardcay oesday otnay avehay."
+
+msgid "{1} has no download for {2}."
+msgstr "{1} ashay onay ownloadday orfay {2}."
+
+msgid "{1} has no game in its download."
+msgstr "{1} ashay onay amegay inway itsway ownloadday."
+
+msgid "Asking the build for its benchmarks..."
+msgstr "Askingway ethay uildbay orfay itsway enchmarksbay..."
+
+msgid "This build did not list its benchmarks (exit code {1}): it may be older than launcher benchmarks."
+msgstr "Isthay uildbay idday otnay istlay itsway enchmarksbay (exitway odecay {1}): itway aymay ebay olderway anthay auncherlay enchmarksbay."
+
+msgid "{1} skipped: this build has no such benchmark."
+msgstr "{1} ippedskay: isthay uildbay ashay onay uchsay enchmarkbay."
+
+msgid "{1} skipped: it needs the save {2}, which this launcher cannot download."
+msgstr "{1} ippedskay: itway eedsnay ethay avesay {2}, ichwhay isthay auncherlay annotcay ownloadday."
+
+msgid "Checking the benchmark save..."
+msgstr "Eckingchay ethay enchmarkbay avesay..."
+
+msgid "The benchmark save is damaged: its download does not match the expected hash."
+msgstr "Ethay enchmarkbay avesay isway amagedday: itsway ownloadday oesday otnay atchmay ethay expectedway ashhay."
+
+msgid "Probing the hardware..."
+msgstr "Obingpray ethay ardwarehay..."
+
+msgid "This build did not report the hardware (exit code {1}): it may be older than launcher benchmarks."
+msgstr "Isthay uildbay idday otnay eportray ethay ardwarehay (exitway odecay {1}): itway aymay ebay olderway anthay auncherlay enchmarksbay."
+
+msgid "Copying the save..."
+msgstr "Opyingcay ethay avesay..."
+
+msgid "{1} skipped: the game says it needs ray tracing, which this graphics card does not have."
+msgstr "{1} ippedskay: ethay amegay ayssay itway eedsnay ayray acingtray, ichwhay isthay aphicsgray ardcay oesday otnay avehay."
+
+msgid "{1} skipped: the game does not know this benchmark (exit code 7)."
+msgstr "{1} ippedskay: ethay amegay oesday otnay owknay isthay enchmarkbay (exitway odecay 7)."
+
+msgid "The game refused the save: its hash is not the benchmark's (exit code 6)."
+msgstr "Ethay amegay efusedray ethay avesay: itsway ashhay isway otnay ethay enchmark'sbay (exitway odecay 6)."
+
+msgid "The game stopped with exit code {1} in {2}, run {3}; its log is {4}"
+msgstr "Ethay amegay oppedstay ithway exitway odecay {1} inway {2}, unray {3}; itsway oglay isway {4}"
+
+msgid "The game wrote no result.json into {1}; its log is {2}"
+msgstr "Ethay amegay otewray onay esultray.onjsay intoway {1}; itsway oglay isway {2}"
+
+msgid "The Vulkan loader is not installed: run 'brew install molten-vk vulkan-loader' in a terminal, then try again."
+msgstr "Ethay Ulkanvay oaderlay isway otnay installedway: unray 'ewbray installway oltenmay-vkay ulkanvay-oaderlay' inway away erminaltay, enthay ytray againway."
+
+msgid "The game did not start."
+msgstr "Ethay amegay idday otnay artstay."
+
+msgid "The game ran over {1} minutes and was stopped."
+msgstr "Ethay amegay anray overway {1} inutesmay andway asway oppedstay."
+
+msgid "Bases"
+msgstr "Asesbay"
+
+msgid "Shark fly-by"
+msgstr "Arkshay yflay-ybay"
+
+msgid "The play bench on a save"
+msgstr "Ethay ayplay enchbay onway away avesay"
+
+msgid "A new game, flying round Shark"
+msgstr "Away ewnay amegay, yingflay oundray Arkshay"
+
+msgid "Bases: the play bench on a save"
+msgstr "Asesbay: ethay ayplay enchbay onway away avesay"
+
+msgid "Shark fly-by: a new game, flying round Shark"
+msgstr "Arkshay yflay-ybay: away ewnay amegay, yingflay oundray Arkshay"
+
+msgid "Tier"
+msgstr "Iertay"
+
+msgid "Run {1} · Whole run"
+msgstr "Unray {1} · Olewhay unray"
+
+msgid "Run {1}"
+msgstr "Unray {1}"
+
+msgid "FPS"
+msgstr "FPSAY"
+
+msgid "99% ms"
+msgstr "99% msay"
+
+msgid "Over 33 ms"
+msgstr "Overway 33 msay"
+
+msgid "Status"
+msgstr "Atusstay"
+
+msgid "Click to view groups for {1}"
+msgstr "Ickclay otay iewvay oupsgray orfay {1}"
+
+msgid "Low"
+msgstr "Owlay"
+
+msgid "Medium"
+msgstr "Ediummay"
+
+msgid "High"
+msgstr "Ighhay"
+
+msgid "Whole run"
+msgstr "Olewhay unray"
+
+msgid "Streaming"
+msgstr "Eamingstray"
+
+msgid "Views"
+msgstr "Iewsvay"
+
+msgid "Flight"
+msgstr "Ightflay"
+
+msgid "BENCHMARK"
+msgstr "ENCHMARKBAY"
+
+msgid "App menu"
+msgstr "Appway enumay"
+
+msgid "Could not change the app menu entry: {1}"
+msgstr "Ouldcay otnay angechay ethay appway enumay entryway: {1}"
+
+msgid "Meitou Launcher was added to the app menu."
+msgstr "Eitoumay Auncherlay asway addedway otay ethay appway enumay."
+
+msgid "Meitou Launcher was removed from the app menu."
+msgstr "Eitoumay Auncherlay asway emovedray omfray ethay appway enumay."
+
+msgid "Remove"
+msgstr "Emoveray"
+
+msgid "Add"
+msgstr "Addway"
+
+msgid "Meitou Launcher is in your desktop's app launcher."
+msgstr "Eitoumay Auncherlay isway inway ouryay esktop'sday appway auncherlay."
+
+msgid "Add Meitou Launcher, with its icon, to your desktop's app launcher."
+msgstr "Addway Eitoumay Auncherlay, ithway itsway iconway, otay ouryay esktop'sday appway auncherlay."
+
+msgid "A benchmark is running: cancel it on the Benchmark page first."
+msgstr "Away enchmarkbay isway unningray: ancelcay itway onway ethay Enchmarkbay agepay irstfay."
+
+msgid "Add to the app menu"
+msgstr "Addway otay ethay appway enumay"
+
+msgid "Meitou Launcher, with its icon, in your desktop's app launcher."
+msgstr "Eitoumay Auncherlay, ithway itsway iconway, inway ouryay esktop'sday appway auncherlay."
+
+msgid "Mute corpse flies in the Audio settings"
+msgstr "Utemay orpsecay iesflay inway ethay Audioway ettingssay"
+
+msgid "Quiet corpse flies in the Audio settings"
+msgstr "Ietquay orpsecay iesflay inway ethay Audioway ettingssay"
+
+msgid "Max faction size, Max squad size and Max squads in the Advanced settings"
+msgstr "Axmay actionfay izesay, Axmay uadsqay izesay andway Axmay uadssqay inway ethay Advancedway ettingssay"
+
+msgid "Mute corpse flies in the Audio settings is on"
+msgstr "Utemay orpsecay iesflay inway ethay Audioway ettingssay isway onway"
+
+msgid "Quiet corpse flies in the Audio settings is on"
+msgstr "Ietquay orpsecay iesflay inway ethay Audioway ettingssay isway onway"
+
+msgid "its limits are now Max faction size, Max squad size and Max squads in the Advanced settings"
+msgstr "itsway imitslay areway ownay Axmay actionfay izesay, Axmay uadsqay izesay andway Axmay uadssqay inway ethay Advancedway ettingssay"
+
+msgid "{1} squad(s) given their own squad AI options by a mod that is not loaded follow yours again."
+msgstr "{1} uadsqay(say) ivengay eirthay ownway uadsqay AIWAY optionsway ybay away odmay atthay isway otnay oadedlay ollowfay oursyay againway."
+
+msgid "Corpse flies range"
+msgstr "Orpsecay iesflay angeray"
+
+msgid "Max faction size"
+msgstr "Axmay actionfay izesay"
+
+msgid "Max squad size"
+msgstr "Axmay uadsqay izesay"
+
+msgid "Max squads"
+msgstr "Axmay uadssqay"
+
+msgid "Settings window opacity"
+msgstr "Ettingssay indowway opacityway"
+
+msgid "How opaque the in-game settings window is (lower to see the world behind it while adjusting settings)."
+msgstr "Owhay opaqueway ethay inway-amegay ettingssay indowway isway (owerlay otay eesay ethay orldway ehindbay itway ilewhay adjustingway ettingssay)."
+
+msgid "Mute corpse flies"
+msgstr "Utemay orpsecay iesflay"
+
+msgid "Silences the buzzing of the flies over corpses; the flies are still shown (the game: off)."
+msgstr "Ilencessay ethay uzzingbay ofway ethay iesflay overway orpsescay; ethay iesflay areway illstay ownshay (ethay amegay: offway)."
+
+msgid "Quiet corpse flies"
+msgstr "Ietquay orpsecay iesflay"
+
+msgid "The flies over corpses are heard only close to them, not from across the base (the game: off)."
+msgstr "Ethay iesflay overway orpsescay areway eardhay onlyway oseclay otay emthay, otnay omfray acrossway ethay asebay (ethay amegay: offway)."
+
+msgid "How far the corpse flies are heard, of the game's distance: lower to hear them less, higher for more."
+msgstr "Owhay arfay ethay orpsecay iesflay areway eardhay, ofway ethay ame'sgay istanceday: owerlay otay earhay emthay esslay, igherhay orfay oremay."
+
+msgid "Guards give up lost suspects"
+msgstr "Uardsgay ivegay upway ostlay uspectssay"
+
+msgid "A guard who loses sight of the character he was arresting gives up and goes back to his duties. The game has him take the fight up again wherever the character is, so he can run straight to someone hiding out of sight."
+msgstr "Away uardgay owhay oseslay ightsay ofway ethay aracterchay ehay asway arrestingway ivesgay upway andway oesgay ackbay otay ishay utiesday. Ethay amegay ashay imhay aketay ethay ightfay upway againway ereverwhay ethay aracterchay isway, osay ehay ancay unray aightstray otay omeonesay idinghay outway ofway ightsay."
+
+msgid "Pick-up thefts from the owner"
+msgstr "Ickpay-upway eftsthay omfray ethay ownerway"
+
+msgid "Taking someone else's item from the floor of a building is a theft from the item's owner. The game counts it as stolen from whoever owns the building you stand in, even when the item belongs to someone else."
+msgstr "Akingtay omeonesay else'sway itemway omfray ethay oorflay ofway away uildingbay isway away eftthay omfray ethay item'sway ownerway. Ethay amegay ountscay itway asway olenstay omfray oeverwhay ownsway ethay uildingbay ouyay andstay inway, evenway enwhay ethay itemway elongsbay otay omeonesay elseway."
+
+msgid "Lockpick chance on the pointer"
+msgstr "Ockpicklay ancechay onway ethay ointerpay"
+
+msgid "Pointing at a lock too hard to pick shows 0%, as its Pick Lock menu entry does, since the character cannot pick it. The game shows the chance before that limit there, such as 3% for a lock the menu gives 0%."
+msgstr "Ointingpay atway away ocklay ootay ardhay otay ickpay owsshay 0%, asway itsway Ickpay Ocklay enumay entryway oesday, incesay ethay aracterchay annotcay ickpay itway. Ethay amegay owsshay ethay ancechay eforebay atthay imitlay erethay, uchsay asway 3% orfay away ocklay ethay enumay ivesgay 0%."
+
+msgid "The faction's recruitment limit: how many characters and animals your faction may hold (the game: 30). Existing members stay if you lower it. Click the number to type an exact value."
+msgstr "Ethay action'sfay ecruitmentray imitlay: owhay anymay aracterschay andway animalsway ouryay actionfay aymay oldhay (ethay amegay: 30). Existingway embersmay aystay ifway ouyay owerlay itway. Ickclay ethay umbernay otay ypetay anway exactway aluevay."
+
+msgid "How many members one of your squads may hold (the game: 20). Full squads put new recruits into a new squad."
+msgstr "Owhay anymay embersmay oneway ofway ouryay uadssqay aymay oldhay (ethay amegay: 20). Ullfay uadssqay utpay ewnay ecruitsray intoway away ewnay uadsqay."
+
+msgid "How many squads your faction may create (the game: 10)."
+msgstr "Owhay anymay uadssqay ouryay actionfay aymay eatecray (ethay amegay: 10)."
+
+msgid "{1} mod"
+msgid_plural "{1} mods"
+msgstr[0] "{1} odmay"
+msgstr[1] "{1} odsmay"
+
+msgid "{1} of {2}"
+msgstr "{1} ofway {2}"
+
+msgid "No mod matches the filter."
+msgstr "Onay odmay atchesmay ethay ilterfay."
+
+msgid "Issues"
+msgstr "Issuesway"
+
+msgid "Name A-Z"
+msgstr "Amenay Away-Zay"
+
+msgid "Filter mods"
+msgstr "Ilterfay odsmay"
+
+msgid "Show"
+msgstr "Owshay"
+
+msgid "Opacity"
+msgstr "Opacityway"
+
+msgid "Restore"
+msgstr "Estoreray"
+
+msgid "Monitor {1}: {2}"
+msgstr "Onitormay {1}: {2}"
+
+msgid "Monitor"
+msgstr "Onitormay"
+
+msgid "The monitor the game starts and goes full screen on. Automatic: the one its window is on (on Wayland, the first monitor)."
+msgstr "Ethay onitormay ethay amegay artsstay andway oesgay ullfay eenscray onway. Automaticway: ethay oneway itsway indowway isway onway (onway Aylandway, ethay irstfay onitormay)."

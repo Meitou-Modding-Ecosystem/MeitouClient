@@ -190,6 +190,11 @@ public sealed class OrderEntry(TaskType row, IOrderOwner owner)
     /// </summary>
     public object? Detail { get; init; }
     /// <summary>
+    /// The distance from its target within which the order's job starts its work, in place of the row's own; null: the row's own
+    /// (<see cref="OrderOptions.Reach"/>). Read by 220 Eat target alive (the cannibal meal's <c>CaptiveSettings.Reach</c>).
+    /// </summary>
+    public float? Reach { get; init; }
+    /// <summary>
     /// Whether the order's start ran: it then stands for the character's task.
     /// </summary>
     public bool Started { get; internal set; }
@@ -320,6 +325,7 @@ public sealed class OrderQueue : IReadOnlyList<OrderEntry>
             hasher.Add(e.Target);
             hasher.Add(e.Site is { } site ? Rng.StableHash(site) : 0UL);
             hasher.Add(e.Point);
+            if (e.Reach is { } reach) hasher.Add(reach);
         }
     }
 }
@@ -464,6 +470,17 @@ public static class PlayerOrders
     }
 
     /// <summary>
+    /// What the original's stop key does to a player character (<c>FUN_1407f6470</c>, which gives no order): its order queue, second list and
+    /// goal go (<see cref="Wipe"/>), its task ends, and it no longer follows anyone (serial phases).
+    /// </summary>
+    internal static void Stop(World world, int slot, CharacterCold cold)
+    {
+        Wipe(cold);
+        TaskStart.End(world, slot, TaskEnd.Stopped);
+        cold.FollowOrder = CharacterId.None;
+    }
+
+    /// <summary>
     /// Whether the order can start for the character now (a pure read; the M6 <c>World.CanOrder</c> rests on it): the row is in the character's
     /// repertoire (<see cref="TaskStart.Eligible"/>), its owner's check, a row needing no melee threat (<see cref="NeedsNoThreat"/>) has none
     /// (<see cref="Threatened"/>), and no failing list B entry leaves its plan without a step (<see cref="ListTests.OrderBlocked"/>). An order the
@@ -601,6 +618,7 @@ public static class PlayerOrders
         next.RowRuns = false;
         next.Planned = null;
         n.Goal = new Vector2(next.Point.X, next.Point.Z);
+        (cold.GoalHeight, cold.GoalHeightAt) = (next.Point.Y, n.Goal);   // its clicked height picks the floor (the first move also snaps its point to the floor, MovementSystem.GoToFloor)
         n.Flags |= (ushort)MoveFlags.NeedPath;
         return true;
     }

@@ -418,7 +418,8 @@ Stats are `float`s inside `CharStats`. The number is what RACE `heal stat`, `sta
 | --- | --- | --- |
 | Hit landed (events 0 and 1) | `FUN_1408c6980` | **Verified** (decompile): `attack` (or `unarmed` when the stat-set kind at +0x1f0 is 5, still with the race's `map[2]`) gets 0.075 x skill-diff(own attack vs opponent defence) x `map[2]`; the current weapon skill (not for unarmed) gets 0.075 x skill-diff(skill x `map[20]` vs opponent defence), with no race factor in the gain; `dexterity` gets 0.075 x the attack's skill-diff x `map[18]` (unarmed too). Event 1 uses 0.5 (attack, dexterity) and 0.4 (weapon skill). Dexterity is also scaled by a CharStats factor from +0x19c/+0x1a0/+0x1a8 (`(+0x1a8 + +0x19c) / sum` when the sum is above 0, else 1; Meitou uses 1) |
 | Attack defended (event 2) | same | **Verified**: `defence` at 0.25 of base with skill-diff(own defence x `map[19]` vs opponent attack) and no race factor in the gain; weapon skill at 0.1 (diff against the opponent's defence, Meitou uses the attack). No attack or dexterity gain |
-| Being hit (event 4) | same | `defence` 2.0 of base (**Verified**: the stat written is the CharStats slot +0x124, the same slot event 2 uses for `defence`, and [combat.md](character-stats.md#stats-and-xp) lists the same; `FUN_1408c6360` handles stat-set kind 5), and `toughness` = 0.075 x `xp rate toughness` (1.33) x skill-diff(own, other) x `map[21]`, own = toughness x CharStats `+0x34` (the stat scale), other = cut + blunt + pierce + stun of the packet the hit carries (**Verified** `FUN_1408c6980`; callers the melee hit `FUN_1404394f0`, its copy of the blow's packet, and the bolt hit `FUN_140439c90`, pierce only; that the melee packet is the powered one is **Observed**). Meitou: `XpService.Combat` `damageTaken`; the hit also pays the per-damage gain below |
+| Being hit (event 4) | same | `defence` 2.0 of base (**Verified**: the stat written is the CharStats slot +0x124, the same slot event 2 uses for `defence`, and [combat.md](character-stats.md#stats-and-xp) lists the same); for stat-set kind 5 (fists: unarmed, or the right arm out) `dodge` instead, through `FUN_1408c6360` with k 0.8 (row below), and `toughness` = 0.075 x `xp rate toughness` (1.33) x skill-diff(own, other) x `map[21]`, own = toughness x CharStats `+0x34` (the stat scale), other = cut + blunt + pierce + stun of the packet the hit carries (**Verified** `FUN_1408c6980`; callers the melee hit `FUN_1404394f0`, its copy of the blow's packet, and the bolt hit `FUN_140439c90`, pierce only; that the melee packet is the powered one is **Observed**). Meitou: `XpService.Combat` `damageTaken`; the hit also pays the per-damage gain below |
+| Dodge | `FUN_1408c6360` | **Verified** (decompile; its only callers): `dodge` (CharStats +0xf0) rises by 0.075 x k x the encumbrance factor (+0x190) x `map[32]` x skill-diff(effective dodge `FUN_140885190` with its guard flag, the attacker's rating `FUN_140884ee0`); k 0.4 when the defence start (`FUN_140609290`) picks a dodge technique, 0.8 when it picks none (a failed roll), when a stumble break-out roll fails (`FUN_1406085e0`) and when a kind-5 fighter is hit (event 4). A dodged blow itself gives the defender nothing. Meitou: `XpService.Dodge`, `CombatSystem.DodgeXp` (`DodgeXpEffect` from the defence start and the break-out) |
 | Event 6 | same | **Verified**: `attack`/`unarmed` 0.25 (`map[2]`) and weapon skill 0.1 against the opponent defence; no defence or dexterity gain (meaning of event 6 not decoded) |
 | Strength tail of every event | same | `strength` rises by `core(0.075 * 0.55 * 2*xp rate strength * map[1])` scaled x0.4 for event 2, x0.1 for event 4 (1 for events 0, 1 and 6, **Verified**), and by the weapon-weight factor below; for unarmed (kind 5) the weapon-weight factor is replaced by (1 - encumbrance factor) |
 | Own punch (attacker) | `FUN_1408c68e0`, called only from `MedicalSystem::punchSomething` `FUN_140666780` | **Verified**: 0.075 x k x `xp rate toughness` x `map[21]` x Global damage multiplier; k by hit material: 0.25 for 1 (metal), 0.5 for 5 (blocked), else 0.05. A hit taken does not call it ([punch self-damage](combat.md#punch-self-damage)) |
@@ -700,6 +701,19 @@ drops and the part stays drawn. **Observed** (2026-11-17, scratch run of a Green
 | +0x50 | **wear** w (permanent loss of maximum, robots) |
 | +0x54 / +0x58 / +0x5c | base HP (ref value 1; forced to 5 for a stump) / multiplier (set by the constructor and rewritten each tick from the character slot-0x390 factor) / body scale (character slot 0x238) |
 | +0x60 | health fraction `((h - s) + extra) / M` |
+
+### Medical tests
+
+**Verified** (decompile, 1.0.68; offsets from the medical system's start, Character `+0x458`):
+- `isProbablyDying` (`FUN_140884a70`): some part with the vital byte (`+0x32`) has flesh + bandaged pool (`+0x40` + `+0x48`) below 0.
+- `canGetUpWakeUp` (`FUN_140596460`): KO byte `+0x161` and dead byte `+0x164` clear and `isHungerKO` (`FUN_140644320`) false. `isHungerKO` is
+  true below hunger 0.1 (`DAT_14167fad0`), or below the starvation point once its refractory timer (`+0x150`, `+0x158`) has run, which it
+  then re-arms (a side effect). Meitou: `MedicalState.CanGetUpWakeUp` reads the first branch; the second is its starvation knock-out.
+- `isReallyHungry` (`FUN_1404120e0`): hunger (`+0x60`) below 1.25 (`DAT_14168ba14`).
+- `canIkick` (`FUN_140883fa0`): crippled byte `+0x160` clear and both leg parts (`+0x80`, `+0x88`) at flesh - stun + rig (`+0x40` - `+0x44` +
+  `+0x4c`) of at least 0. `isCrippled` (`FUN_14051c790`) returns `+0x160`; `isInBloodlossTrauma` (`FUN_1408836e0`) returns `+0x163`.
+- `pointOfCollapseBloodloss` (`FUN_140643980`): -25 (`DAT_1416fb68c`) while `+0x163` is set, else 0.
+- **Observed** (the Vital Read DLL's state log): `+0x74` is logged as extra blood loss beside the bleed rate `+0x78`; its writer is **Unknown**.
 
 ### Limb replacements and robots
 
