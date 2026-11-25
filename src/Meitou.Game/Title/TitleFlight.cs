@@ -18,6 +18,11 @@ readonly record struct FlightClip(string Clip, float Rate, float Length)
     /// The pose <paramref name="seconds"/> into a clip played once, held on its last frame.
     /// </summary>
     public CharacterPose Once(float seconds) => new(Clip, MathF.Min(seconds * Rate, MathF.Max(Length - 0.01f, 0)), 1);
+
+    /// <summary>
+    /// The seconds the clip takes played once.
+    /// </summary>
+    public float Seconds => Rate > 0 ? Length / Rate : 0;
 }
 
 /// <summary>
@@ -33,8 +38,8 @@ sealed record FlightClips(IReadOnlyList<FlightClip> Startle, IReadOnlyList<Fligh
 }
 
 /// <summary>
-/// The wanderer's flight from the title's Beak Thing (<see cref="TitleAmbush"/>), display only: as it turns for the hill he staggers back a step,
-/// startled, still facing it; then turns round in a small walking circle, so his turn shows; then runs at the camera and out of the frame.
+/// The wanderer's flight from the title's Beak Thing (<see cref="TitleAmbush"/>), display only: a moment after it turns for the hill he staggers
+/// back a step, startled, still facing it, for the whole of the start clip; then turns round in a small walking circle, so his turn shows; then runs at the camera and out of the frame.
 /// </summary>
 /// <param name="Start">Where he stands.</param>
 /// <param name="Yaw">His facing as he watches (out over the valley; the characters' yaw: 0 faces +Z).</param>
@@ -43,10 +48,27 @@ sealed record FlightClips(IReadOnlyList<FlightClip> Startle, IReadOnlyList<Fligh
 sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Clips)
 {
     /// <summary>
-    /// The startled stagger: how long it lasts and how far back it carries him (world units; the camera is close behind him, so a short step keeps
-    /// him in the frame).
+    /// The moment he still watches after the Beak Thing turns for the hill, before he startles.
     /// </summary>
-    public const float StaggerSeconds = 1.1f, StaggerDistance = 7;
+    public const float PauseSeconds = 1;
+
+    /// <summary>
+    /// The startled stagger: how long it lasts without a start clip, and how far back it carries him (world units; the camera is close behind
+    /// him, so a short step keeps him in the frame).
+    /// </summary>
+    public const float DefaultStaggerSeconds = 1.1f, StaggerDistance = 7;
+
+    /// <summary>
+    /// How long the stagger lasts: the whole of the start clip, so he moves on only once it has played out.
+    /// </summary>
+    public float StaggerSeconds
+    {
+        get
+        {
+            float clip = Clips.Startle.Count > 0 ? Clips.Startle.Max(c => c.Seconds) : 0;
+            return clip > 0 ? clip : DefaultStaggerSeconds;
+        }
+    }
 
     /// <summary>
     /// The turn: how long the walking circle lasts and its radius (world units).
@@ -84,6 +106,9 @@ sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Cli
     public (Vector3 At, float Yaw, CharacterPose[] Poses) At(float seconds)
     {
         seconds = Math.Clamp(seconds, 0, LastSeconds);
+        if (seconds < PauseSeconds) return (Start, Yaw, [Watching]);
+
+        seconds -= PauseSeconds;
         if (seconds < StaggerSeconds) return Stagger(seconds);
         if (seconds < StaggerSeconds + TurnSeconds) return Turn(seconds - StaggerSeconds);
 

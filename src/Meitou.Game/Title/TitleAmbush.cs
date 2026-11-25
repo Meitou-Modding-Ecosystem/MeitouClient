@@ -15,7 +15,7 @@ namespace Meitou.Game.Title;
 /// A system of the fight's own world (<see cref="TitleBattle"/>): it gives the orders, puts the struck down and moves the Beak Thing on its run; the
 /// fight's combat, animation and ragdolls do the rest. Fighters 2p and 2p + 1 are pair p, pair 0 the furthest.
 /// </summary>
-sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
+sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDefenceFilter, ICombatHitFilter
 {
     #region Rolling
 
@@ -27,7 +27,7 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
     /// <summary>
     /// One title in this many is ambushed.
     /// </summary>
-    const int Odds = 10;
+    const int Odds = 5000;
 
     /// <summary>
     /// Whether this title is ambushed: as <see cref="ForceVariable"/> says, else (not for a screenshot, which must not depend on chance) one in
@@ -56,14 +56,19 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
 
     /// <summary>
     /// The longest the charge lasts before the smash comes anyway (a blow that never lands, a block), and the longest the Beak Thing fights one of
-    /// the four before it goes down anyway.
+    /// the four before it goes down anyway: only a stall, as the four do not defend against it (<see cref="Defence"/>), so each falls to a blow.
     /// </summary>
-    const float SmashLatestSeconds = 14, StrikeLatestSeconds = 6;
+    const float SmashLatestSeconds = 14, StrikeLatestSeconds = 20;
 
     /// <summary>
     /// The least time between two of the four falling, so one swing that catches two still fells one.
     /// </summary>
     const float StrikeGapSeconds = 2;
+
+    /// <summary>
+    /// How near (world units, across the ground) one of the four must be for the Beak Thing's swing to strike it down (<see cref="SwingStruck"/>).
+    /// </summary>
+    const float SwingReach = 45;
 
     /// <summary>
     /// The pause after the last of the four falls before the Beak Thing runs for the hill; after it is gone, the pause before two of the fallen get
@@ -194,9 +199,25 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
     bool _begun;
 
     /// <summary>
-    /// An ambush of the places <paramref name="stage"/>; <see cref="Cast"/> gives it its actors.
+    /// The fight's combat, whose playing techniques show the Beak Thing's swings (<see cref="SwingStruck"/>); null: only landed blows count.
     /// </summary>
-    public TitleAmbush(TitleStage stage) => Stage = stage;
+    readonly CombatSystem? _combat;
+
+    /// <summary>
+    /// How many of the four fell to the stall fallback (<see cref="StrikeLatestSeconds"/>) rather than to a swing.
+    /// </summary>
+    internal int Stalls { get; private set; }
+
+    /// <summary>
+    /// The Beak Thing's current swing has reached its strike and been counted (<see cref="SwingStruck"/>).
+    /// </summary>
+    bool _swingCounted;
+
+    /// <summary>
+    /// An ambush of the places <paramref name="stage"/>; <see cref="Cast"/> gives it its actors; <paramref name="combat"/> is the
+    /// fight's.
+    /// </summary>
+    public TitleAmbush(TitleStage stage, CombatSystem? combat = null) => (Stage, _combat) = (stage, combat);
 
     /// <summary>
     /// Seconds since the Beak Thing turned for the hill (the wanderer runs from then on); null before.
@@ -256,6 +277,19 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
     public void Defended(World world, in CombatDefence defence)
     {
         if (defence.Attacker == Beak) _blows.Add(defence.Defender);
+    }
+
+    /// <summary>
+    /// In the melee the four take no defence against the Beak Thing, so its every swing lands and each of them falls to one.
+    /// </summary>
+    public int Defence(World world, in DefenceChoiceAsk ask) => ask.Attacker == Beak && Now == Step.Melee ? -1 : ask.Technique;
+
+    /// <summary>
+    /// In the melee a blow of the four on the Beak Thing mid-swing misses, so no hit cuts its swing short and every swing reaches its strike.
+    /// </summary>
+    public void HitLanding(World world, ref PendingHit hit)
+    {
+        if (hit.Victim == Beak && Now == Step.Melee && _combat?.Playing(Beak, hit.Tick) is { IsAttack: true }) hit.Cancelled = true;
     }
 
     /// <summary>
@@ -358,8 +392,9 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
     }
 
     /// <summary>
-    /// The melee: each blow the Beak Thing lands on its target (or the time running out) strikes that one down and it turns on the next; when none
-    /// is left it turns for the hill.
+    /// The melee: each swing of the Beak Thing strikes one of the four down (the one its blow lands on, else the nearest within
+    /// <see cref="SwingReach"/>, its target first), and it turns on the next; when none is left it turns for the hill. Only a stall past
+    /// <see cref="StrikeLatestSeconds"/> fells its target without a swing.
     /// </summary>
     void Melee(World world)
     {
@@ -369,17 +404,69 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
             return;
         }
 
-        bool struck = _blows.Contains(_fighters[_target]) && _stepSeconds >= StrikeGapSeconds || _stepSeconds >= StrikeLatestSeconds;
-        if (!struck) return;
+        int swung = SwingStruck(world);
+        if (_stepSeconds < StrikeGapSeconds) return;
+
+        int struck = StruckByBlow();
+        if (struck < 0) struck = swung;
+        if (struck < 0 && _stepSeconds >= StrikeLatestSeconds)
+        {
+            struck = _target;
+            Stalls++;
+        }
+
+        if (struck < 0) return;
 
         var table = world.Characters;
         var beak = table.Next[Beak.Slot].Position;
-        StrikeDown(world, _target, out int slot);
+        StrikeDown(world, struck, out int slot);
         var away = new Vector2(table.Next[slot].Position.X - beak.X, table.Next[slot].Position.Z - beak.Z);
         away = away.LengthSquared() > 1e-6f ? Vector2.Normalize(away) : Vector2.UnitX;
         if (table.Cold(slot) is { } victim) victim.Launch = new Vector3(away.X * StrikeThrow, StrikeLift, away.Y * StrikeThrow);
         _stepSeconds = 0;
         NextTarget(world);
+    }
+
+    /// <summary>
+    /// The one of the four still standing within <see cref="SwingReach"/> of the Beak Thing as its swing reaches its strike (its target first),
+    /// once per swing; -1 for none. Its huge swings often land on no one in the fight's sweep, so the scene fells the one it swings at.
+    /// </summary>
+    int SwingStruck(World world)
+    {
+        if (_combat?.Playing(Beak, world.Tick) is not { IsAttack: true } playing)
+        {
+            _swingCounted = false;
+            return -1;
+        }
+
+        if (playing.Progress < playing.Technique.StrikeProgress(0))
+        {
+            _swingCounted = false;
+            return -1;
+        }
+
+        if (_swingCounted) return -1;
+
+        _swingCounted = true;
+        return Enumerable.Range(2, _fighters.Length - 2)
+            .Where(f => !_struck.Contains(f) && Gap(world, Beak, _fighters[f]) < SwingReach)
+            .OrderBy(f => f == _target ? 0 : 1)
+            .ThenBy(f => Gap(world, Beak, _fighters[f]))
+            .DefaultIfEmpty(-1)
+            .First();
+    }
+
+    /// <summary>
+    /// The one of the four still standing that the Beak Thing's blow reached this tick, its target first; -1 for none.
+    /// </summary>
+    int StruckByBlow()
+    {
+        if (_blows.Contains(_fighters[_target])) return _target;
+
+        return Enumerable.Range(2, _fighters.Length - 2)
+            .Where(f => !_struck.Contains(f) && _blows.Contains(_fighters[f]))
+            .DefaultIfEmpty(-1)
+            .First();
     }
 
     /// <summary>
@@ -462,10 +549,11 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver
 
     /// <summary>
     /// A focused attack of <paramref name="attackers"/> on <paramref name="target"/> next tick (row 5, as the player's pick): the fight keeps its target
-    /// rather than choosing again among whoever is attacking it.
+    /// rather than choosing again among whoever is attacking it. It is an order, so an earlier order still holding a fighter (the four's on the Beak
+    /// Thing, for the risers) does not refuse it as a goal's fight.
     /// </summary>
     static AttackOrder Focused(IReadOnlyList<CharacterId> attackers, CharacterId target, World world) =>
-        new(attackers, target) { Row = TaskType.FocusedMeleeAttack, Tick = world.Tick + 1 };
+        new(attackers, target) { Row = TaskType.FocusedMeleeAttack, Source = TaskSource.Order, Tick = world.Tick + 1 };
 
     /// <summary>
     /// The ground gap (world units) between <paramref name="a"/> and <paramref name="b"/>.

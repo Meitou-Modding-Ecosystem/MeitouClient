@@ -4,6 +4,7 @@ using Meitou.Data.Characters;
 using Meitou.Data.Gameplay;
 using Meitou.Data.Ogre;
 using Meitou.Game.Title;
+using Meitou.Simulation.Movement;
 using Meitou.Simulation.Population;
 using Xunit;
 
@@ -76,7 +77,7 @@ public class TitleAmbushTests(ITestOutputHelper output)
 
     /// <summary>
     /// The whole ambush on the base game's Paladins, Dust Bandits and Beak Thing: the charge, the far pair thrown towards the landing, the other four
-    /// struck down one at a time, the run past the camera, and the two risers standing and fighting each other at the end while the rest stay down.
+    /// struck down one at a time, each by a swing, the run past the camera, and the two risers standing and fighting each other at the end while the rest stay down.
     /// </summary>
     [Fact]
     [Slow]
@@ -122,10 +123,14 @@ public class TitleAmbushTests(ITestOutputHelper output)
             Assert.True(Vector2.Distance(landing, new Vector2(now.X, now.Z)) < before * 0.5f, $"fighter {f} at {now}");
         }
 
+        // Each of the four fell to one of the Beak Thing's swings.
+        Assert.Equal(0, ambush.Stalls);
+
         // The risers stand and fight each other; the other four stay down.
         var end = world.Snapshot.Characters;
         Assert.All(new[] { 0, 1, 4, 5 }, f => Assert.True(end[f].Down, $"fighter {f} is up"));
         Assert.All(new[] { 2, 3 }, f => Assert.False(end[f].Down, $"riser {f} is down"));
         Assert.All(new[] { 2, 3 }, f => Assert.True(ambush.Bloodied(end[f].Id.Slot)));
+        Assert.All(new[] { 2, 3 }, f => Assert.Equal(CharacterTask.Attack, end[f].Task));
     }
 }
