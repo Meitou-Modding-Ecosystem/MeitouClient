@@ -200,10 +200,11 @@ sealed class TitleComposition
     readonly Vector3 _eye;
 
     /// <summary>
-    /// The wanderer's run from the Beak Thing (<see cref="Fill"/>): the skeleton animations of his run, each with its play speed and length (s);
+    /// The wanderer's run from the Beak Thing (<see cref="Fill"/>): the skeleton animations of his run, each with its rate (clip seconds per world unit run,
+    /// a move clip's play speed) and length (s);
     /// empty, he only turns.
     /// </summary>
-    public IReadOnlyList<(string Clip, float PlaySpeed, float Length)> RunClips { get; init; } = [];
+    public IReadOnlyList<(string Clip, float Rate, float Length)> RunClips { get; init; } = [];
 
     /// <summary>
     /// Stages the title: the ridge, the wanderer and his look, the fight centres and the moved ruin.
@@ -476,6 +477,6 @@ sealed class TitleComposition
         float running = MathF.Min(seconds, 30) - FleeTurnSeconds;
         var dir = Vector2.Normalize(toward);
         var at = Wanderer + new Vector3(dir.X, 0, dir.Y) * (FleeSpeed * running);
-        return (at, facing, [.. RunClips.Select(c => new CharacterPose(c.Clip, c.Length > 0 ? running * c.PlaySpeed % c.Length : 0, 1))]);
+        return (at, facing, [.. RunClips.Select(c => new CharacterPose(c.Clip, c.Length > 0 ? running * FleeSpeed * c.Rate % c.Length : 0, 1))]);
     }
 }

@@ -244,14 +244,14 @@ sealed class TitleScreen(GameHost host)
     }
 
     /// <summary>
-    /// The skeleton animations, play speeds and lengths of a person's plain run, its legs and its arms, that <paramref name="library"/> has (the
+    /// The skeleton animations, play speeds (clip seconds per world unit run) and lengths of a person's plain run, its legs and its arms, that <paramref name="library"/> has (the
     /// wanderer's flight from the title's Beak Thing).
     /// </summary>
-    static (string Clip, float PlaySpeed, float Length)[] RunClips(Data.Gameplay.AnimationLibrary library, Data.Gameplay.AnimationLengths lengths) =>
+    static (string Clip, float Rate, float Length)[] RunClips(Data.Gameplay.AnimationLibrary library, Data.Gameplay.AnimationLengths lengths) =>
         [.. new[] { library.IndexOf("run lower"), library.IndexOf("run upper") }
             .Where(i => i >= 0)
             .Select(i => library.Definitions[i])
-            .Select(d => (d.Clip, d.PlaySpeed > 0 ? d.PlaySpeed : 1, lengths.Of(d.Clip)))];
+            .Select(d => (d.Clip, d.PlaySpeed > 0 ? d.PlaySpeed : 0.02f, lengths.Of(d.Clip)))];
 
     /// <summary>
     /// The title's character source: the composition's wanderer (running from the Beak Thing once it turns for the hill) and the fighters.
