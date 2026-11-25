@@ -5477,6 +5477,7 @@ msgstr "벤치마크가 중단되었습니다."
 #. machine-translated
 msgid "{1} squad(s) given their own squad AI options by a mod that is not loaded follow yours again."
 msgstr "로드되지 않은 모드가 자체 분대 AI 옵션을 준 분대 {1}개가 다시 당신의 옵션을 따릅니다."
+
 msgid "Unavailable menu rows"
 msgstr "사용할 수 없는 메뉴 항목"
 
@@ -5526,6 +5527,7 @@ msgstr "건물에 직접 이름을 붙입니다. 패널, 인벤토리, 그 건�
 #. machine-translated
 msgid "Leave it empty for the building's own name."
 msgstr "비워 두면 건물의 원래 이름을 씁니다."
+
 msgid "Lockpick chance on the pointer"
 msgstr "포인터의 자물쇠 따기 확률"
 

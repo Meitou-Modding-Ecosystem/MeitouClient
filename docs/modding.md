@@ -488,6 +488,19 @@ holds refuses the second mod.
   main grid), for a mod's own button too; `Arrange(root)` and `Arrange(root, bag)` stay the game's and never ask the filters. Engine API, not in
   the original. **Observed** with a scratch program (placement, order, rotation, each invalid answer, throw, merge, hash, inert without a
   filter); no test yet.
+- **Storage priority:** a registered system implementing `IStoragePriority` (`Meitou.Simulation.Items`) is asked `Priority(World, CharacterId who,
+  string storage, StorageUse use, string? record)` at the same searches as `IStorageFilter`, for each storage the filters allow, and answers a
+  `StoragePriority`: `Forbidden`, `Low`, `Deferred`, `Normal` (the default), `Preferred`, `Important`, `High`, `Critical`. The search takes the
+  highest priority and, among equals, the storage it takes without one (the nearest, its own tie rule); `Forbidden` passes the storage over as a
+  refusal does. Take and put are asked apart, so a store can be the last place things are put and the first they are taken from (put `Low`, take
+  `Critical`: an overstock store). Systems combine as: any `Forbidden` wins, else the first answer other than `Normal` in system order (mods in
+  load order); an answer outside the levels counts as `Normal`. The player sets each storage's own put and take level on its panel
+  (`Machine.PutPriority`, `Machine.TakePriority`, saved with the building, [save](formats/save.md)): its `Forbidden` wins too, and a level other than
+  `Normal` comes before the systems' answers, which apply where the player left a storage at `Normal`. A squad's kept ditch trip keeps its storage while it still takes something (only
+  `Forbidden` ends it). `world.StorageRank(who, storage, use, record)` gives the filters' and priority systems' combined answer (`Forbidden` for
+  a refusal), so a mod ranks its own storage picks as the game's searches do. Same threading, paused-order and fault rules as `IStorageFilter`;
+  one that throws answers `Normal`. Without a priority system or a storage's own level every search is the original's. Engine API, not in the
+  original.
 - **World ready:** a registered system implementing `IWorldReady` receives `Ready(World, bool fromSave)` once, between ticks before the first
   (`world.Start` then says how: `WorldStartKind.NewGame`, `Load` or `Import`, with `SaveFolder` the full path of the save read, null for a new
   game; `Unknown` for a world the game host did not start; not saved, hashed or read by the engine, so a mod reads a file of its own or the
@@ -1304,6 +1317,13 @@ holds refuses the second mod.
   keep it quick and never wait on the game): read only the context and the mod's own state, safely across threads. Texts other than names are cut to 4,000 characters. A source that throws is reported once
   and dropped. With no source, text shows as before at the cost of one check per lookup; with one, a shown text costs one dictionary lookup
   after its first time. Engine API, not in the original.
+- **Building panel bars:** in `Register`, `registration.AddBuildingRows(context => bars)` adds bars to the medical-bars column of a selected
+  complete building, placed piece or piece of furniture, right under its Condition (and a farm's crop bars), drawn as the Condition bar is.
+  Each `UiBuildingRow` has a name on the bar, a fraction (0 to 1, clamped) for how full it is, a number-column value ("" none) and a tooltip
+  or null; texts are shown as given, put on one line and cut to 80 characters. At most 6 bars from all sources together, in registration
+  order. The source gets the same `UiBuildingContext` as the buttons and the same rules (host thread, possibly every frame, cheap, never
+  touches the world); bars show state and have no press. A source that throws, or returns a bar without a name, is logged once and dropped
+  for the session. Engine API, not in the original.
 - **Item tooltip lines:** in `Register`, `registration.AddItemTooltipLines(context => lines)` adds `UiItemTooltipLine`s (a label and an
   optional value) to an item's tooltip, after the game's own rows and before the record's description. The source gets `UiItemTooltipContext`:
   the item's record string id, name, code-mod tag (`ItemInstance.ModTag`, so a mod shows what it keeps on the item: a condition, rolled

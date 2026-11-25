@@ -299,6 +299,13 @@ skill x 0.8 when treating oneself and q = min(skill, kit quality):
   as with a kit once the room left is under `Done` (healing turns bandage into flesh, so float dust otherwise reopened a sliver every update and a guard treated a fully
   bandaged prisoner for ever: **Observed**, Rebirth Slave Shop prisoner, original save); chained
   slaves are not modelled.
+- **Letting a friend out** (**Verified**, decompile of `FUN_1403563a0`, `FUN_14033c5a0`, `FUN_140330600`, `FUN_1407923d0`; vtable of `Task_FirstAid` at
+  `1416bfa38` read from `kenshi_x64.exe`): the treatment step (slot +0x30 `FUN_14033c5a0`) reports done on the second update since the task's start (flag `+0x78`, cleared only by
+  the start `FUN_14034ecf0`) on which no wound is open (`FUN_14064d800` 1) and the bandaging pass leaves no part short of full (`FUN_140649a00` 1). Then the update ends the task and, when the patient is not the medic, the medic's faction has no player flag (`+0x250`), the
+  patient is imprisoned (`+0x2f8` 2, a cage or a restraint) whose held building (`+0x300`) resolves and the medic regards it as friendly with the disguise read
+  (slot 126 `FUN_1407923d0` with 1), clears the hold (`FUN_140330600` with 0): the patient stands at the exit spot; the lock, escaped flag, slave state and
+  crimes are not touched. Then the medic fires event 20 at the patient and the patient fires 21 back only when no longer imprisoned. Meitou:
+  `FirstAidSystem.Finish` (on the first such update), `FixtureRegistry.LetOut`.
 - **Skill.** `Task_FirstAid` (`FUN_1403563a0`) runs a first aid kit phase, then (no organic part left, or no first aid kit found) a
   robot repair kit phase; the skill is CharStats +0x98 (`medic`) in the first, +0xdc (`robotics`) in the second, and the trained stat 9
   or 6 likewise; the race's `heal stat` is not read here. The task reads the raw field, no injury/hunger stat multiplier (**Verified**,
@@ -322,7 +329,7 @@ the HUD's yellow layer shows the treated damage awaiting passive recovery.
 **Observed** (play, 2026-10-21): a first-aid order (self included) given to a character without a medkit is refused before
 any movement or animation, with the bubble "I don't have a medkit." Whether a squad mate's kit nearby or a robot repair kit
 avoids the refusal: the kit search ([below](#first-aid-update)) reads only the medic's own inventory and backpack, so a squad
-mate's kit should not (**Observed**: the same vtable slot). Meitou's first-aid `FindKit` takes the medic's own kit by this search (`OwnKit`), and still accepts a mate's within `KitReach`, found by the same rule (engine choice).
+mate's kit should not (**Observed**: the same vtable slot). Meitou: the order's check (`FirstAidSystem.CanRun`) and the running treatment (`KitOf`) use this search alone (`OwnKit`), so a medic whose kit runs out stops with the empty-kit line even when the patient or a mate carries one (#1407).
 
 **Verified** carried person adds CONSTANTS weight30, independent of body/race/inventory.
 **Verified** in game (1.0.65, scripted harness, issue #45; strength -20..45, W 15/16.4/46.4 kg, torso wounds, hunger):

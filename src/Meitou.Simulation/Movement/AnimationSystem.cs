@@ -73,6 +73,15 @@ public sealed class CharacterAnimation
     internal object? PlaysFor;
 
     /// <summary>
+    /// The clip lengths of this body (<see cref="AnimationLengths.ForPerson"/>), for the appearance <see cref="LengthsFor"/>.
+    /// </summary>
+    internal AnimationLengths? BodyLengths;
+    /// <summary>
+    /// The appearance <see cref="BodyLengths"/> was taken for; another appearance takes them again.
+    /// </summary>
+    internal object? LengthsFor;
+
+    /// <summary>
     /// Cycles per second the phase advances: written whenever the lower movement blend is picked (<b>Verified</b> <c>@ 14051d8e0</c>,
     /// <c>@ 14051d000</c>), kept while no such pick runs (standing out of combat, a technique): the legs go on stepping through their fade-out.
     /// </summary>
@@ -331,6 +340,18 @@ public sealed class AnimationSystem(
         ref sbyte known = ref a.Plays[index];
         if (known == 0) known = (sbyte)(Rigs.Plays(look, Library.Definitions[index].Name) ? 1 : -1);
         return known > 0;
+    }
+
+    /// <summary>
+    /// The clip lengths of a person's body: its linked animation files' clips before the base skeletons' (<see cref="AnimationLengths.ForPerson"/>),
+    /// as its rig plays them, so a looping clip's time wraps where the drawn clip ends. Kept per appearance. The one-shot ends (an action, a lift)
+    /// stay on <see cref="Lengths"/>, the table their timers in the combat and carry systems read.
+    /// </summary>
+    AnimationLengths LengthsOf(CharacterAnimation a, CharacterCold cold)
+    {
+        var look = cold.Appearance;
+        if (!ReferenceEquals(a.LengthsFor, look) || a.BodyLengths is null) (a.LengthsFor, a.BodyLengths) = (look, Lengths.ForPerson(look));
+        return a.BodyLengths;
     }
 
     /// <summary>
@@ -1122,7 +1143,7 @@ public sealed class AnimationSystem(
 
         if (Rigs is not null) DropUnplayable(a, cold, wanted, ref legs);
 
-        var root = Settle(a, wanted, legs, lift, liftTime, technique, fight, speed, dt, Lengths, 1, seed, key, tick, legsShare);
+        var root = Settle(a, wanted, legs, lift, liftTime, technique, fight, speed, dt, LengthsOf(a, cold), 1, seed, key, tick, legsShare);
         FinishPostures(a, cold);
         return root;
     }

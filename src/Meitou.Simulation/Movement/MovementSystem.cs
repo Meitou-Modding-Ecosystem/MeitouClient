@@ -2033,7 +2033,8 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             reached = occupied || dist <= (last ? cold.ArriveWithin > 0 ? cold.ArriveWithin : FinalArrive : pass)
                 && (last || dist <= CornerReach || CanCut(walk, p.Position, cold.Path[n.PathCursor + 1], 2 * pass))
                 // A corner the agent's velocity has carried past (it turns at its acceleration, not at once) is behind it, not circled.
-                || !last && dist <= ArriveRadius && to.X * p.Velocity.X + to.Y * p.Velocity.Z < 0;
+                || !last && dist <= ArriveRadius && to.X * p.Velocity.X + to.Y * p.Velocity.Z < 0
+                || !last && AtFeet(p.Position, cold.Path[n.PathCursor + 1]);
 
             if (reached)
             {
@@ -2055,7 +2056,7 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
             else if (!cold.InCombat)
             {
                 var past = PastCorner(p, cold.Path[n.PathCursor + 1]);
-                (s.Dir, s.Desired) = CornerBrake(p.Velocity, past, s.Dir, s.Desired, PathAcceleration(cold));
+                if (TurnsAhead(past, dist)) (s.Dir, s.Desired) = CornerBrake(p.Velocity, past, s.Dir, s.Desired, PathAcceleration(cold));
             }
         }
 
@@ -2457,7 +2458,8 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// <summary>
     /// Whether a walker at <paramref name="from"/> can step straight toward <paramref name="to"/> for <paramref name="probe"/> units (at least
     /// <see cref="ArriveRadius"/>), its height carried on as each step's is: a corner is cut early only then (engine choice; Observed: zone 22.10, a
-    /// walker beside a door stair's foot cut its corner up the stair's side and stood there).
+    /// walker beside a door stair's foot cut its corner up the stair's side and stood there), and never onto another layer than the leg's own
+    /// (<see cref="LeavesLeg"/>).
     /// </summary>
     static bool CanCut(IWalkability walk, Vector3 from, Vector3 to, float probe = ArriveRadius)
     {
@@ -2468,9 +2470,26 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
         float y = from.Y;
         float most = MathF.Min(length, MathF.Max(probe, ArriveRadius));
         for (float d = 1; d <= most; d += 1)
-            if (!walk.TryStand(from.X + leg.X * (d / length), from.Z + leg.Y * (d / length), y, out y)) return false;
+        {
+            float t = d / length;
+            float x = from.X + leg.X * t, z = from.Z + leg.Y * t;
+            if (!walk.TryStand(x, z, y, out y) || LeavesLeg(walk, x, z, y, float.Lerp(from.Y, to.Y, t))) return false;
+        }
 
         return true;
+    }
+
+    /// <summary>
+    /// Whether a cut's step at (<paramref name="x"/>, <paramref name="z"/>), standing at <paramref name="y"/>, has left the leg it cuts along: off the
+    /// leg's straight height <paramref name="along"/> by more than <see cref="CorridorSlack"/> while another layer is there at that height (engine
+    /// choice, #1414: town guards cut a stair's foot across the ground beside it, walked on under the stair and into the storey below their upstairs
+    /// goal before turning back). Terrain that bulges off the straight height has no such layer and is cut as before.
+    /// </summary>
+    static bool LeavesLeg(IWalkability walk, float x, float z, float y, float along)
+    {
+        if (MathF.Abs(y - along) <= CorridorSlack) return false;
+
+        return walk.TryStand(x, z, along, out float own) && MathF.Abs(own - along) <= CorridorSlack && MathF.Abs(own - y) > CorridorSlack;
     }
 
     /// <summary>
@@ -2522,6 +2541,27 @@ public sealed partial class MovementSystem(PathService paths) : ITickSystem, IDi
     /// The way from the walker to the point past the corner it heads for, the point <see cref="CornerBrake"/> tests.
     /// </summary>
     static Vector2 PastCorner(in CharacterHot p, Vector3 past) => new(past.X - p.Position.X, past.Z - p.Position.Z);
+
+    /// <summary>
+    /// Whether the point past the corner lies ahead of the walker for <see cref="CornerBrake"/> to test: one nearer than the corner, or within
+    /// <see cref="ArriveRadius"/>, lies back at the walker (a path doubling back to its feet, #1387), and steering square across toward it circles
+    /// it for good (engine choice; the original's corner is an end of the first portal the agent has not crossed, <c>FUN_140144330</c>).
+    /// </summary>
+    static bool TurnsAhead(Vector2 past, float dist)
+    {
+        float length2 = past.LengthSquared();
+        return length2 >= dist * dist && length2 > ArriveRadius * ArriveRadius;
+    }
+
+    /// <summary>
+    /// Whether a path point lies at the walker's feet: within <see cref="CornerReach"/> on the ground plane and <see cref="CorridorSlack"/> in
+    /// height. The waypoint before such a point is passed, not walked to and back (engine choice, #1387).
+    /// </summary>
+    static bool AtFeet(Vector3 at, Vector3 point)
+    {
+        var flat = new Vector2(point.X - at.X, point.Z - at.Z);
+        return flat.LengthSquared() <= CornerReach * CornerReach && MathF.Abs(point.Y - at.Y) <= CorridorSlack;
+    }
 
     /// <summary>
     /// The factor on a character's step time: <see cref="OffViewTime"/> out of view.
