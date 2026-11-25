@@ -78,7 +78,7 @@ sealed class TitleBattle : IDisposable
         var combat = new CombatSystem(data.Combat.Techniques, data.Combat.Constants, data.Bodies.Constants,
             options, lengths, new CombatOptions { TickMedical = false });
         var animation = new AnimationSystem(library, lengths, data.Bodies.Constants.AnimationBlendRate, combat) { Rigs = ambush?.Rigs };
-        Ambush = ambush is null ? null : new TitleAmbush(ambush.Stage);
+        Ambush = ambush is null ? null : new TitleAmbush(ambush.Stage, combat);
         _world = new(new WorldSettings { Seed = 173 }, new OpenGroundWalkability(ground), Systems(combat, animation, ambush, options));
         using var population = new PopulationSystem(data, new PopulationSettings { Background = false });
         try

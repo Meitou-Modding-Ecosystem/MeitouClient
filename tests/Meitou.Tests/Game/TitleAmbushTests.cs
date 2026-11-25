@@ -76,7 +76,7 @@ public class TitleAmbushTests(ITestOutputHelper output)
 
     /// <summary>
     /// The whole ambush on the base game's Paladins, Dust Bandits and Beak Thing: the charge, the far pair thrown towards the landing, the other four
-    /// struck down one at a time, the run past the camera, and the two risers standing and fighting each other at the end while the rest stay down.
+    /// struck down one at a time, each by a swing, the run past the camera, and the two risers standing and fighting each other at the end while the rest stay down.
     /// </summary>
     [Fact]
     [Slow]
@@ -121,6 +121,9 @@ public class TitleAmbushTests(ITestOutputHelper output)
             float before = Vector2.Distance(landing, new Vector2(start[f].X, start[f].Z));
             Assert.True(Vector2.Distance(landing, new Vector2(now.X, now.Z)) < before * 0.5f, $"fighter {f} at {now}");
         }
+
+        // Each of the four fell to one of the Beak Thing's swings.
+        Assert.Equal(0, ambush.Stalls);
 
         // The risers stand and fight each other; the other four stay down.
         var end = world.Snapshot.Characters;
