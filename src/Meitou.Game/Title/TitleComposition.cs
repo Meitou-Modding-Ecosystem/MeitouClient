@@ -53,11 +53,6 @@ sealed class TitleComposition
     static readonly Vector2 AmbushEntryOnScreen = new(1.25f, 0.84f), AmbushLandingOnScreen = new(0.16f, 0.8f);
 
     /// <summary>
-    /// The wanderer's flight from the Beak Thing: the seconds he takes to turn to the camera, and his speed after (world units/s).
-    /// </summary>
-    const float FleeTurnSeconds = 0.35f, FleeSpeed = 70;
-
-    /// <summary>
     /// The foreground. The ridge: rocks drawn with the terrain texturing of the local cliff feature (<see cref="RidgeLook"/>), side by side from the
     /// frame's bottom left to its bottom right, each one's top under its screen point at its distance ahead (along the ground). The plateau the
     /// wanderer stands on, close in front of the camera: a flat-topped block drawn as its own feature, its top under its screen point likewise.
@@ -200,11 +195,9 @@ sealed class TitleComposition
     readonly Vector3 _eye;
 
     /// <summary>
-    /// The wanderer's run from the Beak Thing (<see cref="Fill"/>): the skeleton animations of his run, each with its rate (clip seconds per world unit run,
-    /// a move clip's play speed) and length (s);
-    /// empty, he only turns.
+    /// The wanderer's clips for his flight from the Beak Thing (<see cref="Fill"/>, <see cref="TitleFlight"/>).
     /// </summary>
-    public IReadOnlyList<(string Clip, float Rate, float Length)> RunClips { get; init; } = [];
+    public FlightClips FlightClips { get; init; } = FlightClips.None;
 
     /// <summary>
     /// Stages the title: the ridge, the wanderer and his look, the fight centres and the moved ruin.
@@ -451,7 +444,7 @@ sealed class TitleComposition
 
     /// <summary>
     /// The wanderer, held in one frame of the relaxed idle: a still figure, as on the poster. <paramref name="fleeing"/> seconds after the Beak Thing
-    /// turned for the hill (null: it has not) he turns to the camera and runs at it, out of the frame (<see cref="Flight"/>).
+    /// turned for the hill (null: it has not) he staggers back, turns and runs at the camera, out of the frame (<see cref="Flight"/>).
     /// </summary>
     public void Fill(CharacterDrawList list, float? fleeing = null)
     {
@@ -464,19 +457,8 @@ sealed class TitleComposition
     }
 
     /// <summary>
-    /// The wanderer <paramref name="seconds"/> into his flight: turning to face the camera, then running at it across the plateau's top.
+    /// The wanderer <paramref name="seconds"/> into his flight (<see cref="TitleFlight"/>): a startled step back, a small walking turn, then a run at
+    /// the camera.
     /// </summary>
-    internal (Vector3 At, float Yaw, CharacterPose[] Poses) Flight(float seconds)
-    {
-        var toward = new Vector2(_eye.X - Wanderer.X, _eye.Z - Wanderer.Z);
-        float facing = MathF.Atan2(toward.X, toward.Y);   // the characters' yaw: 0 faces +Z (MovementSystem)
-        float turned = Math.Clamp(seconds / FleeTurnSeconds, 0, 1);
-        float yaw = WandererYaw + MathF.IEEERemainder(facing - WandererYaw, MathF.Tau) * turned;
-        if (seconds < FleeTurnSeconds || RunClips.Count == 0) return (Wanderer, yaw, [new("idle_stand_confident", 0.5f, 1)]);
-
-        float running = MathF.Min(seconds, 30) - FleeTurnSeconds;
-        var dir = Vector2.Normalize(toward);
-        var at = Wanderer + new Vector3(dir.X, 0, dir.Y) * (FleeSpeed * running);
-        return (at, facing, [.. RunClips.Select(c => new CharacterPose(c.Clip, c.Length > 0 ? running * FleeSpeed * c.Rate % c.Length : 0, 1))]);
-    }
+    internal (Vector3 At, float Yaw, CharacterPose[] Poses) Flight(float seconds) => new TitleFlight(Wanderer, WandererYaw, _eye, FlightClips).At(seconds);
 }
