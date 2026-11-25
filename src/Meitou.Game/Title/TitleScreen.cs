@@ -108,11 +108,17 @@ sealed class TitleScreen(GameHost host)
         var build = bodyFromStats
             ? Data.Characters.CharacterShape.BuildFromStats(saved!.Female, stats!, static (stats, s) => stats.Stored(s), hunger)
             : (Data.Characters.BodyBuild?)null;
-        _titleComposition = new(host.Install, db, host.Scene.GroundAt, host.Sandbox.SandboxRecord(db), saved) { SavedBuild = build };
+        _titleComposition = new(host.Install, db, host.Scene.GroundAt, host.Sandbox.SandboxRecord(db), saved)
+        {
+            SavedBuild = build,
+            RunClips = host.AnimationLibrary is { } clips && host.AnimationLengths is { } clipLengths ? RunClips(clips, clipLengths) : [],
+        };
         if (host.PopData is { } data && host.AnimationLengths is { } lengths && host.AnimationLibrary is { } library)
         {
-            TitleBattle = TitleBattle.Create(data, host.Scene.GroundAt, _titleComposition.Fights, lengths, library);
-            if (TitleBattle is not null) TitleBattle.Tornado.Enabled = host.WorldOptions.Screenshot is null;
+            bool screenshot = host.WorldOptions.Screenshot is not null;
+            var ambush = TitleAmbush.Rolls(screenshot) ? _titleComposition.Stage(TitleBattle.DisplayScale) : (TitleStage?)null;
+            TitleBattle = TitleBattle.Create(data, host.Scene.GroundAt, _titleComposition.Fights, lengths, library, ambush, host.CharacterRigs);
+            if (TitleBattle is not null) TitleBattle.Tornado.Enabled = !screenshot;
         }
 
         if (host.ActiveCharacters is { } characters)
@@ -238,11 +244,21 @@ sealed class TitleScreen(GameHost host)
     }
 
     /// <summary>
-    /// The title's character source: the composition's wanderer and the fighters.
+    /// The skeleton animations, play speeds (clip seconds per world unit run) and lengths of a person's plain run, its legs and its arms, that <paramref name="library"/> has (the
+    /// wanderer's flight from the title's Beak Thing).
+    /// </summary>
+    static (string Clip, float Rate, float Length)[] RunClips(Data.Gameplay.AnimationLibrary library, Data.Gameplay.AnimationLengths lengths) =>
+        [.. new[] { library.IndexOf("run lower"), library.IndexOf("run upper") }
+            .Where(i => i >= 0)
+            .Select(i => library.Definitions[i])
+            .Select(d => (d.Clip, d.PlaySpeed > 0 ? d.PlaySpeed : 0.02f, lengths.Of(d.Clip)))];
+
+    /// <summary>
+    /// The title's character source: the composition's wanderer (running from the Beak Thing once it turns for the hill) and the fighters.
     /// </summary>
     void FillTitleCharacters(CharacterDrawList list)
     {
-        _titleComposition?.Fill(list);
+        _titleComposition?.Fill(list, TitleBattle?.Ambush?.ChaseSeconds);
         TitleBattle?.Fill(list);
     }
 
