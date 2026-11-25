@@ -772,11 +772,6 @@ sealed class GamePages(SettingsMenu menu)
             + "confiscating stolen goods inside the worn backpack. The game misses those bags, so goods hidden in them are never found.",
             Toggle: new("Bags in the inventory", () => menu.Config.FixBagSearch,
                 v => { menu.Config.FixBagSearch = v; menu.BagSearchChanged?.Invoke(v); }, Remaster: true, OnOff: true)));
-        result.Add(new("Animals stay out of talks",
-            "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. "
-            + "In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing.",
-            Toggle: new("Animals stay out of talks", () => menu.Config.FixAnimalTarget,
-                v => { menu.Config.FixAnimalTarget = v; menu.AnimalTargetChanged?.Invoke(v); }, Remaster: true, OnOff: true)));
         result.Add(new("Pick-up thefts from the owner",
             "Taking someone else's item from the floor of a building is a theft from the item's owner. "
             + "The game counts it as stolen from whoever owns the building you stand in, even when the item belongs to someone else.",

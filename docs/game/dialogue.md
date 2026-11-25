@@ -256,11 +256,6 @@ during it; a search in a line reached by a reply click keeps its move (`FUN_1406
 and Trade go to the member found (**Observed**, 1.0.68: a pack
 animal carrying the searched item took the window and the trade one reply deep, whether the searching line passed or failed).
 
-Meitou fix "Animals stay out of talks" (on by default, `World.AnimalTargetFix`): `SetTarget` skips an animal, so the conversation keeps its target.
-**Observed** (player report 2026-11-20, LivingWasteland's event-1 report roots such as `bg_tg_fabrics_report` on the `shopkeep` package, `target has item`
-Fabrics): probing the root at the conversation's start retargets to a pack animal carrying the item even though the root's conditions then fail, so the
-animal takes the player's replies and trade opens nothing.
-
 ### Speakers
 
 `FUN_140672bf0`: T_ME and T_WHOLE_SQUAD the owner (how WHOLE_SQUAD fans out is **Unknown**); T_TARGET the target; T_TARGET_IF_PLAYER

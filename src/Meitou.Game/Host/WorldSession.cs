@@ -158,7 +158,6 @@ public sealed class WorldSession : IDisposable
         next.BagSearchFix = World.BagSearchFix;
         next.PickUpTheftFix = World.PickUpTheftFix;
         next.CounterTalk = World.CounterTalk;
-        next.AnimalTargetFix = World.AnimalTargetFix;
         next.TakeIntoBackpack = World.TakeIntoBackpack;
         next.ActionLog = World.ActionLog;
         try

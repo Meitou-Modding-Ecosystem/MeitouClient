@@ -659,7 +659,6 @@ sealed partial class GameHost(
         Session.World.BagSearchFix = Config.FixBagSearch;
         Session.World.PickUpTheftFix = Config.FixPickUpTheft;
         Session.World.CounterTalk = Config.CounterTalk;
-        Session.World.AnimalTargetFix = Config.FixAnimalTarget;
         Session.World.TakeIntoBackpack = Config.TakeIntoBackpack;
         Session.World.ActionLog = ActionLogs.Log;
         Session.Simulation.SetFastSpeeds(Config.FastSpeed, Config.FastestSpeed);

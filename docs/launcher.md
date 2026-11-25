@@ -294,8 +294,6 @@ interpolated string, which no translation could match.
   none act on visible rows.
 - The list can show load order, alphabetical order, date added (installed `.mod` file creation time) or last modified (its last write).
   Date sorts show newest first. Manual reordering is available in **Load order**.
-- With **Regex** ticked the search is a .NET regular expression matched against name and author (ignoring case, 50 ms per name). An
-  invalid pattern rims the box red, says why in the status line and leaves the rows the last valid search showed.
 - Every change to the list (a tick, a drag, a preset, Arrange, From save) and Play write `mods.cfg` (enabled `<name>.mod`, list
   order, CRLF) and `__mods.list` (every listed name, plus old names not on disk). These are the files the original game reads, so the mod list applies to it too.
 - Discovery and the header reads run off the UI thread while the window opens; until they finish (or when they fail) Play and the

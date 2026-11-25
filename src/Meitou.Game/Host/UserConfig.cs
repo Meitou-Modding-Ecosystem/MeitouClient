@@ -612,12 +612,6 @@ sealed class UserConfig
     /// walks round behind the counter; <c>World.CounterTalk</c>).
     /// </summary>
     public bool CounterTalk { get; set; } = true;
-
-    /// <summary>
-    /// A dialogue line's search of the player's squad never makes an animal the conversation's target (Fixes settings; off: the first member
-    /// found, as the game does; docs/game/dialogue.md "Retargeting").
-    /// </summary>
-    public bool FixAnimalTarget { get; set; } = true;
     /// <summary>
     /// Other buildings' parts (the Hub's wall in the Shinobi Thieves tower) are cut inside a building in the interior view (Fixes settings; off:
     /// drawn, as the game does; docs/render-interior-cut.md).

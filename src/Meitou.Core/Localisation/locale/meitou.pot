@@ -340,10 +340,6 @@ msgid "A traced cache adds fine indirect light near the camera."
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr ""
-
-#: src/Meitou.Game/Settings/GamePages.cs
 msgid "A turret's gunner turns with the gun, facing where it aims. In the game the gunner keeps facing the turret, so once the gun swings toward a target the gunner looks off to the side."
 msgstr ""
 
@@ -531,10 +527,6 @@ msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
 msgid "Animals pick up items"
-msgstr ""
-
-#: src/Meitou.Game/Settings/GamePages.cs
-msgid "Animals stay out of talks"
 msgstr ""
 
 #: src/Meitou.Game/Settings/GamePages.cs
@@ -2685,10 +2677,6 @@ msgstr ""
 msgid "Internal rendering resolution relative to the window."
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid "Invalid regular expression: {1}"
-msgstr ""
-
 #: src/Meitou.Game/Settings/ModsPage.cs
 msgid "Issues"
 msgstr ""
@@ -3450,10 +3438,6 @@ msgstr ""
 msgid "Monitor {1}: {2}"
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid "Morse code"
-msgstr ""
-
 #: src/Meitou.Game/Settings/SettingHints.cs
 msgid "Move the camera backward."
 msgstr ""
@@ -4029,14 +4013,6 @@ msgstr ""
 msgid "Pictures"
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid "Pig Latin"
-msgstr ""
-
-#: launcher/Meitou.Launcher/MainWindow.axaml.cs
-msgid "Pirate"
-msgstr ""
-
 #: src/Meitou.Game/Host/Photo/PhotoPanel.cs
 msgid "Place here"
 msgstr ""
@@ -4325,10 +4301,6 @@ msgstr ""
 msgid "Reach"
 msgstr ""
 
-#: launcher/Meitou.Launcher/MainWindow.axaml
-msgid "Read the search as a regular expression, ignoring case"
-msgstr ""
-
 #: src/Meitou.Game/Ui/ProductionWindows.cs src/Meitou.Game/Ui/TooltipRuntime.cs
 msgid "Ready to harvest"
 msgstr ""
@@ -4371,10 +4343,6 @@ msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml
 msgid "Refresh"
-msgstr ""
-
-#: launcher/Meitou.Launcher/MainWindow.axaml
-msgid "Regex"
 msgstr ""
 
 #: launcher/Meitou.Launcher/MainWindow.axaml

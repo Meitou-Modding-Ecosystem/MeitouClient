@@ -184,9 +184,6 @@ msgstr "분대에서 멀리 떨어진 마을은 이야기가 요구하는 즉시
 msgid "A traced cache adds fine indirect light near the camera."
 msgstr "추적 캐시가 카메라 근처에 세밀한 간접광을 더합니다."
 
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "아이템, 종족 또는 운반 중인 몸을 찾으려 분대를 확인하는 상인 등은 대화를 당신의 동물에게 돌리지 않습니다. 게임에서는 그 아이템을 운반하는 짐승이 대화를 넘겨받아 거래와 다른 대답이 아무 효과가 없습니다."
-
 msgid "A turret's gunner turns with the gun, facing where it aims. In the game the gunner keeps facing the turret, so once the gun swings toward a target the gunner looks off to the side."
 msgstr "포탑 사수는 무기와 함께 돌아 조준하는 방향을 봅니다. 게임에서는 사수가 포탑 쪽을 계속 보기 때문에 무기가 목표로 돌면 옆을 보게 됩니다."
 
@@ -301,9 +298,6 @@ msgstr "우리 안이나 기둥의 동물은 숨 쉬고 주위를 둘러보며 �
 
 msgid "Animals pick up items"
 msgstr "동물이 아이템을 줍기"
-
-msgid "Animals stay out of talks"
-msgstr "동물은 대화에서 제외"
 
 msgid "Animals, bandits and other wild squads keep their characters, wounds and places when the area around them unloads, and are there again when you come back. In the game they are removed and new ones are made."
 msgstr "동물, 도적 및 기타 야생 분대는 주변 지역이 언로드되어도 캐릭터, 상처, 위치를 유지하고 돌아오면 다시 그곳에 있습니다. 게임에서는 제거되고 새로 만들어집니다."
@@ -5067,29 +5061,11 @@ msgstr[0] "{1,num}명"
 msgid "Exit Game"
 msgstr "게임 종료"
 
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "검색어를 정규식으로 읽기(대소문자 무시)"
-
-msgid "Regex"
-msgstr "정규식"
-
-msgid "Invalid regular expression: {1}"
-msgstr "잘못된 정규식: {1}"
-
 msgid "Character Stats"
 msgstr "캐릭터 능력치"
 
 msgid "-Backpack-"
 msgstr "-배낭-"
-
-msgid "Pig Latin"
-msgstr "피그 라틴"
-
-msgid "Pirate"
-msgstr "해적 말투"
-
-msgid "Morse code"
-msgstr "모스 부호"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "묶음을 클릭하면 전부, Shift+클릭은 절반, Ctrl+클릭은 하나를 집고, Shift+Ctrl+클릭은 슬라이더로 몇 개인지 묻습니다. 게임에서는 클릭이 하나를, Shift나 Ctrl이 묶음 전체를 집습니다."

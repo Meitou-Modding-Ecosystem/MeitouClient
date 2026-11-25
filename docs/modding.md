@@ -452,19 +452,6 @@ holds refuses the second mod.
   (a build order's materials) asks it between ticks on the host's thread, with the coming tick's number. One that throws is answered as allowing
   for the rest of that tick and is not asked from the next tick on; the fault enters the state hash. Without a filter nothing is asked. Engine
   API, not in the original.
-- **Storage priority:** a registered system implementing `IStoragePriority` (`Meitou.Simulation.Items`) is asked `Priority(World, CharacterId who,
-  string storage, StorageUse use, string? record)` at the same searches as `IStorageFilter`, for each storage the filters allow, and answers a
-  `StoragePriority`: `Forbidden`, `Low`, `Deferred`, `Normal` (the default), `Preferred`, `Important`, `High`, `Critical`. The search takes the
-  highest priority and, among equals, the storage it takes without one (the nearest, its own tie rule); `Forbidden` passes the storage over as a
-  refusal does. Take and put are asked apart, so a store can be the last place things are put and the first they are taken from (put `Low`, take
-  `Critical`: an overstock store). Systems combine as: any `Forbidden` wins, else the first answer other than `Normal` in system order (mods in
-  load order); an answer outside the levels counts as `Normal`. The player sets each storage's own put and take level on its panel
-  (`Machine.PutPriority`, `Machine.TakePriority`, saved with the building, [save](formats/save.md)): its `Forbidden` wins too, and a level other than
-  `Normal` comes before the systems' answers, which apply where the player left a storage at `Normal`. A squad's kept ditch trip keeps its storage while it still takes something (only
-  `Forbidden` ends it). `world.StorageRank(who, storage, use, record)` gives the filters' and priority systems' combined answer (`Forbidden` for
-  a refusal), so a mod ranks its own storage picks as the game's searches do. Same threading, paused-order and fault rules as `IStorageFilter`;
-  one that throws answers `Normal`. Without a priority system or a storage's own level every search is the original's. Engine API, not in the
-  original.
 - **Ditch items:** a registered system implementing `IDitchItemFilter` (`Meitou.Simulation.Items`) is asked `Keeps(World, in DitchItemAsk)`
   (tick, carrier, `DitchKind`, item) for each carried item the game's automatic carry-off would take (`DitchKind.Resources`: the collection of
   Ditch all resources 242, the excess-loot store search of 114 and a town errand's ditch; more kinds may come). True keeps that item with its
@@ -1276,13 +1263,6 @@ holds refuses the second mod.
   and still qualifies before acting. A source that throws, or returns a
   button without a caption or press, is logged once and dropped for the session; a press that throws is logged. Without a source the panel
   is as before. Engine API, not in the original.
-- **Building panel bars:** in `Register`, `registration.AddBuildingRows(context => bars)` adds bars to the medical-bars column of a selected
-  complete building, placed piece or piece of furniture, right under its Condition (and a farm's crop bars), drawn as the Condition bar is.
-  Each `UiBuildingRow` has a name on the bar, a fraction (0 to 1, clamped) for how full it is, a number-column value ("" none) and a tooltip
-  or null; texts are shown as given, put on one line and cut to 80 characters. At most 6 bars from all sources together, in registration
-  order. The source gets the same `UiBuildingContext` as the buttons and the same rules (host thread, possibly every frame, cheap, never
-  touches the world); bars show state and have no press. A source that throws, or returns a bar without a name, is logged once and dropped
-  for the session. Engine API, not in the original.
 - **Shown text:** in `Register`, `registration.AddText(context => text)` changes text the game shows, without changing the game's data:
   `ShownTextContext` (namespace `Meitou.Localisation`) gives its `Kind`, its `Key`, the `Text` so far (the game's, or an earlier mod's), a
   `Tag` and a `Field`; return the text to show, or null or blank to keep it. Several mods chain in load order, each getting the last one's text, so a

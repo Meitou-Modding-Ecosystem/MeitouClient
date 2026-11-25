@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Animation;
 using Avalonia.Animation.Easings;
@@ -508,9 +507,6 @@ public sealed partial class MainWindow : Window
         "zh-cn" => "Chinese",
         "ja-jp" => "Japanese",
         "ko-kr" => "Korean",
-        "en-piglatin" => "Pig Latin",
-        "en-pirate" => "Pirate",
-        "en-morse" => "Morse code",
         _ => code,
     };
 
@@ -1080,11 +1076,6 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The Regex box was ticked or cleared: the search is read again the new way.
-    /// </summary>
-    void ModSearchRegex_Click(object? sender, RoutedEventArgs e) => ApplyModFilters();
-
-    /// <summary>
     /// Reads both timestamps from the installed file. An inaccessible or missing file sorts last by date.
     /// </summary>
     static (DateTime Added, DateTime Modified) ReadModDates(string path)
@@ -1149,21 +1140,11 @@ public sealed partial class MainWindow : Window
     /// </summary>
     void ApplyModFilters()
     {
-        var test = ModSearchTest(out string? error);
-        bool wasInvalid = ModSearch.Classes.Contains("invalid");
-        ModSearch.Classes.Set("invalid", error is not null);
-
-        // An invalid regular expression keeps the rows the last valid search showed, rims the box in red and says what is wrong.
-        if (error is not null)
-        {
-            Status(Tr("Invalid regular expression: {1}", error));
-            return;
-        }
-        if (wasInvalid) StatusText.Inlines = [];
+        string search = ModSearch.Text?.Trim() ?? "";
         bool hidePlugins = HideIncompatiblePlugins?.IsChecked == true;
 
         foreach (var row in _mods)
-            row.IsShown = (!hidePlugins || !row.HasIncompatiblePlugin) && row.Matches(test);
+            row.IsShown = (!hidePlugins || !row.HasIncompatiblePlugin) && row.Matches(search);
 
         if (ModListBox?.SelectedItems is { } selected)
         {
@@ -1185,47 +1166,6 @@ public sealed partial class MainWindow : Window
             ? Tr(hidePlugins ? "No mods match the filters." : "No mods match the search.")
             : Tr(_install is null ? "Set the Kenshi folder in Settings to list its mods."
                 : "No mods found in Kenshi's mods folder or among its Steam workshop items.");
-    }
-
-    /// <summary>
-    /// What a name must pass to stay shown: holding the search text, ignoring case, or with the Regex box ticked matching it as a regular
-    /// expression, ignoring case. An empty search passes everything; an invalid pattern passes everything and sets <paramref name="error"/>.
-    /// </summary>
-    Predicate<string> ModSearchTest(out string? error)
-    {
-        error = null;
-        string search = ModSearch.Text?.Trim() ?? "";
-
-        if (search.Length == 0) return _ => true;
-        if (ModSearchRegex.IsChecked != true) return text => text.Contains(search, StringComparison.OrdinalIgnoreCase);
-
-        try
-        {
-            // At most 50 ms per name, so a pattern that backtracks without end cannot hang the launcher.
-            var timeout = TimeSpan.FromMilliseconds(50);
-            var regex = new Regex(search, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, timeout);
-            return text => RegexMatches(regex, text);
-        }
-        catch (ArgumentException ex)
-        {
-            error = ex.Message;
-            return _ => true;
-        }
-    }
-
-    /// <summary>
-    /// Whether <paramref name="regex"/> matches <paramref name="text"/>; a match that runs out of time counts as none.
-    /// </summary>
-    static bool RegexMatches(Regex regex, string text)
-    {
-        try
-        {
-            return regex.IsMatch(text);
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            return false;
-        }
     }
 
     /// <summary>
