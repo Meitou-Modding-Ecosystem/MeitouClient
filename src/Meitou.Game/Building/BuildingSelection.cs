@@ -678,7 +678,7 @@ sealed class BuildingSelection(PlayerInterface player)
         }
 
         // A site's name is read each frame, so a rename shows at once.
-        var name = detail?.Bed?.Name ?? (site is not null ? player.Build.SiteName(site) : focus.Name);
+        var name = detail?.Bed?.Name ?? (site is not null ? player.Build.ShownSiteName(site) : focus.Name);
         var value = mine ? player.ShownFactionName(player.Session.World.Player.Faction) ?? "" : owner ?? "";
         return new PlayerInterface.HudLine(name, value, PlayerInterface.TitleColour, PlayerInterface.TitleColour);
     }
@@ -1077,7 +1077,7 @@ sealed class BuildingSelection(PlayerInterface player)
         if (action == "building-rename" && site is { LevelPlacement: null })
         {
             player.InterfaceSounds.Sound("General_Click");
-            player.RenameBuildingDialog.Ask(id, site.CustomName ?? player.Build.SiteName(site));
+            player.RenameBuildingDialog.Ask(id, site.CustomName ?? player.Build.ShownSiteName(site));
         }
         else if (action == "building-dismantle" && site?.LevelPlacement is null)
         {
