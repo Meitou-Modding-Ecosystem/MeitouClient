@@ -12,6 +12,8 @@ name: CI
     - release
     - beta
     - main
+    - codex/development-ci-*
+  workflow_dispatch: {}
 permissions:
   contents: read
 jobs:
