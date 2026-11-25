@@ -29,7 +29,7 @@ public class ProductionTests
 {
     const string Water = "50-t", Crop = "51-t", Book = "52-t", Gadget = "53-t", Well = "60-t", Farm = "61-t", Bench = "62-t", Workshop = "63-t",
         Study = "70-t", Fuel = "54-t", Generator = "64-t", Battery = "65-t", Lamp = "66-t", BigLamp = "67-t", PoweredWorkshop = "68-t",
-        Tank = "69-t", Mill = "90-t", Bin = "91-t";
+        Tank = "69-t", Mill = "90-t", Bin = "91-t", Tinkering = "71-t";
     /// <summary>
     /// The stat that gives skill factor 1: lerp(0.5, 1.4, x/100) = 1.
     /// </summary>
@@ -57,7 +57,7 @@ public class ProductionTests
     {
         var file = new FcsFile();
         file.Records.AddRange([Item(Water, "Water"), Item(Crop, "Crop"), Item(Book, "Book"), WellFunction(), FarmFunction(), BenchFunction(),
-            FarmData(), Building(Well, "Test Well", "80-t"), FarmBuilding(), BenchBuilding(), StudyResearch(), GadgetItem(), WorkshopFunction(),
+            FarmData(), Building(Well, "Test Well", "80-t"), FarmBuilding(), BenchBuilding(), StudyResearch(), TinkeringResearch(), GadgetItem(), WorkshopFunction(),
             Building(Workshop, "Test Workshop", "84-t"), Item(Fuel, "Fuel"), GeneratorFunction(), Function("86-t", MachineData.BatteryFunction, 0),
             Function("87-t", 15, 0), Powered(Building(Generator, "Test Generator", "85-t"), 20),
             Powered(Building(Battery, "Test Battery", "86-t"), 10, 30), Powered(Building(Lamp, "Lamp", "87-t"), -4),
@@ -195,6 +195,17 @@ public class ProductionTests
     }
 
     /// <summary>
+    /// The research that enables the gadget, finished from the start (a bench makes only what a finished research enabled).
+    /// </summary>
+    static FcsRecord TinkeringResearch()
+    {
+        var tinkering = Rec(Tinkering, FcsRecordType.Research, "Test Tinkering");
+        tinkering.Ints["level"] = 1;
+        tinkering.References["enable item"] = [new FcsReference(Gadget, 0, 0, 0)];
+        return tinkering;
+    }
+
+    /// <summary>
     /// The gadget: 1 crop, crafted in 1 h.
     /// </summary>
     static FcsRecord GadgetItem()
@@ -294,7 +305,7 @@ public class ProductionTests
             World = new SimWorld(new WorldSettings { Seed = 5, Threads = threads, PublishSnapshots = snapshots, MinPartitionSize = 1 }, walk,
                 systems);
             World.Player.Faction = PlayerFaction;
-            World.Research.Set(db, []);
+            World.Research.Set(db, [Tinkering]);
             for (int i = 0; i < records.Length; i++)
             {
                 // 30 apart: a character at one building is within the trading range (40) of the next.
@@ -1497,11 +1508,11 @@ public class ProductionTests
     }
 
     /// <summary>
-    /// Jobs farm then well, the farm dry and no water anywhere: the farmer pumps the well full, carries its water into the farm and then tends the
-    /// growing crop, counted as operating (docs/simulation.md "Production", Hauling and 87).
+    /// Jobs farm then well, the farm dry and no water anywhere: the farmer pumps the well full, carries its water into the farm and then leaves the
+    /// growing crop for the well again (docs/simulation.md "Production", Hauling and 87).
     /// </summary>
     [Fact]
-    public void A_farmer_fills_the_well_carries_its_water_to_the_farm_and_tends_the_growing_crop()
+    public void A_farmer_fills_the_well_carries_its_water_to_the_farm_and_leaves_the_growing_crop()
     {
         using var rig = new Rig(Database(), Constants, [Farm, Well]);
         var farmer = rig.Add(0, StatsEnumerated.Farming, Unit);
@@ -1519,9 +1530,13 @@ public class ProductionTests
 
         Assert.True(pumped && farm.Inputs[0].Count == 10, $"well {well.Count}, farm {farm.Inputs[0].Count}, carried {rig.Count(farmer, Water)}");
 
-        for (int t = 0; t < 600 && !cold.Operating; t++) rig.World.RunTick();
+        for (int t = 0; t < 600 && cold.OperateSite != rig.Sites[1]; t++)
+        {
+            rig.World.RunTick();
+            Assert.False(cold.Operating && cold.OperateSite == rig.Sites[0], $"hoeing growing crop at growth {farm.Farm!.Growth}");
+        }
 
-        Assert.True(cold.Operating && cold.OperateSite == rig.Sites[0] && farm.Farm!.Growth < 1,
+        Assert.True(cold.OperateSite == rig.Sites[1] && farm.Farm!.Growth < 1,
                 $"operating {cold.Operating} at {cold.OperateSite}, growth {farm.Farm!.Growth}");
     }
 

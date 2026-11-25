@@ -38,9 +38,10 @@ public sealed class ProductionSettings
     /// </summary>
     public Func<BuildSite, Vector2, float?>? EdgeGap { get; init; }
     /// <summary>
-    /// A character gives or takes items from within this far (X/Z) of a building's footprint, else "Out of trading range." (the original: the
-    /// building's bounds radius + 40 from its position for an item out of it, 60 for one out of a character's inventory, docs/game/economy.md
-    /// "Trading range"; engine choice: 40 from the footprint both ways, or 60 from the position, <see cref="ContainerAccess.TradingRange"/>).
+    /// A character gives or takes items from within this far (X/Z) of a building's footprint when the move is flagged (<see cref="Near"/>), else
+    /// "Out of trading range." (the original: the building's bounds radius + 40 from its position for an item out of it, 60 for one out of a
+    /// character's inventory, docs/game/economy.md "Trading range"; engine choice: 40 from the footprint both ways, or 60 from the position,
+    /// <see cref="ContainerAccess.TradingRange"/>).
     /// </summary>
     public float TransferReach { get; init; } = 40;
     /// <summary>
@@ -128,7 +129,6 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         this._nodes = nodes;
         _craftOptions = new CraftOptionsCache(BuildCraftOptions);
         _smiths = new SmithViewCache(db);
-        _useSpots = new UseSpots(db);
         _seatBeds = new SeatBeds(db);
         UnloadedProduction = Settings.UnloadedProduction;
     }
@@ -350,6 +350,38 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     #endregion
 
+    #region Work sites
+
+    /// <summary>
+    /// The work site lists last handed out (<see cref="WorkSitesView"/>).
+    /// </summary>
+    readonly WorkSiteViews _workSites = new();
+
+    /// <summary>
+    /// Every site a job of a living player character names (its perma-job list), once each in the order first named: player buildings, natural
+    /// resource nodes, town machines, dummies and seats; a site that no longer resolves is left out. The same list while unchanged. Serial (the
+    /// publish).
+    /// </summary>
+    public IReadOnlyList<WorkSiteSnapshot> WorkSitesView(World world)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+
+        return _workSites.Of(WorkSiteViews.JobSiteIds(world), id => WorkSiteOf(world, id));
+    }
+
+    /// <summary>
+    /// The snapshot of the work site <paramref name="id"/>; null when it does not resolve.
+    /// </summary>
+    WorkSiteSnapshot? WorkSiteOf(World world, string id)
+    {
+        if (Site(world, id) is not { } site) return null;
+
+        string name = site.Name.Length > 0 ? site.Name : _db.Find(site.Record)?.Name ?? site.Record;
+        return new WorkSiteSnapshot(id, site.Record, name, WorkSiteViews.KindOf(world, id), site.Owner, site.Position);
+    }
+
+    #endregion
+
     #region Orders and the operators' walk
 
     /// <summary>
@@ -357,11 +389,6 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// ground; not saved, not hashed).
     /// </summary>
     readonly Dictionary<string, (Vector3 Spot, float Range)> _turretSpots = [];
-
-    /// <summary>
-    /// The machines' use nodes and position markers, where operators walk to and are measured from.
-    /// </summary>
-    readonly UseSpots _useSpots;
 
     /// <summary>
     /// The seats that play a bed's clip, lain on at their use nodes with <see cref="World.SeatBedFix"/>.
@@ -372,6 +399,17 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// The clip a turret's gunner holds.
     /// </summary>
     public const string TurretClip = "combatstance";
+
+    /// <summary>
+    /// Each building record's use nodes in its own frame (<see cref="Locks.FixtureRegistry.UseNodes"/>), none for a record without them
+    /// (<see cref="UseNodeMarker"/>; read from the game data, not saved, not hashed).
+    /// </summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, Vector3[]> _useNodes = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// How far from a point <see cref="SameRoom"/> looks for the walkable face under it (engine choice: a worker or a node stands on one).
+    /// </summary>
+    const float RoomFaceReach = 10;
 
     /// <summary>
     /// The characters an order names, else the player's selection.
@@ -410,7 +448,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
                         }
 
                         if (!(machine.Data.Operable || machine.Data.IsTraining || IsSeat(machine))) break;
-                        var row = machine.Data.IsTraining ? TaskType.UseTrainingDummy : TaskType.OperateMachinery;
+                        var row = OperateRow(machine);
                         foreach (var id in Who(world, order.Characters))
                         {
                             if (table.TryResolveNext(id, out int slot)
@@ -430,15 +468,19 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
                 case PutInMachine put: Put(world, put); break;
                 case TakeFromMachine take: Take(world, take); break;
                 case ArrangeMachine arrange when world.Machines.Find(arrange.Site) is { Storage: { } grid, Closed: false }:
-                    if (InventoryCommands.Arrange(grid)) world.Machines.Touch();
+                    if (InventoryCommands.Arrange(world, grid, ItemOwner.AtSite(arrange.Site), InventoryArrangeReason.Button)) world.Machines.Touch();
                     break;
                 case ArrangeMachine arrange when world.Player.OpenContainer == arrange.Site
                     && world.Fixtures.Find(arrange.Site) is { Contents: { } contents } fixture:
-                    if (InventoryCommands.Arrange(contents)) world.Fixtures.Touch(fixture);
+                    if (InventoryCommands.Arrange(world, contents, ItemOwner.AtSite(arrange.Site), InventoryArrangeReason.Button))
+                    {
+                        world.Fixtures.Touch(fixture);
+                    }
                     break;
                 case FocusCommand look: _focus = look.Position; break;
                 case QueueResearch queue: Queue(world, queue.Research); break;
                 case CancelResearch cancel: world.Research.Dequeue(cancel.Research); break;
+                case MoveResearch move: MoveResearchTo(world, move); break;
                 case QueueCraft craft: QueueCraft(world, craft); break;
                 case CancelCraft cancel: CancelCraft(world, cancel); break;
                 case RepeatCrafts repeat:
@@ -464,6 +506,17 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// The order a quick Use gives on machine <paramref name="m"/>: 97 on a training dummy, 152 Auto-Haul on an automatic machine (raw
+    /// <c>max operators</c> 0, docs/game/ui-input.md "Building picking and selection"), else 87.
+    /// </summary>
+    static TaskType OperateRow(Machine m)
+    {
+        if (m.Data.IsTraining) return TaskType.UseTrainingDummy;
+
+        return m.Data.IsAutomatic && m.Data.Operable ? TaskType.OperateAutomaticMachinery : TaskType.OperateMachinery;
     }
 
     /// <summary>
@@ -500,9 +553,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// The orders of machines (operate 87, training 97, turret gunner 146, a haul trip to a storage 124) and prospecting (150), anyone's (the order
     /// giver and the tasks test no faction: a worked bench counts for the player's research only when the player owns it, the storages are the
     /// worker's faction's, <see cref="StoresFor"/>, and a prospect's result goes to the Prospecting window, <c>Task_Prospecting</c>): on a complete
-    /// site that has its machine (or a turret's post), else the order is gone (<see cref="OrderVerdict.Gone"/>); one already working that machine needs nothing more; the character must be able to work (<see cref="Able"/>; a gunner <see cref="AbleToMan"/>), the machine have a free operator place
-    /// ("is already in use", posted) and, to operate or man it (rows 87 and 146), power (state 93, <see cref="Powered"/>; its text "It needs
-    /// electricity." said); a prospector must not swim.
+    /// site that has its machine (or a turret's post), else the order is gone (<see cref="OrderVerdict.Gone"/>); a growing watered farm needs no
+    /// work (<see cref="FarmNeedsNoWork"/>, state 73 blocked with no failure line); one already working that machine needs nothing more; the
+    /// character must be able to work (<see cref="Able"/>; a gunner <see cref="AbleToMan"/>), the machine have a free operator place ("is already in
+    /// use", posted) and, to operate or man it (rows 87 and 146), power (state 93, <see cref="Powered"/>; its text "It needs electricity." said); a
+    /// prospector must not swim.
     /// </summary>
     OrderCheck IOrderOwner.CanRun(World world, int slot, OrderEntry order)
     {
@@ -511,10 +566,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (order.Site is not { } id || Site(world, id) is not { Complete: true } site || world.Machines.Find(id) is not { } m
             || order.Row == TaskType.UseTurret && TurretPostOf(site) is null) return OrderCheck.Gone;
         if (order.Row == TaskType.OperateStorage) return Able(cold) ? OrderCheck.Run : OrderCheck.Blocked();
+        if (order.Row == TaskType.OperateMachinery && FarmNeedsNoWork(m)) return OrderCheck.Blocked();
         if (cold.OperateSite == id) return OrderCheck.Run;
         if (order.Row == TaskType.UseTurret ? !AbleToMan(cold) : !Able(cold)) return OrderCheck.Blocked();
-        if (IsSeat(m) && SeatOccupied(world, site)) return OrderCheck.Blocked($"{site.Name} is already in use.", posted: true);
-        if (OperatorsOf(world, id) >= m.Data.MaxOperators) return OrderCheck.Blocked($"{site.Name} is already in use.", posted: true);
+        if ((IsSeat(m) && SeatOccupied(world, site)) || OperatorsOf(world, id) >= m.Data.MaxOperators)
+            return OrderCheck.Blocked($"{world.ShownName("place", site.Record, site.Name)} is already in use.", posted: true);
         return Unpowered(world, order, site, m) ? OrderCheck.Blocked(Loc.Tr("It needs electricity.")) : OrderCheck.Run;
     }
 
@@ -565,9 +621,9 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     /// <summary>
     /// Where a character at <paramref name="from"/> walks to for a machine, and the height of the floor it walks on: a turret's gunner spot
-    /// (<see cref="Ai.AiSystem.TurretSpot"/>); a rock's middle (<see cref="RockGoal"/>); else the spot on the machine's floor within its use range
-    /// nearest the walker (<see cref="SiteReach.WorkSpot"/>), which <see cref="AtSite"/> then passes: furniture cuts a hole in the floor's navmesh,
-    /// and a walk to the place itself could end on a stair beside it, short of the height test.
+    /// (<see cref="Ai.AiSystem.TurretSpot"/>); a rock's walk point on the walker's side (<see cref="RockGoal"/>); else the spot on the machine's
+    /// floor within its use range nearest the walker (<see cref="SiteReach.WorkSpot"/>), which <see cref="AtSite"/> then passes: furniture cuts a
+    /// hole in the floor's navmesh, and a walk to the place itself could end on a stair beside it, short of the height test.
     /// </summary>
     Vector3 GoalOf(World world, BuildSite site, Machine m, Vector3 from)
     {
@@ -578,21 +634,90 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             return spot;
         }
 
-        if (_naturalBounds.TryGetValue(site.Id, out var rock)) return RockGoal(world, site, rock.Centre);
+        if (_naturalBounds.ContainsKey(site.Id)) return RockGoal(world.Walkability, site, from);
 
         float limit = SiteReach.HeightLimit(world.Fixtures.DoorsByBuilding[site.Id].Any(), SiteReach.InBuilding(site));
-        return _useSpots.WalkGoal(world.Walkability, site, site.Position.Y, limit, from)
-            ?? SiteReach.WorkSpot(world.Walkability, Settings.EdgeGap, site, site.Position.Y, limit, m.Data.UseRange, from);
+        if (UseNodeMarker(world, site, from, limit) is { } node) return node;
+        return SiteReach.WorkSpot(world.Walkability, Settings.EdgeGap, site, site.Position.Y, limit, m.Data.UseRange, from);
     }
 
     /// <summary>
-    /// A rock is walked to at its bounds' middle, which its footprint holds (its origin can lie off its pile): the floor point at or next to it
-    /// (<see cref="MovementSystem.GoToFloor"/>), on the rock's own height.
+    /// A machine's position marker (<c>Building::getPositionMarker</c>, docs/game/buildings-production.md "Work distance"): of two or more use nodes,
+    /// the one nearest <paramref name="from"/> that a worker can stand on at the machine's floor (within <paramref name="heightLimit"/> of it); null
+    /// with fewer than two (the original takes the construction position) or when none can be stood on (engine choice, for the original's bad-node
+    /// map, which skips a node a walk to which proved impossible), and the footprint's rule then stands. Asked by <see cref="AtSite"/> for each
+    /// operator every tick and by <see cref="GoalOf"/>: a few node transforms and usually one surface test, nothing allocated.
     /// </summary>
-    static Vector3 RockGoal(World world, BuildSite site, Vector3 centre)
+    Vector3? UseNodeMarker(World world, BuildSite site, Vector3 from, float heightLimit)
     {
-        var at = world.Walkability.FloorNear(centre.X, centre.Z, centre.Y, MovementSystem.FloorSlack) ?? centre;
-        return new Vector3(at.X, site.Position.Y, at.Z);
+        var nodes = _useNodes.GetOrAdd(site.Record, ReadUseNodes, _db);
+        if (nodes.Length < 2) return null;
+
+        Span<bool> refused = stackalloc bool[nodes.Length];
+        for (int tries = 0; tries < nodes.Length; tries++)
+        {
+            int best = -1;
+            float bestD = float.MaxValue;
+            for (int k = 0; k < nodes.Length; k++)
+            {
+                if (refused[k]) continue;
+                float d = Vector3.DistanceSquared(site.Position + Vector3.Transform(nodes[k], site.Rotation), from);
+                if (d < bestD) (best, bestD) = (k, d);
+            }
+
+            // None left (or every distance NaN, a broken position).
+            if (best < 0) return null;
+
+            var at = site.Position + Vector3.Transform(nodes[best], site.Rotation);
+            if (SiteReach.OnFloor(world.Walkability, at.X, at.Z, site.Position.Y, heightLimit, out float y))
+                return new Vector3(at.X, y, at.Z);
+            refused[best] = true;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The use nodes of building record <paramref name="id"/> in its own frame, none for a record without them (<see cref="_useNodes"/>).
+    /// </summary>
+    static Vector3[] ReadUseNodes(string id, GameDatabase db) =>
+        db.Find(id) is { } record && Locks.FixtureRegistry.UseNodes(db, record) is { } nodes ? [.. nodes.Select(u => u.At)] : [];
+
+    /// <summary>
+    /// Whether <paramref name="a"/> and <paramref name="b"/> stand on the same building's interior navmesh, or both outside any
+    /// (<see cref="IWalkability.InteriorNear"/>). Two closest-face queries, asked by <see cref="AtSite"/> only for a machine inside a building once
+    /// the worker is within its reach.
+    /// </summary>
+    static bool SameRoom(IWalkability walk, Vector3 a, Vector3 b) =>
+        string.Equals(walk.InteriorNear(a, RoomFaceReach), walk.InteriorNear(b, RoomFaceReach), StringComparison.Ordinal);
+
+    /// <summary>
+    /// Where a rock's operator at <paramref name="from"/> walks to (<c>getPosWithinChoppingRange</c> <c>FUN_14059bf30</c>, the foliage branch,
+    /// <b>Verified</b>): <see cref="RockApproach"/> from the rock's position toward the walker, put on the navmesh (<see cref="RockSnap"/>), at the
+    /// height found there; the rock's position when no surface lies within reach. The rock's middle or position is no goal: a large rock's lies
+    /// inside its pile, off the mesh, and no path led there (#1391).
+    /// </summary>
+    static Vector3 RockGoal(IWalkability walk, BuildSite site, Vector3 from)
+    {
+        var origin = site.Position;
+        var toward = from - origin;
+        var aim = toward.LengthSquared() > 1e-6f ? origin + Vector3.Normalize(toward) * RockApproach : origin;
+        return RockSnap(walk, aim) ?? origin;
+    }
+
+    /// <summary>
+    /// The original's closest navmesh point to a rock's walk aim (<c>FUN_1403a3ac0</c> with the cube <see cref="RockSnapReach"/> and the extent
+    /// <see cref="RockSnapExtent"/>, <see cref="RefitSnap"/>) where the walkability knows its faces, else the closest walkable point in
+    /// X/Z (<see cref="WalkableSpots.Closest"/>); null when there is none. The faces are taken out to the cube plus the clearance step's largest box
+    /// and its edge reach (5 extents), which may lie round a point found at the cube's side.
+    /// </summary>
+    static Vector3? RockSnap(IWalkability walk, Vector3 aim)
+    {
+        if (walk.SurfaceFaces(aim, RockSnapReach + 5 * RockSnapExtent) is { } faces)
+            return RefitSnap.Snap(faces, aim, RockSnapReach, RockSnapExtent);
+        if (!WalkableSpots.Closest(walk, new Vector2(aim.X, aim.Z), RockSnapReach, out var spot)) return null;
+
+        return new Vector3(spot.X, walk.GroundHeight(spot.X, spot.Y, aim.Y), spot.Y);
     }
 
     /// <summary>
@@ -600,6 +725,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// </summary>
     void WalkToSite(ref CharacterHot n, CharacterCold cold, BuildSite site, Vector3 goal)
     {
+        cold.PathFailed = false;   // a failure from before is not this walk's
         n.Goal = new Vector2(goal.X, goal.Z);
         n.Flags |= (ushort)MoveFlags.NeedPath;
         (cold.GoalHeight, cold.GoalHeightAt) = (goal.Y, n.Goal);
@@ -706,7 +832,8 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     /// <summary>
     /// Whether the operator is at the machine: a turret's gunner at its spot or within the turret's use range, a rock's within
-    /// <see cref="RockReach"/> of its footprint, else within reach of the site; a gunner also at its spot's height, a machine's operator at the site's.
+    /// <see cref="RockReach"/> of its footprint or stopped at its walk's end (<see cref="AtRockWalkEnd"/>), else within reach of the site; a gunner
+    /// also at its spot's height, a machine's operator at the site's.
     /// </summary>
     bool AtSite(World world, in CharacterHot n, BuildSite site, Machine m)
     {
@@ -720,13 +847,32 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         }
 
         // A rock: at its footprint (engine choice, #587: the original's use range of the position marker, doubled when stopped, has a copper
-        // rock mined from 100 to 200 off its middle).
-        if (_naturalBounds.TryGetValue(site.Id, out var rock)) return SiteReach.Within(n, rock.Gap(n.Position), RockReach);
+        // rock mined from 100 to 200 off its middle), or stopped where its walk ends (RockGoal): a small rock's walk point stands off its footprint,
+        // where the original's iron miner arrives by that use range (50, doubled once stopped).
+        if (_naturalBounds.TryGetValue(site.Id, out var rock))
+            return SiteReach.Within(n, rock.Gap(n.Position), RockReach) || AtRockWalkEnd(n, site);
 
-        // The machine's use range (UseableStuff::getReachRange) of its marker nearest the operator, else of its footprint.
-        if (!SiteReach.Within(n, ReachGap(site, n.Position), m.Data.UseRange)) return false;
-        return SiteReach.AtHeight(n, site, world.Fixtures.DoorsByBuilding[site.Id].Any()) || OffFloor(world, n, site);
+        // The machine's use range (UseableStuff::getReachRange): from its position marker when it has use nodes (FUN_14059c6d0: the X/Z distance to
+        // getPositionMarker), and for one inside a building from the same building's floor as that node (engine choice: the original's worker
+        // pressed against the outside of a wall walked round through the door to a bench against the wall's inside, though within reach of its
+        // node, #1180); else from its footprint, which stands in for the original's touching the building.
+        bool door = world.Fixtures.DoorsByBuilding[site.Id].Any(), inside = SiteReach.InBuilding(site);
+        if (UseNodeMarker(world, site, n.Position, SiteReach.HeightLimit(door, inside)) is { } marker)
+        {
+            return SiteReach.Within(n, Gap(n.Position, marker), m.Data.UseRange) && SiteReach.AtHeight(n, site, door)
+                && (!inside || SameRoom(world.Walkability, n.Position, marker));
+        }
+
+        if (!SiteReach.Within(n, GapTo(site, n.Position), m.Data.UseRange)) return false;
+        return SiteReach.AtHeight(n, site, door) || OffFloor(world, n, site);
     }
+
+    /// <summary>
+    /// Whether a rock's operator stands stopped within <see cref="RockApproach"/> of the rock's position in X/Z, plus <see cref="RockReach"/> for the
+    /// snap's clearance step (engine choice): there its walk to the point <see cref="RockGoal"/> aims at has ended.
+    /// </summary>
+    static bool AtRockWalkEnd(in CharacterHot n, BuildSite site) =>
+        (n.Flags & (ushort)MoveFlags.AnyPath) == 0 && Gap(n.Position, site.Position) <= RockApproach + RockReach;
 
     /// <summary>
     /// Whether the character is at the player machine of site <paramref name="siteId"/> (<see cref="AtSite"/>); false when there is none.
@@ -741,13 +887,6 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     static bool OffFloor(World world, in CharacterHot n, BuildSite site) =>
         (n.Flags & (ushort)MoveFlags.AnyPath) == 0
         && world.Walkability.FloorNear(site.Position.X, site.Position.Z, site.Position.Y, MovementSystem.FloorSlack) is null;
-
-    /// <summary>
-    /// The X/Z gap an operator's reach is measured over: to the machine's marker nearest it (<see cref="UseSpots"/>) when its walk goes there, else
-    /// to the site (<see cref="GapTo"/>).
-    /// </summary>
-    float ReachGap(BuildSite site, Vector3 from) =>
-        _useSpots.ArrivesAtMarker(site) && _useSpots.MarkerOf(site, from) is { } marker ? Gap(from, marker) : GapTo(site, from);
 
     /// <summary>
     /// The X/Z gap from <paramref name="from"/> to a site (<see cref="SiteReach.Gap"/>). A rock's BUILDING footprint is not scaled like the rock, so
@@ -885,7 +1024,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
         if (Lingers(cold)) return;
         if (cold.HaulSite is { } to && Site(world, to) is { Complete: true } leg && world.Machines.Find(to) is { } legMachine && Able(cold))
-            Approach(world, ref n, cold, leg, legMachine, dt);
+            Approach(world, slot, ref n, cold, leg, legMachine, dt);
         else End(world, slot);
     }
 
@@ -896,7 +1035,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     {
         // The jobs are the decision step's (RegisterSources); with no machine a sleeper of the "Sleep when injured" option still lets go of its bed
         // here once up.
-        if (world.Machines.Count == 0 && !_sweep && !(Beds is not null && (world.Player.SquadAi & SquadAi.Sleep) != 0 && world.Fixtures.Count > 0))
+        if (world.Machines.Count == 0 && !_sweep && !(Beds is not null && world.Fixtures.Count > 0 && SquadAiRules.AnyFollow(world, SquadAi.Sleep)))
             return;
 
         var table = world.Characters;
@@ -940,7 +1079,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
             // A hauling operator walks to its storage instead.
             if (Hauling(world, cold) is { } haul) (site, m) = haul;
-            Approach(world, ref n, cold, site, m, dt);
+            Approach(world, i, ref n, cold, site, m, dt);
         }
 
         if (world.Machines.Count == 0) _sweep = false;
@@ -948,9 +1087,9 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     /// <summary>
     /// Walks a character to a building: at it, its path is dropped; else a path is asked for, again every <see cref="PursuitSystem.RepathSeconds"/>
-    /// while it has none.
+    /// while it has none. A walk with no way there is the task's end (<see cref="Impossible"/>).
     /// </summary>
-    void Approach(World world, ref CharacterHot n, CharacterCold cold, BuildSite site, Machine m, float dt)
+    void Approach(World world, int i, ref CharacterHot n, CharacterCold cold, BuildSite site, Machine m, float dt)
     {
         const ushort path = (ushort)MoveFlags.AnyPath;
         if (m.Data.Function == Meitou.Data.World.ObjectRanges.TurretFunction && !_turretSpots.ContainsKey(site.Id)) GoalOf(world, site, m, n.Position);
@@ -961,11 +1100,30 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         }
 
         if ((n.Flags & path) != 0) return;
+        if (cold.PathFailed)
+        {
+            Impossible(world, i, cold, site);
+            return;
+        }
+
         n.TaskTime -= dt;
         if (n.TaskTime > 0) return;
         WalkToSite(ref n, cold, site, GoalOf(world, site, m, n.Position));
         n.Mode = SpeedMode.Free;
         n.TaskTime = PursuitSystem.RepathSeconds;
+    }
+
+    /// <summary>
+    /// "Task impossible: X can't get to Y" (<c>AI::isWithinChoppingRange</c> <c>FUN_14059c6d0</c> -> <c>FUN_140796ed0</c>, <b>Verified</b>,
+    /// docs/game/buildings-production.md "Arrival"): the walk ended with no way to the building, so the building is ignored for
+    /// <see cref="ConstructionSystem.UnreachableSeconds"/> and the task ends (the AI's re-think flag, <c>FUN_14001953d</c>); the job is tried again
+    /// later.
+    /// </summary>
+    void Impossible(World world, int i, CharacterCold cold, BuildSite site)
+    {
+        cold.PathFailed = false;
+        cold.NoteUnreachable(site.Id, world.Tick + (long)MathF.Ceiling(ConstructionSystem.UnreachableSeconds / world.TickSeconds));
+        End(world, i);
     }
 
     /// <summary>
@@ -1175,6 +1333,12 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (Hauling(world, cold) is { } haul)
         {
             cold.OperateToolHeld = false;
+            if (cold.HaulFetch is not null && FarmNeedsNoWork(m))
+            {
+                End(world, i);
+                return;
+            }
+
             if (!AtSite(world, n, haul.Site, haul.Machine)) return;
 
             // The walk stops at the storage, as a hauler's does (StopWalk), so the walk back starts after the beat.
@@ -1183,7 +1347,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             return;
         }
 
-        if (!AtSite(world, n, site, m)) return;
+        if (!AtSite(world, n, site, m))
+        {
+            if (FarmNeedsNoWork(m)) End(world, i);
+            return;
+        }
 
         // Task_OperateMachine's start (slot 1, FUN_14035b430) attaches the special tool, its end (slot 3, FUN_140347350) takes it off.
         cold.OperateToolHeld = true;
@@ -1198,6 +1366,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
         if (UseSpecial(world, i, ref n, cold, site, m, dt)) return;
         if (Settings.AutoHaul && StartHaul(world, cold, site, m)) return;
+        if (FarmNeedsNoWork(m))
+        {
+            End(world, i);
+            return;
+        }
 
         WorkMachine(world, i, ref n, cold, site, m, dt, ref contributions);
     }
@@ -1247,27 +1420,56 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             return true;
         }
 
-        // An automatic machine (the 152 job): its hauler fills its inputs and carries its output away; the machine works by itself.
+        // An automatic machine (152): its hauler fills its inputs and carries its output away; the machine works by itself.
         if (!m.Data.IsAutomatic) return false;
 
-        if (!StartHaul(world, cold, site, m) && n.Velocity.X == 0 && n.Velocity.Z == 0) n.Yaw = FacingTo(n, site);
+        Haul(world, i, ref n, cold, site, m);
         return true;
     }
 
     /// <summary>
-    /// Works the machine at the operator's skill (<see cref="WorkStep"/>); then the operating XP.
+    /// The hauler of an automatic machine between trips: it puts in what it carries and sets off on the next trip, on 152 (order or job) with any
+    /// output (<see cref="StartHaul"/>). A one-shot 152 order, once the
+    /// order step has dropped it (<see cref="AutoHaulFinder"/>), ends the act-out here instead, after the trip it was on (the original's desire pop
+    /// leaves the running plan step to its end).
+    /// </summary>
+    void Haul(World world, int i, ref CharacterHot n, CharacterCold cold, BuildSite site, Machine m)
+    {
+        if (AutoHaulDropped(cold, site.Id))
+        {
+            if (cold.Inventory is { } inv && PutCarried(inv, m)) world.Machines.Touch();
+            End(world, i);
+            return;
+        }
+
+        bool autoHaul = cold.Running is { Row: TaskType.OperateAutomaticMachinery };
+        if (!StartHaul(world, cold, site, m, autoHaul) && n.Velocity.X == 0 && n.Velocity.Z == 0) n.Yaw = FacingTo(n, site);
+    }
+
+    /// <summary>
+    /// Whether the character runs a 152 order on <paramref name="site"/> that is no longer the started front of its queue.
+    /// </summary>
+    static bool AutoHaulDropped(CharacterCold cold, string site)
+    {
+        if (cold.Running is not { Source: TaskSource.Order, Row: TaskType.OperateAutomaticMachinery }) return false;
+
+        return cold.OrderQueue.Front is not { Started: true, Row: TaskType.OperateAutomaticMachinery } front || front.Site != site;
+    }
+
+    /// <summary>
+    /// Works the machine at the operator's skill (<see cref="WorkStep"/>); then the operating XP (at a farm, only while harvesting or clearing).
     /// </summary>
     void WorkMachine(World world, int i, ref CharacterHot n, CharacterCold cold, BuildSite site, Machine m, float dt, ref int contributions)
     {
         if (n.Velocity.X == 0 && n.Velocity.Z == 0) n.Yaw = FacingTo(n, site);
         m.Operators++;
         cold.Operating = WorkStep(world, i, cold, m, dt, ref contributions);
-        OperatingXp(world, cold, m.Data.Stat, dt);
+        if (m.Farm is null || cold.Operating) OperatingXp(world, cold, m.Data.Stat, dt);
     }
 
     /// <summary>
     /// The building's work step (<c>Task_OperateMachine</c>'s update calls the building's slot <c>0x4b0</c> once <c>tryOperate</c> passes,
-    /// <c>FUN_14035bc90</c>, <b>Verified</b>) at the operator's skill: research, crafting, a farm's harvest or tending, else production; true when
+    /// <c>FUN_14035bc90</c>, <b>Verified</b>) at the operator's skill: research, crafting, a farm's harvest or clearing, else production; true when
     /// it worked.
     /// </summary>
     bool WorkStep(World world, int i, CharacterCold cold, Machine m, float dt, ref int contributions)
@@ -1287,10 +1489,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (m.Farm is null) return ProduceStep(world, m, s, dt);
 
         m.FarmerSkillTotal += Effective(cold, StatsEnumerated.Farming) / 100;
-
-        // A growing crop the operator has just watered is tended: he plays the farm's clip until his next job check finds it no work
-        // (HasWork, docs/game/buildings-production.md "Farming").
-        return HarvestStep(world, i, m, skill, s, dt) || Tended(m);
+        return HarvestStep(world, i, m, skill, s, dt);
     }
 
     /// <summary>
@@ -1629,7 +1828,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
             return true;
         }
 
-        if (f.Death >= fd.DeathThreshold)
+        if (f.Death >= fd.DeathThreshold && f.Harvested < f.Plants.Length)
         {
             f.ClearProgress += work * fd.ClearRate / MachineData.DaySeconds;
             if (f.ClearProgress >= 1)
@@ -1675,10 +1874,16 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     }
 
     /// <summary>
-    /// A farm whose crop is still growing and whose every input holds water.
+    /// <c>FarmBuilding::dontNeedWorkRightNow</c> (vfunc <c>0x4e8</c>, <c>FUN_1400f6e00</c>, <b>Verified</b>): a farm with no plants left to harvest
+    /// or clear and no empty water input (a growing watered crop, or one whose last plant was just finished before the next tick replants it).
     /// </summary>
-    static bool Tended(Machine m) =>
-        m.Farm is { Growth: < 1 } f && f.Death < m.Data.Farm!.DeathThreshold && m.Inputs.All(i => i.Rate <= 0 || i.Level + i.Count > 0);
+    static bool FarmNeedsNoWork(Machine m)
+    {
+        if (m.Farm is not { } f) return false;
+        if (f.Harvested < f.Plants.Length && (f.Death >= m.Data.Farm!.DeathThreshold || f.Growth >= 1)) return false;
+
+        return !m.HasEmptyInputs;
+    }
 
     /// <summary>
     /// <c>FarmBuilding::eat</c> (<c>FUN_1400e5e60</c>, docs/game/ai-tasks.md "Eating crops"): adds <paramref name="amount"/> (the eater's age, 1, x
@@ -1740,6 +1945,11 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     long _researchVersion = -1;
 
     /// <summary>
+    /// The shown text revision (<see cref="ShownText.Revision"/>) the research view was built at: its names are rebuilt when a mod's text changes.
+    /// </summary>
+    int _shownRevision;
+
+    /// <summary>
     /// The machines' version and work count <see cref="_publishedResearch"/> was built at.
     /// </summary>
     (long Version, long Worked) _machinesVersion = (-1, -1);
@@ -1782,6 +1992,48 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     }
 
     /// <summary>
+    /// Applies a research queue drop between two entries still in the queue.
+    /// </summary>
+    void MoveResearchTo(World world, MoveResearch move)
+    {
+        var state = world.Research;
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < state.Queue.Count; i++) positions.Add(state.Queue[i].Id, i);
+
+        if (!positions.TryGetValue(move.Research, out int from) || !positions.TryGetValue(move.Target, out int to) || from == to) return;
+        if (!CanMoveResearch(state, positions, from, to)) return;
+
+        state.Move(from, to);
+    }
+
+    /// <summary>
+    /// The original drop check (<c>FUN_14049f320</c>): look up prerequisites with the endpoints swapped and compare against each dependent's
+    /// original index.
+    /// </summary>
+    bool CanMoveResearch(ResearchState state, Dictionary<string, int> positions, int from, int to)
+    {
+        var queue = state.Queue;
+        for (int i = 0; i < queue.Count; i++)
+        {
+            if (Research(queue[i].Id) is not { } data) continue;
+
+            foreach (string id in data.Requirements)
+            {
+                if (_db.Find(id) is not { } record || RequirementMet(state, record)) continue;
+
+                if (!positions.TryGetValue(id, out int index)) return false;
+
+                int swapped = index == from ? to
+                    : index == to ? from
+                    : index;
+                if (swapped >= i) return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// A complete player-owned bench counts regardless of its town association.
     /// </summary>
     bool CanResearch(World world, Machine machine) => Site(world, machine.Site) is { Complete: true } site &&
@@ -1813,7 +2065,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         {
             research.Complete(_db, item.Id);
             _publishedResearch = null;
-            world.Post(Loc.Tr("Research complete: {1}", data.Name));
+            world.Post(Loc.Tr("Research complete: {1}", ShownText.Record(data.Id, data.Name)));
         }
 
         return true;
@@ -1841,7 +2093,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
         world.Research.Complete(_db, id);
         _publishedResearch = null;
-        world.Post(Loc.Tr("Research complete: {1}", data.Name));
+        world.Post(Loc.Tr("Research complete: {1}", ShownText.Record(data.Id, data.Name)));
         return true;
     }
 
@@ -1874,12 +2126,18 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         {
             var record = _db.Find(req);
             if (record is null) continue;
-            if (record.Type == FcsRecordType.Research ? world.Research.IsDone(req) : world.Research.IsUnlocked(req)) continue;
+            if (RequirementMet(world.Research, record)) continue;
             if (!lenient || !Met(world, record.GetReferences("requirements").Select(l => l.TargetStringId), lenient: false)) return false;
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Whether a research prerequisite has been completed or unlocked.
+    /// </summary>
+    static bool RequirementMet(ResearchState state, GameRecord record) =>
+        record.Type == FcsRecordType.Research ? state.IsDone(record.StringId) : state.IsUnlocked(record.StringId);
 
     /// <summary>
     /// The zone of the camera focus, null while none was told.
@@ -1943,13 +2201,15 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         int level = r.LevelAt(world.Research.Times(id));
         if (level > world.Research.BenchLevel)
         {
-            world.Post(world.Research.BenchLevel == 0 ? "Research needs a research bench." : $"{r.Name} needs a level {level} research bench.");
+            world.Post(world.Research.BenchLevel == 0
+                ? "Research needs a research bench."
+                : $"{ShownText.Record(r.Id, r.Name)} needs a level {level} research bench.");
             return;
         }
 
         if (!Affordable(world, r))
         {
-            world.Post($"Not enough materials in the research benches for {r.Name}.");
+            world.Post($"Not enough materials in the research benches for {ShownText.Record(r.Id, r.Name)}.");
             return;
         }
 
@@ -1981,69 +2241,126 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     }
 
     /// <summary>
+    /// The name of item record <paramref name="record"/> as the mods' text sources show it (the record id when it is not an item), for the views
+    /// the host shows.
+    /// </summary>
+    string ShownItemName(string record) => _items.Info(record) is { } info ? ShownText.Record(record, info.Name) : record;
+
+    /// <summary>
+    /// A queued research as the host shows it: its id, name (as the mods' text sources show it), the share done and its hours at the current
+    /// repeat (0 for one the data lost).
+    /// </summary>
+    (string Id, string Name, float Progress, float Hours) QueueEntry(ResearchState state, string id, float seconds)
+    {
+        if (Research(id) is not { } d) return (id, id, 0, 0);
+
+        float hours = d.Hours(_constants, Settings.ResearchOption, state.Times(id));
+        return (id, ShownText.Record(id, d.Name), Math.Clamp(seconds / (hours * (MachineData.DaySeconds / 24)), 0, 1), hours);
+    }
+
+    /// <summary>
     /// The research state for the host (rebuilt when it or the machines changed).
     /// </summary>
     public ResearchSnapshot ResearchView(World world)
     {
         var zone = FocusZone();
         var machines = (world.Machines.Version, world.Machines.Worked);
-        if (_publishedResearch is not null && _researchVersion == world.Research.Version && _machinesVersion == machines && _researchZone == zone)
-            return _publishedResearch;
-
-        // Progress, bench stock and the focus zone (each zone crossed in a flight) move often: those refresh at most once a second; finishing,
-        // queueing or paying at once.
         var lists = (world.Research.Completed.Count, world.Research.Queue.Count, world.Research.Paid.Count, world.Research.BenchLevel);
-        if (_publishedResearch is not null && _researchLists == lists && (ulong)(world.Tick - _researchBuilt) < ResearchRefreshTicks)
-            return _publishedResearch;
+        if (CurrentResearchView(world, zone, machines, lists) is { } current) return current;
 
         _researchLists = lists;
         _researchBuilt = world.Tick;
         _researchZone = zone;
         _researchVersion = world.Research.Version;
         _machinesVersion = machines;
-        _allResearch ??= ResearchData.LoadAll(_db);
+        _shownRevision = ShownText.Revision;
+        return _publishedResearch = BuildResearchView(world);
+    }
+
+    /// <summary>
+    /// The research view last published when it is still good for <paramref name="world"/>, else null: nothing changed in the research state, the
+    /// machines, the focus zone <paramref name="zone"/> or the shown text, or only what moves often did within a second.
+    /// </summary>
+    ResearchSnapshot? CurrentResearchView(World world, Meitou.Data.World.ZoneCoordinate? zone, (long Version, long Worked) machines,
+        (int, int, int, int) lists)
+    {
+        if (_publishedResearch is null || _shownRevision != ShownText.Revision) return null;
+        if (_researchVersion == world.Research.Version && _machinesVersion == machines && _researchZone == zone) return _publishedResearch;
+
+        // Progress, bench stock and the focus zone (each zone crossed in a flight) move often: those refresh at most once a second; finishing,
+        // queueing or paying at once.
+        bool recent = (ulong)(world.Tick - _researchBuilt) < ResearchRefreshTicks;
+        return _researchLists == lists && recent ? _publishedResearch : null;
+    }
+
+    /// <summary>
+    /// Builds the research view from <paramref name="world"/>'s research state: the queue, the researches on offer and the sets a blueprint reads.
+    /// </summary>
+    ResearchSnapshot BuildResearchView(World world)
+    {
+        var all = _allResearch ??= ResearchData.LoadAll(_db);
         var state = world.Research;
-        var queue = state.Queue.Select(q => (q.Id, Research(q.Id)?.Name ?? q.Id,
-            Research(q.Id) is { } d
-                ? Math.Clamp(q.Seconds / (d.Hours(_constants, Settings.ResearchOption, state.Times(q.Id)) * (MachineData.DaySeconds / 24)), 0, 1)
-                : 0)).ToArray();
-        var available = _allResearch.Where(r => Available(world, r))
-            .Select(r => new ResearchOption(r.Id, r.Name, r.Category, r.LevelAt(state.Times(r.Id)),
-                r.Hours(_constants, Settings.ResearchOption, state.Times(r.Id)), Affordable(world, r),
-                r.LevelAt(state.Times(r.Id)) > state.BenchLevel,
-                state.Partial.TryGetValue(r.Id, out float s)
-                    ? Math.Clamp(s / (r.Hours(_constants, Settings.ResearchOption, state.Times(r.Id)) * (MachineData.DaySeconds / 24)), 0, 1)
-                    : 0)
-            {
-                Description = r.Description,
-                Paid = state.Paid.Contains(r.Id, StringComparer.Ordinal),
-                Cost = state.Paid.Contains(r.Id, StringComparer.Ordinal) ? []
-                    : [.. r.CostAt(state.Times(r.Id)).Select(c => (_items.Info(c.Item)?.Name ?? c.Item, c.Count,
-                        CountInBenches(world, c.Item) >= c.Count))],
-                // The description lists the RESEARCH requirements only (FUN_140495e00 looks them up as type 21).
-                Requirements = [.. r.Requirements.Select(_db.Find).Where(q => q is { Type: FcsRecordType.Research })
-                    .Select(q => (q!.Name, state.IsDone(q.StringId), state.IsQueued(q.StringId)))],
-                Unlocks = [.. r.Unlocks.Select(u => (u.Field, _db.Find(u.Id)?.Name)).Where(u => u.Name is not null).Select(u => (u.Field, u.Name!))],
-            }).ToArray();
-        return _publishedResearch = new ResearchSnapshot(state.TechLevel, state.BenchLevel, queue, state.Rate, available)
+        var queue = state.Queue.Select(q => QueueEntry(state, q.Id, q.Seconds)).ToArray();
+        var available = all.Where(r => Available(world, r)).Select(r => ResearchOptionOf(world, state, r)).ToArray();
+        return new ResearchSnapshot(state.TechLevel, state.BenchLevel, queue, state.Rate, available)
         {
             Finished = state.Completed.Count,
             Known = state.Completed.ToHashSet(StringComparer.Ordinal),
             // Strict, as the blueprint tooltip asks (FUN_1407ab430 calls FUN_140832fa0 with the lenient flag clear, like learning); the research list
             // is the lenient one.
-            RequirementsMet = _allResearch.Where(r => Met(world, r)).Select(r => r.Id).ToHashSet(StringComparer.Ordinal),
+            RequirementsMet = all.Where(r => Met(world, r)).Select(r => r.Id).ToHashSet(StringComparer.Ordinal),
         };
     }
+
+    /// <summary>
+    /// Research <paramref name="r"/> as the host offers it: its level and hours at the current repeat, whether the benches hold its cost, its progress
+    /// and its texts as the mods' text sources show them.
+    /// </summary>
+    ResearchOption ResearchOptionOf(World world, ResearchState state, ResearchData r)
+    {
+        int times = state.Times(r.Id);
+        int level = r.LevelAt(times);
+        float hours = r.Hours(_constants, Settings.ResearchOption, times);
+        float progress = state.Partial.TryGetValue(r.Id, out float done) ? Math.Clamp(done / (hours * (MachineData.DaySeconds / 24)), 0, 1) : 0;
+        bool paid = state.Paid.Contains(r.Id, StringComparer.Ordinal);
+        string name = ShownText.Record(r.Id, r.Name);
+        string category = ShownText.Record(r.Id, r.Category, "category");
+
+        return new ResearchOption(r.Id, name, category, level, hours, Affordable(world, r), level > state.BenchLevel, progress)
+        {
+            Description = ShownText.Record(r.Id, r.Description, "description"),
+            Paid = paid,
+            Cost = paid ? [] : ResearchCost(world, r, times),
+            // The description lists the RESEARCH requirements only (FUN_140495e00 looks them up as type 21).
+            Requirements = [.. r.Requirements.Select(_db.Find).Where(q => q is { Type: FcsRecordType.Research })
+                .Select(q => (q!.ShownName(), state.IsDone(q.StringId), state.IsQueued(q.StringId)))],
+            Unlocks = [.. r.Unlocks.Select(u => (u.Field, Name: _db.Find(u.Id)?.ShownName()))
+                .Where(u => u.Name is not null)
+                .Select(u => (u.Field, u.Name!))],
+        };
+    }
+
+    /// <summary>
+    /// The items research <paramref name="r"/> costs at repeat <paramref name="times"/>, each with its shown name, count and whether the benches
+    /// hold that count.
+    /// </summary>
+    (string Name, int Count, bool Held)[] ResearchCost(World world, ResearchData r, int times) =>
+        [.. r.CostAt(times).Select(c => (ShownItemName(c.Item), c.Count, CountInBenches(world, c.Item) >= c.Count))];
 
     #endregion
 
     #region Items in and out
 
     /// <summary>
-    /// Whether the player character is within reach of the site (else posts it is out of range): <see cref="ProductionSettings.TransferReach"/> of
-    /// its footprint, or <see cref="ContainerAccess.TradingRange"/> of its position, so a small storage is never stricter than the original (#505).
+    /// Whether the player character may move items between its inventory and the site, the site's or the character's being the source
+    /// (<paramref name="fromSite"/>), else posts "Out of trading range." (<c>FUN_14070d290</c>, <b>Verified</b>; docs/game/economy.md "Trading range").
+    /// Between the player's own windows the move is unflagged: the two positions within <see cref="ItemMoveReach.Range"/> on the X/Z plane (#1361).
+    /// It is flagged for a site not the player's (the stealing test <c>FUN_140711740</c>), an imprisoned character, or a source standing in a town
+    /// that restricts (<see cref="ItemMoveReach.Restricts"/>); then <see cref="ProductionSettings.TransferReach"/> of the footprint or
+    /// <see cref="ContainerAccess.TradingRange"/> of the position, so a small storage is never stricter than the original (#505; engine reading of
+    /// the original's same place and floor, 60 or the bounds radius + 40).
     /// </summary>
-    bool Near(World world, CharacterId who, BuildSite site, out CharacterCold cold)
+    bool Near(World world, CharacterId who, BuildSite site, bool fromSite, out CharacterCold cold)
     {
         cold = null!;
         var table = world.Characters;
@@ -2052,7 +2369,10 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
         var at = table.Next[slot].Position;
         float centre = Vector2.Distance(new Vector2(at.X, at.Z), new Vector2(site.Position.X, site.Position.Z));
-        if (GapTo(site, at) <= Settings.TransferReach || centre <= ContainerAccess.TradingRange) return true;
+        bool flagged = site.Owner != world.Player.Faction || c.InSomething == Locks.HeldState.Imprisoned
+            || ItemMoveReach.Restricts(_towns, world, fromSite ? site.Position : at);
+        bool near = flagged ? GapTo(site, at) <= Settings.TransferReach || centre <= ContainerAccess.TradingRange : centre <= ItemMoveReach.Range;
+        if (near) return true;
 
         world.Post("Out of trading range.");
         return false;
@@ -2118,8 +2438,8 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
     /// <summary>
     /// Take an item (<see cref="TakeFromMachine.Count"/> units) out of a container into the character's inventory
     /// (<see cref="InventoryCommands.MoveInto"/>); what does not fit stays in the container. Taken from another faction's container it is stolen from
-    /// its owner (<see cref="Crime.CrimeSystem.OwnerMark"/>): a Theft and the steal roll (<see cref="Crime.CrimeSystem.Steal"/>), caught, nothing
-    /// moves.
+    /// its resident (<see cref="Crime.CrimeSystem.GoodsMark"/>; unmarked with nobody living there): a Theft and the steal roll
+    /// (<see cref="Crime.CrimeSystem.Steal"/>), caught, nothing moves.
     /// </summary>
     void TakeFromContainer(World world, Locks.Fixture container, CharacterCold cold, TakeFromMachine take)
     {
@@ -2129,7 +2449,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         var mark = item.Mark;
         if (container.Owner >= 0 && container.Owner != cold.Faction && Crime.CrimeSystem.IsStealing(world, container)
             && mark == StolenMark.None)
-            item.Mark = Crime.CrimeSystem.OwnerMark(world, container.Building, container.Owner);
+            item.Mark = Crime.CrimeSystem.GoodsMark(world, Crime.StealSource.Of(container));
 
         bool bagFirst = take.BagFirst || cold.IsPlayer && world.TakeIntoBackpack;
         int wanted = InventoryCommands.ClickCount(item, take.Count);
@@ -2163,12 +2483,15 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
 
     /// <summary>
     /// The complete machine at <paramref name="site"/> when <paramref name="who"/> (one of the player's characters) may move items in and out of it
-    /// from where it stands; posts "Out of trading range." when it is too far. For the held item (<see cref="PlayerState.Held"/>).
+    /// from where it stands, the site's or the character's being the source (<paramref name="fromSite"/>); posts "Out of trading range." when it is
+    /// too far. For the held item (<see cref="PlayerState.Held"/>).
     /// </summary>
-    internal Machine? Reach(World world, CharacterId who, string site, out CharacterCold? cold)
+    internal Machine? Reach(World world, CharacterId who, string site, bool fromSite, out CharacterCold? cold)
     {
         cold = null;
-        if (Site(world, site) is not { Complete: true } built || Ensure(world, built) is not { } m || !Near(world, who, built, out var c)) return null;
+        if (Site(world, site) is not { Complete: true } built || Ensure(world, built) is not { } m || !Near(world, who, built, fromSite, out var c))
+            return null;
+
         cold = c;
         return m;
     }
@@ -2185,7 +2508,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         }
 
         if (Site(world, put.Site) is not { Complete: true } site || Ensure(world, site) is not { } m
-            || !Near(world, put.Character, site, out var cold))
+            || !Near(world, put.Character, site, fromSite: false, out var cold))
             return;
 
         var root = cold.Inventory!;
@@ -2231,7 +2554,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (m.Storage is not { } storage || m.Closed || item.Contents is not null && item.Section == "backpack_attach") return false;
         if (m.Data.IsStorage && !m.Data.TakesByHand(item.Record, item.Type))
         {
-            world.Post($"{m.Data.Name} does not take {item.Name}.");
+            world.Post($"{ShownText.Record(m.Data.Id, m.Data.Name)} does not take {item.ShownName()}.");
             return false;
         }
 
@@ -2250,14 +2573,15 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         }
 
         if (Site(world, take.Site) is not { Complete: true } site || world.Machines.Find(take.Site) is not { } m
-            || !Near(world, take.Character, site, out var cold))
+            || !Near(world, take.Character, site, fromSite: true, out var cold))
             return;
         var goods = TownGoods(take.Site);
-        var (record, wanted) = world.GoodsTakenObservers.Active && goods is { Owner: >= 0 } ? Wanted(m, take) : ("", 0);
+        int owner = goods?.Owner ?? site.Owner;
+        var (record, wanted) = world.GoodsTakenObservers.Active && owner >= 0 ? Wanted(m, take) : ("", 0);
         if (CaughtTaking(world, goods, take.Character, cold, with => RoomFor(world, m, cold, take, with), out var mark))
         {
             if (wanted > 0)
-                Crime.GoodsTakenObservers.Report(world, take.Character, goods!.Value.Owner, CharacterId.None, take.Site, record, wanted, true);
+                Crime.GoodsTakenObservers.Report(world, take.Character, owner, CharacterId.None, take.Site, record, wanted, true);
             return;
         }
 
@@ -2266,7 +2590,7 @@ public sealed partial class ProductionSystem : ITickSystem, ITaskOwner, ITaskHan
         if (wanted > 0)
         {
             int moved = Units(cold.Inventory!, record) - before;
-            Crime.GoodsTakenObservers.Report(world, take.Character, goods!.Value.Owner, CharacterId.None, take.Site, record, moved, caught: false);
+            Crime.GoodsTakenObservers.Report(world, take.Character, owner, CharacterId.None, take.Site, record, moved, caught: false);
         }
     }
 

@@ -68,13 +68,13 @@ public sealed partial class LockSystem
         switch (order.Force)
         {
             case LockForce.Tools when Lockpicking.BestTool(walker) is null:
-                world.Post($"{walker.Name}: I don't have any tools");
+                world.Post($"{world.ShownName(walker)}: I don't have any tools");
                 return;
             case LockForce.Smash:
                 // Task_BashDoor needs a weapon (an animal's natural one counts); a door without a published spot cannot be struck.
                 if (walker.Fighter is not { } fighter || !fighter.IsAnimal && fighter.Unarmed)
                 {
-                    world.Post($"{walker.Name}: I need a weapon to smash that");
+                    world.Post($"{world.ShownName(walker)}: I need a weapon to smash that");
                     return;
                 }
 
@@ -150,8 +150,7 @@ public sealed partial class LockSystem
     static bool AtForcedLock(World world, int s, CharacterCold c, Fixture f)
     {
         var next = world.Characters.Next;
-        var (at, reach) = WorkSpot(world, f, Flat(next[s].Position));
-        if (Vector2.Distance(Flat(next[s].Position), at) > reach)
+        if (!AtWorkSpot(world, f, next[s], out var at, out float reach))
         {
             if (Redirected(next[s], at, reach)) c.ForcingLock = null;
             return false;

@@ -99,6 +99,11 @@ public sealed record TradeItemView(int Index, string Record, string Name, string
     float Quality, long Price, long UnitPrice, bool Stolen)
 {
     /// <summary>
+    /// The item's code-mod tag ("" none; the mods' shown text, docs/modding.md "Shown text").
+    /// </summary>
+    public string ModTag { get; init; } = "";
+
+    /// <summary>
     /// The current transfer reverses a purchase or sale from this trade window at its original price.
     /// </summary>
     public bool Buyback { get; init; }
@@ -364,7 +369,10 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
                     if (CustomerTrades(world, sell.From)) Sell(world, sell);
                     break;
                 case ArrangeStock when _open:
-                    if (Resolve(world, out _, out _, out var arranged)) InventoryCommands.Arrange(arranged!.Window);
+                    if (Resolve(world, out _, out _, out var arranged))
+                    {
+                        InventoryCommands.Arrange(world, arranged!.Window, ItemOwner.Stock, InventoryArrangeReason.Button);
+                    }
                     break;
                 case SetSquadShop given:
                     SetShop(world, given);
@@ -875,8 +883,19 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
 
         merged.Fills = (int)world.Tick;
         var fill = ShopFiller.Roll(merged, template, Market(world), _data, world.VendorTables, world.Seed, key, specials: first);
+        ReportFill(world, fill, -1);
         PlaceFill(world, usable, fill, terms, key, merged.Fills);
         LockFilled(usable);
+    }
+
+    /// <summary>
+    /// Tells the code mods' item-created observers of a fill's units and special items (<see cref="ItemCreatedKind.ShopStock"/>), before they are
+    /// placed.
+    /// </summary>
+    static void ReportFill(World world, ShopFill fill, int squad)
+    {
+        ItemCreatedObservers.ReportAll(world, ItemCreatedKind.ShopStock, fill.Units, CharacterId.None, squad);
+        ItemCreatedObservers.ReportAll(world, ItemCreatedKind.ShopStock, fill.Specials, CharacterId.None, squad);
     }
 
     /// <summary>
@@ -980,6 +999,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         if (shop.View.Live && world.Player.Held?.From.Holder == ItemHolder.Stock) return false;
 
         var fill = ShopFiller.Roll(shop, template, Market(world), _data, world.VendorTables, world.Seed, (ulong)squad.Id, specials: shop.Fills == 0);
+        ReportFill(world, fill, squad.Id);
         var purse = ShopFiller.StockSquad(shop, fill, Market(world));
 
         // A faction shop's purse holds only what trades and its mod put in (Meitou: no fill makes money for the player's faction), and the money
@@ -1016,6 +1036,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         }
 
         var fill = ShopFiller.Roll(shop, template, Market(world), _data, world.VendorTables, world.Seed, (ulong)squad.Id, specials: shop.Fills == 0);
+        ReportFill(world, fill, squad.Id);
         if (PlaceFill(world, usable, fill, shop.Terms, (ulong)squad.Id, shop.Fills) is { } value) squad.Money = ShopFiller.Purse(fill, value);
 
         LockFilled(usable);
@@ -1026,8 +1047,9 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     /// <summary>
     /// Places a building fill as the building filler does (<c>FUN_14095b210</c>, <b>Verified</b>, decompile): the usable containers, and only
     /// those, cleared but their unique items (<c>FUN_14074a5b0</c>); each special item into the first that takes it of a fresh shuffle of them
-    /// (<c>FUN_14096ac50</c>); then the units spread over them (<see cref="HomeStock.Spread"/>). What fits nowhere is lost. Returns the placed units'
-    /// value at full price (the original sums the placed items' stack price, <c>vfunc 0x290</c>), or null when the fill made no unit.
+    /// (<c>FUN_14096ac50</c>); then the units spread over them by unit value (<see cref="HomeStock.Spread"/>, <see cref="Market.UnitValue"/>). What
+    /// fits nowhere is lost. Returns the placed units' value at full price (the original sums the placed items' stack price, <c>vfunc 0x290</c>), or
+    /// null when the fill made no unit.
     /// </summary>
     long? PlaceFill(World world, List<StockBox> usable, ShopFill fill, Trader terms, ulong key, int fills)
     {
@@ -1038,7 +1060,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         if (fill.Units.Count == 0) return null;
 
         var market = Market(world);
-        var placed = HomeStock.Spread(usable, fill.Units, market.BaseValue, ref rng);
+        var placed = HomeStock.Spread(usable, fill.Units, market.UnitValue, ref rng);
         return placed.Sum(i => market.StackPrice(i, false, terms, terms.Faction));
     }
 
@@ -1253,7 +1275,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         if (!Resolve(world, out _, out _, out var shop) || shop is null) return;
 
         SettleView(world, shop);
-        if (!shop.View.Pending) shop.View.Build(shop, BoxesOf(world, shop, out _));
+        if (!shop.View.Pending) shop.View.Build(world, shop, BoxesOf(world, shop, out _));
     }
 
     /// <summary>
@@ -1284,7 +1306,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
     /// </summary>
     void ReopenView(World world, Shop shop)
     {
-        if (Shows(world, shop)) shop.View.Build(shop, BoxesOf(world, shop, out _));
+        if (Shows(world, shop)) shop.View.Build(world, shop, BoxesOf(world, shop, out _));
         else shop.View.Drop(shop);
     }
 
@@ -1487,7 +1509,8 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
             squad.Money += price;
         }
 
-        world.Post(Loc.Tr(sell ? "{1} sold {2} for c.{3}" : "{1} bought {2} for c.{3}", cold.Name, Units(units, item.Name), price));
+        string what = Units(units, item.ShownName());
+        world.Post(Loc.Tr(sell ? "{1} sold {2} for c.{3}" : "{1} bought {2} for c.{3}", world.ShownName(cold), what, price));
         _heldDeal = world.TradeObservers.Active ? new HeldDeal(c, t, sell, item.Record, units, price, buyback) : null;
         return receipt;
     }
@@ -1562,7 +1585,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
 
         world.Player.Money -= price;
         squad.Money += price;
-        world.Post(Loc.Tr("{1} bought {2} for c.{3}", cold.Name, Units(placed, item.Name), price));
+        world.Post(Loc.Tr("{1} bought {2} for c.{3}", world.ShownName(cold), Units(placed, item.ShownName()), price));
         ReportDeal(world, c, t, false, item.Record, placed, price, buyback);
     }
 
@@ -1698,7 +1721,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
 
         squad.Money -= price;
         world.Player.Money += price;
-        world.Post(Loc.Tr("{1} sold {2} for c.{3}", cold.Name, Units(placed, item.Name), price));
+        world.Post(Loc.Tr("{1} sold {2} for c.{3}", world.ShownName(cold), Units(placed, item.ShownName()), price));
         ReportDeal(world, c, t, true, item.Record, placed, price, buyback);
     }
 
@@ -1868,7 +1891,8 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
         if (!world.TradePriceFilters.Active) return price;
 
         int shopSquad = world.Characters.TryResolveNext(_trader, out int t) ? world.Characters.Cold(t)?.SquadId ?? -1 : -1;
-        return world.TradePriceFilters.Pass(world, new TradeDeal(world.Tick, item.Record, units, sell, _customer, shopSquad), price);
+        var deal = new TradeDeal(world.Tick, item.Record, units, sell, _customer, shopSquad) { Item = item };
+        return world.TradePriceFilters.Pass(world, deal, price);
     }
 
     /// <summary>
@@ -1975,6 +1999,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
             return new(index, item.Record, item.Name, item.Section, item.X, item.Y, item.Width, item.Height, item.Quantity, item.Quality, stackPrice,
                 unitPrice, stolen)
             {
+                ModTag = item.ModTag,
                 Buyback = buyback,
                 Container = item.Contents is not null,
                 BagItems = item.Contents?.Items.Count ?? -1,
@@ -1992,7 +2017,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
                 Charges = item.Charges,
                 MaxCharges = item.MaxCharges,
                 StolenFrom = stolen ? item.StolenFrom : -1,
-                StolenOwner = stolen ? world.Characters.OwnerNameOf(item.Owner) : null,
+                StolenOwner = stolen ? world.ShownOwnerNameOf(item.Owner) : null,
                 Unique = item.Unique,
                 FenceChance = odds is { } shown ? Math.Clamp(shown, 0, 1) : null,
                 FenceOdds = odds is < 1 ? Math.Max(odds.Value, 0) : null,
@@ -2006,7 +2031,7 @@ public sealed class TradeSystem : ITickSystem, ITradeSource
             goodsOf[world.Characters.IdOf(seller)] = Goods(world.Characters.Cold(seller)!, item => View(item.Item, item.Index, true, seller));
 
         var held = HeldView(world, goodsOf, (item, sell, seller) => View(item, -1, sell, seller), c);
-        string name = world.Characters.Cold(t)!.Name;
+        string name = world.ShownName(world.Characters.Cold(t)!);
         return new TradeView(_customer, _trader, name, squad.Money, world.Player.Money, shop.Window.Width, shop.Window.Height, stock,
             goodsOf[_customer], shop.Terms.BuysStolen, shop.Terms.BuysIllegal)
         {

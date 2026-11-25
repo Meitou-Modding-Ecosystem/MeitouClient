@@ -116,6 +116,18 @@ public sealed partial class FixtureRegistry
         (_properties.TryGetValue(building, out var p) ? p.Owner == faction : OfBuilding(building).Any(f => f.Owner == faction));
 
     /// <summary>
+    /// The building keys of the properties <paramref name="faction"/> owns, in registration order (deterministic, unlike
+    /// <see cref="OwnedProperties"/>'s set).
+    /// </summary>
+    internal IEnumerable<string> OwnedPropertyKeys(int faction)
+    {
+        if (faction < 0) yield break;
+
+        foreach (var (key, p) in _properties)
+            if (p.Owner == faction) yield return key;
+    }
+
+    /// <summary>
     /// The building keys of the properties <paramref name="faction"/> owns (cached).
     /// </summary>
     public IReadOnlySet<string> OwnedProperties(int faction)
@@ -621,7 +633,7 @@ public sealed partial class FixtureRegistry
             Position = b.Position,
             Rotation = placement.Rotation,
             LevelPlacement = placement,
-            LevelTownName = p.Data.Sites[p.Site].Town.Name,
+            LevelTown = p.Data.Sites[p.Site].Town,
             Owner = p.Owner,
             Target = data.Target,
             Rate = data.Rate,

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using Meitou.Game.DevTools;
+using Meitou.Game.DevTools.Benchmark;
 using Meitou.Game.Host.Cameras;
 using Meitou.Game.Host.Input;
 using Meitou.Game.Host.Photo;
@@ -302,6 +303,7 @@ sealed class GameLoop(GameHost host)
     internal int Run()
     {
         using var owned = OpenDisplay();
+        if (BenchmarkLacksRayQueries()) return BenchmarkSpec.NoRayQueriesExit;
         ShowWindow();
         if (LoadWorld() is { } exit) return exit;
         CreateDebugTools();
@@ -327,7 +329,23 @@ sealed class GameLoop(GameHost host)
         }
 
         ShutDown(spikeGc);
+
+        // A benchmark whose script did not finish (the window closed) wrote no result.json.
+        if (host.GameOptions.Benchmark is not null && !host.PlayBench.Completed) return 1;
         return host.AgentChannel.ControlExitCode;
+    }
+
+    /// <summary>
+    /// <c>--benchmark</c> at a tier that needs ray queries on a device without them: says so on stderr (the run does not start).
+    /// </summary>
+    bool BenchmarkLacksRayQueries()
+    {
+        var device = _display.Context.Device;
+        if (host.GameOptions.Benchmark is not { } tier || !QualityTiers.NeedsRayQueries(tier) || device.HasRayQuery)
+            return false;
+
+        Console.Error.WriteLine($"--benchmark {BenchmarkSpec.TierName(tier)} needs ray queries, which {device.DeviceName} lacks");
+        return true;
     }
 
     // ---- start-up ----
@@ -376,15 +394,18 @@ sealed class GameLoop(GameHost host)
     void ShowWindow()
     {
         // X11 opens it where Silk.NET asks (50,50), the desktop's corner, which can be another monitor (Observed 2026-10-26, XWayland): on the
-        // primary monitor instead, the one full screen uses; leaving full screen puts it back where it was when full screen began.
-        if (_window?.Native?.X11 is not null) BorderlessFullScreen.MoveToPrimaryMonitor(_window);
+        // chosen monitor instead, else the primary, the one full screen starts on; leaving full screen puts it back where it was when full screen
+        // began. Elsewhere only onto a chosen monitor: Wayland places windows itself.
+        var monitor = ChosenMonitor();
+        bool placed = _window?.Native?.X11 is not null || (monitor is not null && _window?.Native?.Wayland is null);
+        if (_window is not null && placed) GlfwMonitors.MoveWindowTo(_window, monitor);
         // Borderless full screen as the viewer starts (Alt+Enter and the Tab panel switch it); --windowed keeps a window for
         // this run: the size asked by --size, else maximised. Sized while still hidden: resizing after it shows (maximised,
         // then borderless) flashed white and black before the first frame.
         bool fullScreen = host.Config.FullScreen && !host.WorldOptions.Windowed && !_headless;
         (_savedVSync, _savedFullScreen) = (_vsync, fullScreen);
         if (_window is null) { }
-        else if (fullScreen) BorderlessFullScreen.Toggle(_window, _display.Monitor);
+        else if (fullScreen) BorderlessFullScreen.Toggle(_window, monitor, followWindow: false);
         else if (!host.WorldOptions.SizeGiven && !host.WorldOptions.HiddenWindow)
             _window.WindowState = WindowState.Maximized;   // maximising would show a hidden window
         host.BeginLoadingScreen(_display);   // its textures and fonts are made before the window shows
@@ -471,7 +492,8 @@ sealed class GameLoop(GameHost host)
     {
         _switches = WorldFrame.LiveSwitches(host.WorldOptions, () => host.Gpu, () => host.Camera, () => host.Render);
         _meitou = new MeitouToggle(_switches);
-        _lowEnd = Environment.GetCommandLineArgs().Contains("--low-end") || host.GameOptions.BenchmarkBaseline;
+        _lowEnd = Environment.GetCommandLineArgs().Contains("--low-end") || host.GameOptions.BenchmarkBaseline
+            || host.GameOptions.Benchmark is not null;
         _runOnly = GameHost.RunOnlyKeys();
         if (_overlay is null) return;
         var values = WorldFrame.CreateSettingsPanel(_overlay, host.Gpu, host.Render,
@@ -495,6 +517,8 @@ sealed class GameLoop(GameHost host)
         _panel = new SettingsMenu(host.Player, values, host.Session.Bindings, SaveSettings, frameLimit, host.Config)
         {
             UpscalerStatus = () => host.Gpu.Post?.ActiveUpscaler ?? "Off",
+            MonitorNames = _window is null ? null : GlfwMonitors.Names,
+            MonitorChanged = MonitorChanged,
             // The loaded frame generation's state; a change it cannot follow shows as pending until the restart.
             FrameGenerationStatus = () => FrameGenerationSetup.FrameGenerationState(_display, _frameGenerationLoaded,
                 host.Config.FrameGenerationMethod, _hdrAtStart),
@@ -519,12 +543,14 @@ sealed class GameLoop(GameHost host)
             PrisonPoseChanged = on => host.Session.World.PrisonPoseFix = on,
             CagedAnimalsChanged = on => host.Session.World.CagedAnimalFix = on,
             BagSearchChanged = on => host.Session.World.BagSearchFix = on,
+            PickUpTheftChanged = on => host.Session.World.PickUpTheftFix = on,
             CounterTalkChanged = on => host.Session.World.CounterTalk = on,
             AnimalTargetChanged = on => host.Session.World.AnimalTargetFix = on,
             TakeIntoBackpackChanged = on => host.Session.World.TakeIntoBackpack = on,
             TimeSpeedsChanged = () => host.Session.Simulation.SetFastSpeeds(host.Config.FastSpeed, host.Config.FastestSpeed),
             AnimalsPickUpChanged = on => EachSystem<Simulation.Player.PlayerSystem>(players => players.AnimalsPickUp = on),
             OffscreenChanged = ApplyOffscreenSettings,
+            NoDiskWrites = host.GameOptions.Benchmark is not null,   // nor the look presets beside meitou.user.json
         };
     }
 
@@ -616,6 +642,26 @@ sealed class GameLoop(GameHost host)
             _panel.Tiers.ApplySavedPreset();
         }
         if (host.GameOptions.BenchmarkBaseline) _panel?.Tiers.ApplyBenchmarkBaseline();
+        if (host.GameOptions.Benchmark is { } tier) ApplyBenchmarkTier(tier);
+    }
+
+    /// <summary>
+    /// <c>--benchmark</c>'s tier over the default settings, and the hash of what it set for result.json; without the settings panel the run
+    /// cannot set it and quits.
+    /// </summary>
+    void ApplyBenchmarkTier(int tier)
+    {
+        if (_panel is null)
+        {
+            Console.Error.WriteLine("--benchmark: no settings panel to set the tier with; the run stops");
+            _quit = true;
+            return;
+        }
+
+        _panel.Tiers.ApplyBenchmarkTier(tier);
+        var settings = _panel.Sliders.Select(s => (s.Label, s.Get().ToString("R", CultureInfo.InvariantCulture)))
+            .Concat(_panel.Toggles.Select(t => (SwitchKey(t.Label), t.Get() ? "on" : "off")));
+        host.PlayBench.Applied = BenchmarkSpec.AppliedHash(settings);
     }
 
     #endregion
@@ -762,7 +808,7 @@ sealed class GameLoop(GameHost host)
         // Panning (or leaving for the free camera) lets go of the character the camera follows; turning and zooming keep it.
         if (actions.Held(InputAction.MoveForward) || actions.Held(InputAction.MoveBack) || actions.Held(InputAction.MoveLeft)
             || actions.Held(InputAction.MoveRight) || actions.Pressed(InputAction.ToggleFreeCamera)) host.Player.Follow = null;
-        if (actions.Pressed(InputAction.ToggleSettings) && _panel is not null) _panel.Visible = !_panel.Visible;
+        if (actions.Pressed(InputAction.ToggleSettings) && _panel is not null) _panel.Toggle();
         if (actions.Pressed(InputAction.Screenshot)) host.ScreenshotRequested = true;
         // the foliage triangles are read from its GPU cull while shown
         if (actions.Pressed(InputAction.ToggleStats))
@@ -808,7 +854,20 @@ sealed class GameLoop(GameHost host)
     /// </summary>
     void ToggleFullScreen()
     {
-        if (_window is not null) BorderlessFullScreen.Toggle(_window, _display.Monitor);
+        if (_window is not null) BorderlessFullScreen.Toggle(_window, ChosenMonitor());
+    }
+
+    /// <summary>
+    /// The monitor asked for (1-based): <c>--monitor</c> for its run, else the Monitor setting; null: automatic (<see cref="UserConfig.Monitor"/>).
+    /// </summary>
+    int? ChosenMonitor() => _display.Monitor ?? (host.Config.Monitor > 0 ? host.Config.Monitor : null);
+
+    /// <summary>
+    /// Moves a full-screen window to the monitor the Monitor setting now names.
+    /// </summary>
+    void MonitorChanged()
+    {
+        if (_window is not null) BorderlessFullScreen.MoveTo(_window, ChosenMonitor());
     }
 
     /// <summary>
@@ -835,6 +894,11 @@ sealed class GameLoop(GameHost host)
         || keyboard.IsKeyPressed(SilkKey.ControlRight);
 
     /// <summary>
+    /// Whether an Alt key is held.
+    /// </summary>
+    static bool AltDown(Silk.NET.Input.IKeyboard keyboard) => keyboard.IsKeyPressed(SilkKey.AltLeft) || keyboard.IsKeyPressed(SilkKey.AltRight);
+
+    /// <summary>
     /// The key a modal window takes: the keypad's Enter as Enter.
     /// </summary>
     static EngineKey? ModalKeyOf(SilkKey k) => k == SilkKey.KeypadEnter ? EngineKey.Enter : KeyMap.Map(k);
@@ -844,7 +908,7 @@ sealed class GameLoop(GameHost host)
     /// <summary>
     /// Whether a text field takes the keys (the settings panel, the debug menu's field, the dev console, an edited UI field).
     /// </summary>
-    bool TextFieldFocused() => _panel?.Visible == true || host.DebugMenu.DebugMenuOpen && host.DebugMenu.DebugMenuTakesText
+    bool TextFieldFocused() => _panel?.Modal == true || host.DebugMenu.DebugMenuOpen && host.DebugMenu.DebugMenuTakesText
         || host.DevConsoleHost.ConsoleOpen || host.Player.UiEditing;
 
     /// <summary>
@@ -904,7 +968,7 @@ sealed class GameLoop(GameHost host)
     {
         if (host.Covered) return;
         if (host.DevConsoleHost.ConsoleOpen) host.DevConsoleHost.DevConsole.Type(value);
-        else if (_panel?.Visible == true) _panel.TextInput(value);
+        else if (_panel?.Modal == true) _panel.TextInput(value);
         else if (host.Sandbox.SandboxPicker is { Open: true }) host.Sandbox.SandboxPicker.TextInput(value);
         else if (host.DebugMenu.DebugMenuOpen && host.DebugMenu.DebugMenuTakesText) host.DebugMenu.DebugMenuText(value);
         else if (_photo.TextInput(value)) { }   // a preset's name being typed
@@ -932,7 +996,7 @@ sealed class GameLoop(GameHost host)
             host.Loading?.SkipSplash();
             return;
         }
-        if (ModalKey(keyboard, k) || PhotoKey(k) || InterfaceKey(keyboard, k)) return;
+        if (ModalKey(keyboard, k) || ChordKey(keyboard, k) || PhotoKey(k) || InterfaceKey(keyboard, k)) return;
         if (KeyMap.Map(k) is { } uiKey && host.Player.UiKey(uiKey, CtrlDown(keyboard), _shiftDown)) return;
         GameKey(keyboard, k);
     }
@@ -956,12 +1020,12 @@ sealed class GameLoop(GameHost host)
             return true;
         }
         host.Player.UiVisible = PanelLive() && !host.GameOptions.NoPopulation;
-        if (_panel?.Visible == true)
+        if (_panel?.Modal == true)
         {
             if (ModalKeyOf(k) is { } settingsKey)
             {
                 if (settingsKey is EngineKey.F8 or EngineKey.PrintScreen) host.ScreenshotRequested = true;
-                else _panel.KeyDown(settingsKey, _shiftDown, CtrlDown(keyboard));
+                else _panel.KeyDown(settingsKey, _shiftDown, CtrlDown(keyboard), AltDown(keyboard));
             }
             return true;
         }
@@ -998,6 +1062,22 @@ sealed class GameLoop(GameHost host)
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// A key that goes down with modifiers held as a code mod's chord (<see cref="InputBindings.TakeChord"/>, docs/modding.md "Key actions"): it
+    /// reaches that key action only, before photo mode, the interface and the game's bindings. Not while a text field has the keys, over the
+    /// title or in photo mode.
+    /// </summary>
+    bool ChordKey(Silk.NET.Input.IKeyboard keyboard, SilkKey k)
+    {
+        if (host.Player.UiEditing || host.Player.TitleOpen || _photo.Active || KeyMap.Map(k) is not { } key) return false;
+
+        var held = InputBindings.Modifiers(CtrlDown(keyboard), _shiftDown, AltDown(keyboard));
+        if (!host.Session.Bindings.TakeChord(key, held)) return false;
+
+        host.Session.Input.SetKey(key, true);
+        return true;
     }
 
     /// <summary>
@@ -1094,8 +1174,8 @@ sealed class GameLoop(GameHost host)
         bool hotkey = !host.Duel.IsDuel && !ctrl && !_cinema.EditorVisible && KeyMap.Map(k) is { } gameKey
             && (host.Player.GameHotkeys.IsHotkey(gameKey) || host.Player.Build.OwnsBuildNumpad(gameKey));
         if (!hotkey && Enum.TryParse(k.ToString(), out CinemaKey cinemaKey) && _cinema.OnKey(cinemaKey, ctrl, _shiftDown)) return;
-        // F9 is the game's quickload; the fps counter is on Ctrl+F9 (a modifier, so the key never reaches the input bindings).
-        if (k == SilkKey.F9 && ctrl)
+        // Consume the modified F9 before the quickload binding. Keep Ctrl+F9 where the desktop passes it through.
+        if (k == SilkKey.F9 && (_shiftDown || ctrl))
         {
             host.DebugMenu.FpsVisible = !host.DebugMenu.FpsVisible;
             return;
@@ -1296,7 +1376,7 @@ sealed class GameLoop(GameHost host)
         }
 
         bool cinemaDrag = _cinema.MouseUp();
-        if (!host.Covered && !cinemaDrag && !_panelDrag && !_profilerClick && !_debugMenuClick && _panel?.Visible != true && physical is { } released)
+        if (!host.Covered && !cinemaDrag && !_panelDrag && !_profilerClick && !_debugMenuClick && _panel?.Modal != true && physical is { } released)
             host.Player.MouseUp(host.PlayerButton(released), at, _shiftDown);
         _profilerClick = false;
         _debugMenuClick = false;
@@ -1473,7 +1553,7 @@ sealed class GameLoop(GameHost host)
     void AdvanceWorld(double frameDt)
     {
         long a0 = Stopwatch.GetTimestamp();
-        if (_panel?.Visible == true)
+        if (_panel?.Modal == true)
         {
             foreach (var key in Enum.GetValues<EngineKey>()) host.Session.Input.SetKey(key, false);
             foreach (var button in Enum.GetValues<EngineButton>()) host.Session.Input.SetMouseButton(button, false);
@@ -1481,7 +1561,7 @@ sealed class GameLoop(GameHost host)
         }
         // Edge scrolling (the game's default): the pointer at the edge of the window pans the camera, unless something else has the pointer.
         host.Session.Camera.Settings.EdgeScroll = host.Config.EdgeScroll != false;
-        bool edgeOff = host.Covered || host.TitleScreen.TitleVisible || _panel?.Visible == true || host.AgentChannel.InterfaceHidden
+        bool edgeOff = host.Covered || host.TitleScreen.TitleVisible || _panel?.Modal == true || host.AgentChannel.InterfaceHidden
             || _cinemaHolds || _cinema.EditorVisible;
         host.Session.Camera.Strategy.EdgePointer = edgeOff ? null : _window is null ? null : WindowPointer.InWindow(_window);
         host.UpdateCameraLeash(_cinemaHolds || _tour.Active);
@@ -1629,7 +1709,7 @@ sealed class GameLoop(GameHost host)
         bool highlighting = Highlight(takeFile);
         bool pointerWorld = (pointerMouse is not null || _headless && host.DevConsoleHost.HeadlessMouse is not null) && !host.Covered
             && !host.GameOptions.NoPopulation
-            && !(PanelLive() && _panel?.Visible == true) && !_cinema.Contains(pointerAt);
+            && !(PanelLive() && _panel?.Contains(pointerAt) == true) && !_cinema.Contains(pointerAt);
         // Photo mode flies the free camera too, but its panel is worked with the pointer: hidden only while the view is turned or the panel is.
         bool freeLook = pointerWorld && host.Session.Camera.IsFree && !host.Player.ModalOpen
             && (!_photo.Active || !_photo.PanelShown || host.OrbitHeld());
@@ -1678,7 +1758,7 @@ sealed class GameLoop(GameHost host)
     bool Highlight(string? takeFile)
     {
         bool highlighting = _highlightHeld && _windowFocused && !host.Covered && !host.Session.Camera.IsFree &&
-            _panel?.Visible != true && !host.AgentChannel.InterfaceHidden && !_cinema.Clean && !_cinemaHolds && !_cinema.EditorVisible;
+            _panel?.Modal != true && !host.AgentChannel.InterfaceHidden && !_cinema.Clean && !_cinemaHolds && !_cinema.EditorVisible;
         if (host.Gpu.Objects is { } signObjects) signObjects.HighlightSigns = highlighting;
         host.Player.GroundItemPicks.HighlightFocus = highlighting && !host.ScreenshotRequested && takeFile is null ? host.Camera.Target : null;
         return highlighting;
@@ -1902,7 +1982,7 @@ sealed class GameLoop(GameHost host)
     {
         if (ui && _overlay is not null && !host.GameOptions.NoPopulation) host.DrawMarkers(_overlay, size.X, size.Y);
         StageClock.UiPart(StageClock.UiMarkers);
-        if (!host.GameOptions.NoPopulation && !covered && _panel?.Visible != true) host.Player.Steer();
+        if (!host.GameOptions.NoPopulation && !covered && _panel?.Modal != true) host.Player.Steer();
         StageClock.UiPart(StageClock.UiSteer);
 
         // The world draws the marker, so it fades with the interface hidden (F7) too.

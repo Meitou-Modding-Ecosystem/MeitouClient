@@ -156,6 +156,7 @@ public sealed class WorldSession : IDisposable
         next.PrisonPoseFix = World.PrisonPoseFix;
         next.CagedAnimalFix = World.CagedAnimalFix;
         next.BagSearchFix = World.BagSearchFix;
+        next.PickUpTheftFix = World.PickUpTheftFix;
         next.CounterTalk = World.CounterTalk;
         next.AnimalTargetFix = World.AnimalTargetFix;
         next.TakeIntoBackpack = World.TakeIntoBackpack;

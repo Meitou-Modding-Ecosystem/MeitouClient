@@ -257,6 +257,18 @@ public sealed class CaptiveJob
     /// The ground item a fetch picks up (-1: none).
     /// </summary>
     internal int Item { get; init; } = -1;
+    /// <summary>
+    /// An order's job (<see cref="CaptiveSystem"/>'s 220 order), not a goal's: it runs while the order is the worker's queue front.
+    /// </summary>
+    internal bool Ordered { get; init; }
+    /// <summary>
+    /// An order's own reach (<see cref="Player.OrderEntry.Reach"/>) in place of <see cref="CaptiveSettings.Reach"/>; null: the settings'.
+    /// </summary>
+    internal float? Reach { get; init; }
+    /// <summary>
+    /// The provenance of the job's walks: an order's job walks as its order, a goal's as its goal.
+    /// </summary>
+    internal TaskSource Source => Ordered ? TaskSource.Order : TaskSource.Goal;
 
     /// <summary>
     /// Hashes the job's state.
@@ -277,6 +289,8 @@ public sealed class CaptiveJob
         h.Add(Blows);
         h.Add(NextBark);
         if (Beats != 0) h.Add(Beats);
+        if (Ordered) h.Add(0x4F726472);
+        if (Reach is { } reach) h.Add(reach);
     }
 }
 
@@ -378,6 +392,16 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     CaptiveGoals? _goalsOfChooser;
 
     /// <summary>
+    /// The order owner of 220 Eat target alive (<see cref="OrderOwner"/>), made on first use.
+    /// </summary>
+    CaptiveOrders? _orders;
+
+    /// <summary>
+    /// The owner of the order 220 Eat target alive (docs/modding.md "Ordering characters"), made on first use.
+    /// </summary>
+    internal CaptiveOrders OrderOwner => _orders ??= new CaptiveOrders(this);
+
+    /// <summary>
     /// The captive goals (<see cref="_goalsOfChooser"/>), made on first use.
     /// </summary>
     internal CaptiveGoals Goals => _goalsOfChooser ??= new CaptiveGoals(this, data);
@@ -455,7 +479,14 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         {
             var j = _jobs[k];
             int w = table.TryResolveNext(j.Worker, out int at) ? at : -1;
-            if (w < 0 || _duties?.Runs(world, w, j.Goal) != true || Step(world, j))
+            if (j.Ordered && (w < 0 || !OrderOwner.Holds(world, w, j)))
+            {
+                _jobs.RemoveAt(k);
+                End(world, j, CaptiveEventKind.GaveUp);
+                continue;
+            }
+
+            if (w < 0 || !j.Ordered && _duties?.Runs(world, w, j.Goal) != true || Step(world, j))
             {
                 k++;
                 continue;
@@ -472,6 +503,13 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     /// </summary>
     void Finish(World world, int w, CaptiveJob j)
     {
+        if (j.Ordered)
+        {
+            TaskStart.Stand(world.Characters, w);
+            Goals.LookAt(world, w);
+            return;
+        }
+
         if (j.LostWalk) _duties!.LostWalk(world, w, j.Goal, j.LostKey);
         else _duties!.Done(world, w, j.Goal);
 
@@ -503,7 +541,7 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     /// </summary>
     internal static void WalkFor(World world, CaptiveJob j, int w, Vector2 to, byte mode)
     {
-        TaskStart.Walk(world, w, to, mode, RowOf(j.Kind), TaskSource.Goal);
+        TaskStart.Walk(world, w, to, mode, RowOf(j.Kind), j.Source);
         j.Walks++;
     }
 
@@ -630,6 +668,12 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
             if (j.Cage == cage) return true;
         return false;
     }
+
+    /// <summary>
+    /// The distance from its target within which the job starts its work (at a cage, past the cage's <c>use range</c>): its order's own
+    /// (<see cref="CaptiveJob.Reach"/>), else <see cref="CaptiveSettings.Reach"/>.
+    /// </summary>
+    float ReachOf(CaptiveJob j) => j.Reach ?? Settings.Reach;
 
     /// <summary>
     /// Whether the worker walks the job's own walk: a GoTo whose running row is the job's (<see cref="RowOf"/>). A walk it was on when the job
@@ -1274,17 +1318,22 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     }
 
     /// <summary>
-    /// The walk to the cage: within its <c>use range</c> + <see cref="CaptiveSettings.Reach"/> it has arrived, or when a walk ended within
-    /// <see cref="CaptiveSettings.Slack"/>; a walk that ended farther counts against <see cref="CaptiveSettings.Walks"/>. Its own faction's shut
-    /// doors on the way are unlocked first (the lock rounds' "keys", engine choice). False: give up.
+    /// The walk to the cage, onto its floor (<see cref="MovementSystem.GoToFloor"/>): within its <c>use range</c> + the job's reach
+    /// (<see cref="ReachOf"/>) it has arrived, or when a walk ended within <see cref="CaptiveSettings.Slack"/>; a walk that ended farther counts
+    /// against <see cref="CaptiveSettings.Walks"/>. Either way only on the cage's level: the rows these jobs plan reach a cage through
+    /// <c>isAtLocation</c>, which for a building is <c>AI::isWithinChoppingRange</c> (<c>FUN_14059c6d0</c>, <b>Verified</b>: the flat distance
+    /// and the same floor, <see cref="FixtureRegistry.WorkHeight"/> here), so one standing under a cage on an upper storey is not at it, and 107
+    /// <c>Task_UseCage</c>'s start (<c>FUN_140358040</c>) puts it into the cage wherever it stands. Its own faction's shut doors on the way are
+    /// unlocked first (the lock rounds' "keys", engine choice). False: give up.
     /// </summary>
     bool Walk(World world, CaptiveJob j, int w, Fixture cage, out bool arrived)
     {
         var table = world.Characters;
         ref var n = ref table.Next[w];
         float d = Vector2.Distance(new Vector2(n.Position.X, n.Position.Z), new Vector2(cage.Position.X, cage.Position.Z));
+        bool level = MathF.Abs(n.Position.Y - cage.Position.Y) < FixtureRegistry.WorkHeight;
         bool walking = WalksOwn(table, w, j);
-        arrived = d <= cage.UseRange + Settings.Reach || !walking && j.Walks > 0 && d <= Settings.Slack;
+        arrived = level && (d <= cage.UseRange + ReachOf(j) || !walking && j.Walks > 0 && d <= Settings.Slack);
         if (arrived || walking) return true;
         if (Lost(j, new IgnoreKey(cage.Id, default))) return false;
         if (++j.Walks > Settings.Walks)
@@ -1296,7 +1345,7 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         if (world.Fixtures.IsShut(cage.Building) && world.Fixtures.DoorOwner(cage.Building) == j.Faction)
             world.Fixtures.SetDoorsLocked(cage.Building, false);
 
-        TaskStart.Walk(world, w, new Vector2(cage.Position.X, cage.Position.Z), SpeedMode.Walk, RowOf(j.Kind), TaskSource.Goal);
+        TaskStart.Walk(world, w, cage.Position, SpeedMode.Walk, RowOf(j.Kind), j.Source);   // onto its floor: a flat goal ends under an upper cage
         return true;
     }
 
@@ -1422,12 +1471,12 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         if (j.Phase == CaptivePhase.Walk)
         {
             bool walking = WalksOwn(table, w, j);
-            if (d > Settings.Reach && !(!walking && j.Walks > 0 && d <= Settings.Slack))
+            if (d > ReachOf(j) && !(!walking && j.Walks > 0 && d <= Settings.Slack))
             {
                 if (walking) return true;
                 if (Lost(j, IgnoreKey.Of(j.Captive)) || ++j.Walks > Settings.Walks)
                     return End(world, j, CaptiveEventKind.GaveUp);
-                TaskStart.Walk(world, w, new Vector2(body.X, body.Z), SpeedMode.Run, RowOf(j.Kind), TaskSource.Goal);
+                TaskStart.Walk(world, w, new Vector2(body.X, body.Z), SpeedMode.Run, RowOf(j.Kind), j.Source);
                 return true;
             }
 
@@ -1613,13 +1662,15 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         // Each bite also sets playerWantsMeToGetUp (Character +0xec, FUN_140650370, Verified): a victim lying on, playing dead, gets up (staying low
         // when sneaking, docs/game/ragdolls.md "Staying low").
         if (medical.PlayingDead) medical.StandUp(Orders.Has(cc, CharacterOrders.Sneak));
+        HealthObservers.Before(world, c);
         bool eaten = medical.BeingEaten(rate, dt, ctx, data.BodyOptions.Dismemberment != Dismemberment.Never, events, vampiric);
+        HealthObservers.After(world, c, HealthChangeKind.Eaten);
         ApplyBodyEvents(world, j.Captive, c, medical, events, limbDrops: false);
         if (!wasDead) DeathObservers.Report(world, c, j.Worker, DeathSite.Eaten);   // the eater's bite killed it
 
         // "{1} has been eaten alive." for the player's own (FUN_140856bc0: of the player's faction, or of a squad that is).
         if (eaten && (cc.IsPlayer || world.Player.Faction >= 0 && cc.Faction == world.Player.Faction))
-            world.Post(Loc.Tr("{1} has been eaten alive.", cc.Name));
+            world.Post(Loc.Tr("{1} has been eaten alive.", world.ShownName(cc)));
 
         return wasDead ? eaten : medical.Dead;
     }

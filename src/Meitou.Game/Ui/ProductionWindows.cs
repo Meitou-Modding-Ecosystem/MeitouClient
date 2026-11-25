@@ -22,8 +22,8 @@ namespace Meitou.Game.Ui;
 /// (<see cref="PutInMachine"/>, <see cref="TakeFromMachine"/>).</item>
 /// <item>The site menu has Operate for a machine characters work; a quick right click on one gives it.</item>
 /// <item>The overview's research tab: TYPES lists the categories, BLUEPRINTS the research of the selected category that can be queued (a click queues
-/// it), QUEUE the queue (a click takes one off), DESCRIPTION the hovered or last clicked research. The original's row widgets and colours are
-/// <b>Unknown</b>; Meitou draws plain text rows.</item>
+/// it), QUEUE the queue (each row the original's list item, <see cref="QueueRow"/>: its X removes it, a drag reorders), DESCRIPTION the hovered or
+/// last clicked research.</item>
 /// </list>
 /// </summary>
 sealed class ProductionWindows(PlayerInterface player)
@@ -76,11 +76,6 @@ sealed class ProductionWindows(PlayerInterface player)
     Vector2? _standaloneMachineOffset;
 
     /// <summary>
-    /// The research tab's selected category, and the blueprint whose description shows.
-    /// </summary>
-    internal string? ResearchCategory, ResearchFocus;
-
-    /// <summary>
     /// The machine at site <paramref name="site"/> in the snapshot; null for none.
     /// </summary>
     internal MachineSnapshot? Machine(string? site) =>
@@ -99,6 +94,12 @@ sealed class ProductionWindows(PlayerInterface player)
     /// Whether <paramref name="screen"/> is a machine window (<see cref="MachineScreens"/>).
     /// </summary>
     internal static bool IsMachineScreen(string screen) => MachineScreens.Contains(screen);
+
+    /// <summary>
+    /// The tooltip of a machine's item at <paramref name="site"/>, naming it by its site and index for the mods' tooltip lines.
+    /// </summary>
+    static TooltipRuntime.ItemTip MachineTip(InventoryItemView item, string site) =>
+        TooltipRuntime.ItemTip.Of(item) with { Owner = ItemOwner.AtSite(site), Index = item.Index };
 
     /// <summary>
     /// The kind of a machine screen (building, bench or storage), the selected building's own window's as the shown one's; any other screen as is.
@@ -425,7 +426,7 @@ sealed class ProductionWindows(PlayerInterface player)
     /// </summary>
     string MachineCaption(string id, MachineSnapshot? m)
     {
-        if (m is { IsContainer: true }) return player.Build.Services?.ItemName(m.Record) ?? "CONTAINER";
+        if (m is { IsContainer: true }) return player.Build.Services?.ShownName(m.Record) ?? "CONTAINER";
 
         string? name = id.EndsWith(OwnSuffix, StringComparison.Ordinal) ? player.BuildingSelection.Selected?.Name : _shownName;
         return name ?? player.BuildingSelection.Selected?.Name ?? "BUILDING";
@@ -712,7 +713,7 @@ sealed class ProductionWindows(PlayerInterface player)
             player.ItemCells.AddItemCell(controls, $"machine-item-{item.Index}",
                 new(area.X + item.X * area.Width / grid.Width, area.Y + item.Y * area.Height / grid.Height, item.Width * area.Width / grid.Width,
                     item.Height * area.Height / grid.Height),
-                item.Record, item.Material, item.Name, item.Quantity, TooltipRuntime.ItemTip.Of(item), "MachineItem", 1000 + item.Index,
+                item.Record, item.Material, item.Name, item.Quantity, MachineTip(item, m.Site), "MachineItem", 1000 + item.Index,
                 slot.Bounds.Intersect(slot.Clip ?? slot.Bounds), charge: item.Charge, colour: item.Colour, rotated: item.Rotated);
         }
     }
@@ -798,7 +799,7 @@ sealed class ProductionWindows(PlayerInterface player)
                 player.ItemCells.AddItemCell(controls, $"machine-item-{item.Index}",
                     new(g.Bounds.X + item.X * player.InventoryCell, g.Bounds.Y + item.Y * player.InventoryCellHeight, item.Width * player.InventoryCell,
                         item.Height * player.InventoryCellHeight),
-                    item.Record, item.Material, item.Name, item.Quantity, TooltipRuntime.ItemTip.Of(item), "MachineItem", 1000 + item.Index,
+                    item.Record, item.Material, item.Name, item.Quantity, MachineTip(item, m.Site), "MachineItem", 1000 + item.Index,
                     g.Clip, charge: item.Charge, colour: item.Colour, rotated: item.Rotated);
             }
         }
@@ -868,8 +869,8 @@ sealed class ProductionWindows(PlayerInterface player)
     internal void AddMachineVerb(List<(string Caption, Action Give)> verbs, Simulation.Construction.BuildingSnapshot site,
         IReadOnlyList<CharacterId> selection)
     {
-        // An automatic machine: Auto-Haul (152) in place of Use; with Shift the 152 job (its companion 124 follows), else a one-shot haul round (the
-        // operator only hauls there).
+        // An automatic machine: Auto-Haul (152) in place of Use; with Shift the 152 job (its companion 124 follows), else the 152 order, which leaves
+        // once the output holds nothing a storage takes.
         if (site.Complete && Machine(site.Id) is { Operable: true, IsAutomatic: true })
         {
             verbs.Add(("Auto-Haul", () => player.Say(player.SlowModifier
@@ -1324,7 +1325,111 @@ sealed class ProductionWindows(PlayerInterface player)
         return pw.Kind == PowerKind.Generator && !pw.Fueled ? ("Out of fuel", true) : null;
     }
 
-    // ---- the overview's research tab (docs/game/ui-screens.md "Research tab") ----
+    #region Research tab
+
+    /// <summary>
+    /// The queue row's "X" action followed by the research id.
+    /// </summary>
+    const string ResearchCancelAction = "research-cancel:";
+
+    /// <summary>
+    /// The action a queue row carries: its research, for the tooltip; a click on it does nothing (the original's row only reorders by dragging).
+    /// </summary>
+    const string ResearchQueuedAction = "research-queued:";
+
+    /// <summary>
+    /// A pressed queue entry, its starting point and whether it has crossed the drag threshold.
+    /// </summary>
+    (string Id, Vector2 Start, bool Dragging)? _researchPress;
+
+    /// <summary>
+    /// The research tab's selected category, and the blueprint whose description shows.
+    /// </summary>
+    internal string? ResearchCategory, ResearchFocus;
+
+    /// <summary>
+    /// The description's caption for each <see cref="Meitou.Data.Gameplay.Construction.ResearchData.UnlockFields"/> field (<c>FUN_140495e00</c>).
+    /// </summary>
+    static readonly Dictionary<string, string> UnlockCaptions = new(StringComparer.Ordinal)
+    {
+        ["enable buildings"] = "New Building:",
+        ["enable weapon type"] = "New Weapon Class:",
+        ["enable weapon model"] = "New Weapons Grade:",
+        ["enable armour"] = "New Armour Type:",
+        ["enable item"] = "New Items:",
+        ["enable crossbow"] = "New Crossbows:",
+        ["enable backpack"] = "New Backpacks:",
+        ["enable robotics"] = "New Robot Limbs:",
+    };
+
+    /// <summary>
+    /// How far the blueprint rows are scrolled, their pitch and the panel they scroll in (the DatapanelGUI's own ScrollView in the original).
+    /// </summary>
+    float _researchScroll, _researchStep;
+
+    /// <summary>
+    /// The panel the blueprint rows scroll in.
+    /// </summary>
+    UiRect _researchArea;
+
+    /// <summary>
+    /// Whether a queue row owns the pointer until release.
+    /// </summary>
+    internal bool ResearchCapturesPointer => _researchPress is not null;
+
+    /// <summary>
+    /// Takes a left press on a queued project's row, for a drag that reorders the queue.
+    /// </summary>
+    internal bool ResearchPointerDown(string screen, UiControl row, Vector2 p)
+    {
+        if (screen != OverviewScreen || QueuedResearchId(row) is not { } id) return false;
+
+        _researchPress = (id, p, false);
+        return true;
+    }
+
+    /// <summary>
+    /// Remembers that the pointer crossed the drag threshold, even if it returns to the pressed row.
+    /// </summary>
+    internal void ResearchPointerMove(Vector2 p)
+    {
+        if (_researchPress is { Dragging: false } press && Vector2.Distance(press.Start, p) >= PlayerInterface.DragThreshold)
+            _researchPress = (press.Id, press.Start, true);
+    }
+
+    /// <summary>
+    /// A drag onto another project changes the queue order; a click on a row does nothing, its "X" takes it off the queue.
+    /// </summary>
+    internal void ResearchPointerUp(Vector2 p, bool cancelled)
+    {
+        ResearchPointerMove(p);
+        var pressed = _researchPress;
+        _researchPress = null;
+        if (cancelled || pressed is not { } press || !player.UiVisible) return;
+
+        player.ArrangeUi();
+        if (QueuedResearchAt(p) is not { } target) return;
+
+        long tick = player.Session.World.Tick;
+        if (press.Dragging && target != press.Id) player.Say(new MoveResearch(press.Id, target) { Tick = tick });
+    }
+
+    /// <summary>
+    /// The research id of the visible queue row under the pointer.
+    /// </summary>
+    string? QueuedResearchAt(Vector2 p)
+    {
+        var screens = player.FaithfulScreens;
+        if (!screens.IsOpen(OverviewScreen) || screens.GetTab(OverviewScreen, "TabsMain") != TutorialPanel.ResearchTab) return null;
+
+        return screens.HitTest(p) is { Screen: OverviewScreen, Control: { Enabled: true } row } ? QueuedResearchId(row) : null;
+    }
+
+    /// <summary>
+    /// The id a queue row carries (not its "X", whose click cancels).
+    /// </summary>
+    static string? QueuedResearchId(UiControl row) =>
+        row.Action.StartsWith(ResearchQueuedAction, StringComparison.Ordinal) ? row.Action[ResearchQueuedAction.Length..] : null;
 
     /// <summary>
     /// The overview's research tab bindings: the categories, the no-bench message and the title with the bench level and rate.
@@ -1366,8 +1471,50 @@ sealed class ProductionWindows(PlayerInterface player)
             ResearchFocus = e.Action[15..];
             player.Say(new QueueResearch(ResearchFocus) { Tick = player.Session.World.Tick });
         }
-        else if (e.Action.StartsWith("research-cancel:", StringComparison.Ordinal))
-            player.Say(new CancelResearch(e.Action[16..]) { Tick = player.Session.World.Tick });
+        else if (e.Action.StartsWith(ResearchCancelAction, StringComparison.Ordinal))
+            player.Say(new CancelResearch(e.Action[ResearchCancelAction.Length..]) { Tick = player.Session.World.Tick });
+    }
+
+    /// <summary>
+    /// One queued entry as the original's <c>ReorderableListItem</c> draws it (<c>Kenshi_ItemListItem.layout</c>, the research queue's update
+    /// <c>FUN_1404bbfe0</c>, the craft queue's <c>FUN_1402cc960</c>, <b>Verified</b> by decompile): the row's frame over 0.9 of the cell, its name from the
+    /// left, its <paramref name="value"/> right-aligned (a research's time left, empty for a craft), the name cut short of it, a
+    /// <c>Kenshi_LifeBarSkin</c> bar of the share done times the value's width, and the red "X" (<c>RemoveButton</c>) that takes it off the queue.
+    /// The row carries <paramref name="rowAction"/> (a research's, for its tooltip and drags). The bar goes under the texts, as on the blueprint
+    /// lines (engine choice: the layout lists it last).
+    /// </summary>
+    void QueueRow(List<UiControl> controls, string key, UiRect cell, UiRect clip, string rowAction, string cancelAction, string name, string value,
+        float progress)
+    {
+        var none = new Dictionary<string, string>();
+        float h = cell.Height * 0.9375f, w = cell.Width;
+        var text = new UiRect(cell.X + 0.015f * w, cell.Y, 0.86f * w, h);
+        float valueWidth = value.Length == 0 ? 0
+            : player.UiPainter?.MeasureText("Kenshi_StandardFont", value, player.Height, 0, player.StandardPixels).Width ?? 0;
+        var nameRect = text with { Width = MathF.Max(0, text.Width - valueWidth) };
+
+        controls.Add(new(key, "Button", new(cell.X, cell.Y, 0.9f * w, h), "", rowAction, "Kenshi_Button1Skin", true, none, Vector4.Zero,
+            Pickable: true, Clip: clip));
+        controls.Add(new($"{key}-bar", "Widget", new(text.X, cell.Y + 0.216667f * h, Math.Clamp(progress, 0, 1) * text.Width, 0.5f * h), "", "",
+            "Kenshi_LifeBarSkin", true, none, Vector4.Zero, Pickable: false, Clip: clip));
+        controls.Add(new($"{key}-name", "TextBox", nameRect, name, "", "Kenshi_TextboxStandardText", true,
+            new Dictionary<string, string> { ["TextAlign"] = "Left VCenter" }, Vector4.Zero, TextColour: new(0.719298f, 0.656202f, 0.656202f, 1),
+            Pickable: false, Clip: Within(clip, nameRect)));
+        controls.Add(new($"{key}-x", "Button", new(cell.X + 0.9f * w, cell.Y, 0.1f * w, h), "X", cancelAction, "Kenshi_Button1Skin", true, none,
+            Vector4.Zero, TextColour: new(0.8f, 0.266f, 0.266f, 1), Pickable: true, Clip: clip));
+        controls.Add(new($"{key}-time", "TextBox", text, value, "", "Kenshi_TextboxStandardText", true,
+            new Dictionary<string, string> { ["TextAlign"] = "Right VCenter" }, Vector4.Zero, TextColour: new(0.71345f, 0.688417f, 0.688417f, 1),
+            Pickable: false, Clip: clip));
+    }
+
+    /// <summary>
+    /// The part of <paramref name="a"/> inside <paramref name="b"/> (empty when they do not meet).
+    /// </summary>
+    static UiRect Within(UiRect a, UiRect b)
+    {
+        float x = MathF.Max(a.X, b.X), y = MathF.Max(a.Y, b.Y);
+        float right = MathF.Min(a.X + a.Width, b.X + b.Width), bottom = MathF.Min(a.Y + a.Height, b.Y + b.Height);
+        return new UiRect(x, y, MathF.Max(0, right - x), MathF.Max(0, bottom - y));
     }
 
     /// <summary>
@@ -1382,21 +1529,6 @@ sealed class ProductionWindows(PlayerInterface player)
         string text = (left < 1 ? "<" : "") + Loc.Tr(whole == 1 ? "{1,num} hr" : "{1,num} hrs", whole);
         return rateNote && rate == 0 ? text + " " + Loc.Tr("(at 1x rate)") : text;
     }
-
-    /// <summary>
-    /// The description's caption for each <see cref="Meitou.Data.Gameplay.Construction.ResearchData.UnlockFields"/> field (<c>FUN_140495e00</c>).
-    /// </summary>
-    static readonly Dictionary<string, string> UnlockCaptions = new(StringComparer.Ordinal)
-    {
-        ["enable buildings"] = "New Building:",
-        ["enable weapon type"] = "New Weapon Class:",
-        ["enable weapon model"] = "New Weapons Grade:",
-        ["enable armour"] = "New Armour Type:",
-        ["enable item"] = "New Items:",
-        ["enable crossbow"] = "New Crossbows:",
-        ["enable backpack"] = "New Backpacks:",
-        ["enable robotics"] = "New Robot Limbs:",
-    };
 
     /// <summary>
     /// The blueprint rows (<c>DataPanelLine_Research</c>, <c>FUN_1406f9220</c>): a <c>Kenshi_Button1</c> frame across 98 % of the panel, the name
@@ -1455,10 +1587,9 @@ sealed class ProductionWindows(PlayerInterface player)
             {
                 float top = view.Y + i * line - scroll;
                 if (top + line <= view.Y || top >= view.Y + view.Height) continue;   // out of the box: not drawn
-                var (qid, name, progress) = research.Queue[i];
-                controls.Add(new($"research-queue-{i}", "Button", new(view.X + 6, top, view.Width - 12, line),
-                    $"{name}  {(int)(progress * 100)}%", "research-cancel:" + qid, "", true, face, Vector4.Zero,
-                    TextColour: i == 0 ? new(0.66f, 0.72f, 0.45f, 1) : ink, HoverColour: new(1, 0.4f, 0.3f, 1), Pickable: true, Clip: view));
+                var (qid, name, progress, hours) = research.Queue[i];
+                QueueRow(controls, $"research-queue-{i}", new UiRect(view.X, top, view.Width, line), view, ResearchQueuedAction + qid,
+                    ResearchCancelAction + qid, name, ResearchTime(hours, progress, research.Rate, false), progress);
             }
         }
         else ClearQueueScroll();
@@ -1490,16 +1621,6 @@ sealed class ProductionWindows(PlayerInterface player)
     /// </summary>
     bool IsHoveredResearchRow(UiControl c) => c.Name.StartsWith("research-row-", StringComparison.Ordinal) && c.Action.Length > 0
         && c.Bounds.Contains(player.Mouse.X, player.Mouse.Y) && c.Clip?.Contains(player.Mouse.X, player.Mouse.Y) != false;
-
-    /// <summary>
-    /// How far the blueprint rows are scrolled, their pitch and the panel they scroll in (the DatapanelGUI's own ScrollView in the original).
-    /// </summary>
-    float _researchScroll, _researchStep;
-
-    /// <summary>
-    /// The panel the blueprint rows scroll in.
-    /// </summary>
-    UiRect _researchArea;
 
     /// <summary>
     /// The wheel over the blueprint rows scrolls them a row per notch; clamped when the rows are laid out.
@@ -1570,10 +1691,12 @@ sealed class ProductionWindows(PlayerInterface player)
         return lines;
     }
 
+    #endregion
+
     // The overview's Craft tab (docs/game/ui-screens.md "Selected building", docs/game/buildings-production.md "Crafting"): STATIONS lists the
     // player's crafting benches, ITEMS what the selected one can craft (a click queues one; locked or too advanced rows are red and do nothing),
-    // QUEUE its queue (a click takes one off), Repeat Queue its repeat toggle, DESCRIPTION the hovered or last clicked craft's product
-    // (OptionDescription). The original's row widgets and colours are <b>Unknown</b>; Meitou draws plain text rows like the research tab.
+    // QUEUE its queue (the original's list items, QueueRow: the X takes one off), Repeat Queue its repeat toggle, DESCRIPTION the hovered or last
+    // clicked craft's product (OptionDescription).
     /// <summary>
     /// The Craft tab's index in the overview's tabs.
     /// </summary>
@@ -1618,7 +1741,7 @@ sealed class ProductionWindows(PlayerInterface player)
     /// A station's name: its site's, else its record.
     /// </summary>
     string StationName(MachineSnapshot m) =>
-        player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == m.Site) is { } site ? player.Build.SiteName(site) : m.Record;
+        player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == m.Site) is { } site ? player.Build.ShownSiteName(site) : m.Record;
 
     /// <summary>
     /// Opens the Craft tab on a bench (the building window's QUEUE... button).
@@ -1728,9 +1851,8 @@ sealed class ProductionWindows(PlayerInterface player)
                 float top = view.Y + i * line - scroll;
                 if (top + line <= view.Y || top >= view.Y + view.Height) continue;   // out of the box: not drawn
                 var (_, name, progress, _) = craft.Queue[i];
-                controls.Add(new($"craft-queue-{i}", "Button", new(view.X + 6, top, view.Width - 12, line),
-                    $"{name}  {(int)(progress * 100)}%", "craft-cancel:" + i.ToString(CultureInfo.InvariantCulture), "", true, face, Vector4.Zero,
-                    TextColour: i == 0 ? new(0.66f, 0.72f, 0.45f, 1) : ink, HoverColour: new(1, 0.4f, 0.3f, 1), Pickable: true, Clip: view));
+                QueueRow(controls, $"craft-queue-{i}", new UiRect(view.X, top, view.Width, line), view, "",
+                    "craft-cancel:" + i.ToString(CultureInfo.InvariantCulture), name, "", progress);
             }
         }
         else ClearQueueScroll();

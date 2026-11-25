@@ -84,7 +84,8 @@ sealed class BuildMode(PlayerInterface player)
     /// <summary>
     /// The ghost now: where the cursor meets the ground or a building's floor (On), its rotation (tilt included), the first failure.
     /// </summary>
-    internal (Vector3 Position, Quaternion Rotation, PlacementFailure Failure, BuildingBuildData Building, Vector2[]? Hull, GhostFloor? On)? Ghost;
+    internal (Vector3 Position, Quaternion Rotation, PlacementFailure Failure, BuildingBuildData Building, Vector2[]? Hull, GhostFloor? On,
+        string? Refusal)? Ghost;
     /// <summary>
     /// The build map's keys held down (the ghost's controls run while held).
     /// </summary>
@@ -113,7 +114,7 @@ sealed class BuildMode(PlayerInterface player)
     /// <summary>
     /// The wall line's pieces this frame, each with its own placement check and footprint.
     /// </summary>
-    internal readonly List<(WallPiece Piece, PlacementFailure Failure, Vector2[]? Hull)> WallPieces = [];
+    internal readonly List<(WallPiece Piece, PlacementFailure Failure, Vector2[]? Hull, string? Refusal)> WallPieces = [];
     /// <summary>
     /// The snap at the wall line's end, and the snap of the ghost before the first click.
     /// </summary>
@@ -302,6 +303,51 @@ sealed class BuildMode(PlayerInterface player)
         CurrentGroup() is { } group ? BuildMember is { } member && group.Members.Contains(member) ? member : group.Default : null;
 
     /// <summary>
+    /// The window's buildings for the mods (<see cref="Modding.ModInterface.BuildEntries"/>): each listed category, its groups, each group's members;
+    /// none while build mode is off.
+    /// </summary>
+    internal IReadOnlyList<Modding.UiBuildEntry> ModEntries()
+    {
+        if (!Active || Services is not { } services) return [];
+
+        var unlocked = Unlocked();
+        var list = new List<Modding.UiBuildEntry>();
+        foreach (var category in BuildCategories())
+        {
+            var groups = services.Menu.Groups(category, unlocked);
+            for (int g = 0; g < groups.Count; g++)
+            {
+                foreach (var member in groups[g].Members) list.Add(new(member.Id, member.Name, category, groups[g].Name, g));
+            }
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// The chosen building's id for the mods; null without one or while build mode is off.
+    /// </summary>
+    internal string? ModChoice => Active ? CurrentBuilding()?.Id : null;
+
+    /// <summary>
+    /// Chooses a listed building for a mod as clicks on its category, its group and its variant do; false while build mode is off or when the window
+    /// does not list it.
+    /// </summary>
+    internal bool ModChoose(string building)
+    {
+        if (ModEntries().FirstOrDefault(e => e.Building == building) is not { } entry) return false;
+        if (Services!.Menu.Groups(entry.Category, Unlocked())[entry.GroupIndex].Members.FirstOrDefault(m => m.Id == building) is not { } member)
+            return false;
+
+        _buildCategory = entry.Category;
+        BuildDiscarded = false;
+        _buildGroup = entry.GroupIndex;
+        BuildMember = member;
+        FollowChoiceInLists(category: true);
+        return true;
+    }
+
+    /// <summary>
     /// Steps the chosen group's member by <paramref name="step"/> (wrapping round), resetting the lift.
     /// </summary>
     void StepVariant(int step)
@@ -420,9 +466,9 @@ sealed class BuildMode(PlayerInterface player)
             PlaceGhost(host, building, ray, terrainHit);
         }
 
-        _buildMessage = Ghost is { Failure: not PlacementFailure.None } g ? PlacementCheck.Message(g.Failure)
+        _buildMessage = Ghost is { Failure: not PlacementFailure.None } g ? PlacementCheck.Message(g.Failure, g.Refusal)
             : WallPieces.FirstOrDefault(p => p.Failure != PlacementFailure.None) is { Piece.Data: not null } bad
-                ? PlacementCheck.Message(bad.Failure) : null;
+                ? PlacementCheck.Message(bad.Failure, bad.Refusal) : null;
         ShowGhosts();
     }
 
@@ -452,11 +498,12 @@ sealed class BuildMode(PlayerInterface player)
         query = SnapToWall(query) ?? SnapToTarget(host, query, hit, ray) ?? Settled(query);
         _ghostSnappedOn = query.SnappedOn;
 
+        string? refusal = null;
         var failure = player.LevelEditorPanel.LevelBuild ? PlacementFailure.None
             : !Unlocked().Contains(building.Id) ? PlacementFailure.NotAvailable
-            : PlacementCheck.Evaluate(query);
+            : PlacementCheck.Evaluate(query, out refusal);
         var hull = footprint?.Place(query.Position, Quaternion.CreateFromAxisAngle(Vector3.UnitY, query.Yaw));
-        Ghost = (query.Position, query.Rotation, failure, building, hull, query.On);
+        Ghost = (query.Position, query.Rotation, failure, building, hull, query.On, refusal);
     }
 
     /// <summary>
@@ -813,13 +860,14 @@ sealed class BuildMode(PlayerInterface player)
         foreach (var piece in pieces)
         {
             float yaw = PlacementCheck.YawOf(piece.Rotation);
+            string? refusal = null;
             var failure = player.LevelEditorPanel.LevelBuild ? PlacementFailure.None
                 : !available ? PlacementFailure.NotAvailable
                 : PlacementCheck.Evaluate(new PlacementQuery(piece.Data, piece.Position, piece.Rotation, yaw, 0, host.Parts(piece.Data.Id),
                     BuildQueue, snapshot.Characters, snapshot.Buildings, towns, faction, host.Placement)
-                { WallPiece = true, Ignore = WallIgnore(piece, joints) });
+                { WallPiece = true, Ignore = WallIgnore(piece, joints) }, out refusal);
             var hull = host.Placement.Footprint(piece.Data.Id)?.Place(piece.Position, Quaternion.CreateFromAxisAngle(Vector3.UnitY, yaw));
-            WallPieces.Add((piece, failure, hull));
+            WallPieces.Add((piece, failure, hull, refusal));
         }
     }
 
@@ -835,10 +883,10 @@ sealed class BuildMode(PlayerInterface player)
             if (WallPieces.Count == 0) return true;
             if (WallPieces.FirstOrDefault(p => p.Failure != PlacementFailure.None) is { Piece.Data: not null } bad)
             {
-                player.Notice(PlacementCheck.Message(bad.Failure), error: true);
+                player.Notice(PlacementCheck.Message(bad.Failure, bad.Refusal), error: true);
                 return true;
             }
-            foreach (var (piece, _, hull) in WallPieces) BuildQueue.Add(new QueuedGhost(piece.Data, piece.Position, piece.Rotation, 0, hull));
+            foreach (var (piece, _, hull, _) in WallPieces) BuildQueue.Add(new QueuedGhost(piece.Data, piece.Position, piece.Rotation, 0, hull));
             WallLine = null;
             if (_wallEndSnap is null && line.Master.LinkType != 3)
             {
@@ -950,7 +998,7 @@ sealed class BuildMode(PlayerInterface player)
                 UseNodeMarkers.AddHeld(host, g.Building.Id, ghostWorld, draws);
             }
 
-            foreach (var (piece, failure, _) in WallPieces)
+            foreach (var (piece, failure, _, _) in WallPieces)
             {
                 var pieceWorld = World(piece.Position, piece.Rotation);
                 draws.Add(new(host.Parts(piece.Data.Id), pieceWorld,
@@ -987,7 +1035,7 @@ sealed class BuildMode(PlayerInterface player)
         if (Ghost is { Failure: not PlacementFailure.None } failed)
         {
             player.InterfaceSounds.Sound("Building_Cant_Build_There");
-            player.Notice(PlacementCheck.Message(failed.Failure), error: true);
+            player.Notice(PlacementCheck.Message(failed.Failure, failed.Refusal), error: true);
         }
         else
         {
@@ -1110,11 +1158,11 @@ sealed class BuildMode(PlayerInterface player)
         var groups = BuildGroups();
         var group = CurrentGroup();
         var building = CurrentBuilding();
-        b.Lists["CategoriesList"] = [.. categories.Select(c => new UiListItem(c, c))];
+        b.Lists["CategoriesList"] = [.. categories.Select(c => new UiListItem(c, ShownCategory(c)))];
         b.SelectedItems["CategoriesList"] = category is null ? -1 : categories.ToList().IndexOf(category);
-        b.Lists["BuildingsList"] = [.. groups.Select(g => new UiListItem(g.Name, g.Name))];
+        b.Lists["BuildingsList"] = [.. groups.Select(g => new UiListItem(g.Name, ShownGroup(g)))];
         b.SelectedItems["BuildingsList"] = group is null ? -1 : Math.Clamp(_buildGroup, 0, groups.Count - 1);
-        b.Text["BuildingName"] = building?.Name ?? "";
+        b.Text["BuildingName"] = building is null ? "" : ShownText.Record(building.Id, building.Name);
         b.Text["DescriptionText"] = building is null || Services is null ? "" : Services.Description(building.Id);
         b.Properties["DescriptionText"] = new Dictionary<string, string>
         {
@@ -1200,7 +1248,7 @@ sealed class BuildMode(PlayerInterface player)
         if (Services is not { } host) return;
         if (CurrentBuilding() is { } building)
         {
-            var lines = BuildMenu.Stats(building, host.ItemName).Select(l => new PlayerInterface.HudLine(l.Label, l.Value)).ToList();
+            var lines = BuildMenu.Stats(building, host.ShownName).Select(l => new PlayerInterface.HudLine(l.Label, l.Value)).ToList();
             if (controls.FirstOrDefault(c => c.Name == "StatsPanel") is { } panel)
                 player.AddLines(controls, "StatsPanel", lines, MathF.Max(14, panel.Bounds.Height / 11));
         }
@@ -1392,6 +1440,11 @@ sealed class BuildMode(PlayerInterface player)
             && player.Production.Machine(site.Id)?.Function is TownBuildings.ChairFunction or TownBuildings.ThroneFunction;
         if (invisible && host.Parts(site.Record).Count == 0) return null;
 
+        // A tilted site's collision stands with its whole turn, as the original's shapes hang on the building's node: picked by it alone, the
+        // upright prism around the footprint not holding it (#1334: a wall ramp placed at a slope).
+        if (bounds is not null && WorldPicking.Tilted(site.Rotation) && player.Picking.TiltedBuildingRayT(ray, site.Record, site.Position, site.Rotation) is { } t)
+            return t;
+
         return bounds is { } footprint
             ? player.Picking.BuildingRayT(ray, footprint.Place(site.Position, yaw), footprint.YMin, footprint.YMax, site.Record, site.Position,
                 site.Position.Y, yaw)
@@ -1480,7 +1533,8 @@ sealed class BuildMode(PlayerInterface player)
     }
 
     /// <summary>
-    /// The name of a site's building, for the menu's title: the player's own name for it when they gave one (RenameSite), else the record's.
+    /// The name of a site's building, the game's text (the code mods' menu target and the test channel get it): the player's own name for it
+    /// when they gave one (RenameSite), else the record's.
     /// </summary>
     internal string SiteName(BuildingSnapshot site) =>
         site.CustomName ?? (site.LevelPlacement is not null ? site.Name : RecordName(site));
@@ -1489,6 +1543,33 @@ sealed class BuildMode(PlayerInterface player)
     /// The build menu's name of the site's record; the record id without one.
     /// </summary>
     string RecordName(BuildingSnapshot site) => Services?.Menu.Catalog.FirstOrDefault(b => b.Id == site.Record)?.Name ?? site.Record;
+
+    /// <summary>
+    /// <see cref="SiteName"/> as shown, for the menu's title and the panels: a building's record name as the mods' text sources show it; a town
+    /// building's name as its record's when it is that, else as a name of its own (a place); the player's own name as typed.
+    /// </summary>
+    internal string ShownSiteName(BuildingSnapshot site) =>
+        site.CustomName ?? (site.LevelPlacement is not null
+            ? player.ShownName("place", site.Record, site.Name)
+            : ShownText.Record(site.Record, SiteName(site)));
+
+    /// <summary>
+    /// Build category <paramref name="category"/> as the list shows it: the <c>building category</c> text of the first building of the catalog
+    /// that has it, as the mods' text sources show it.
+    /// </summary>
+    string ShownCategory(string category) =>
+        ShownText.Any && Services?.Menu.FirstOfCategory(category) is { } first
+            ? ShownText.Record(first, category, BuildingBuildData.CategoryField)
+            : category;
+
+    /// <summary>
+    /// Build group <paramref name="group"/>'s name as the list shows it: its default member's name, or that member's <c>building group</c> text,
+    /// as the mods' text sources show it.
+    /// </summary>
+    static string ShownGroup(BuildGroup group) =>
+        !ShownText.Any ? group.Name
+            : group.Name == group.Default.Name ? ShownText.Record(group.Default.Id, group.Name)
+            : ShownText.Record(group.Default.Id, group.Name, BuildingBuildData.GroupField);
 
     /// <summary>
     /// The verbs the selection has for a site (the original's building branch, docs/game/ui-input.md "Context menu verbs"): Build (2) for an
@@ -1515,12 +1596,14 @@ sealed class BuildMode(PlayerInterface player)
         if (site.LevelPlacement is null && !site.Complete && site.Progress <= 0 && site.Materials.All(m => m.Delivered <= 0))
             verbs.Add(("Cancel Construction", () => player.Say(new CancelSite(site.Id) { Tick = player.Session.World.Tick })));
         AddDoorVerbs(verbs, site);
+        var target = new UiMenuTarget(UiMenuTargetKind.Building, SiteName(site), site.Position) { Id = site.Id, Record = site.Record };
+        verbs.AddRange(player.ModTargetVerbs(target));
         return verbs;
     }
 
     /// <summary>
-    /// A finished machine's verbs: a storage's Auto-Haul and Inventory, a furnace's Inventory, a corpse machine's Corpse Disposal, a turret's Man
-    /// Turret.
+    /// A finished machine's verbs: a storage's Auto-Haul and Inventory, a furnace's and a research bench's Inventory, a corpse machine's Corpse
+    /// Disposal, a turret's Man Turret.
     /// </summary>
     void AddMachineVerbs(List<(string, Action)> verbs, BuildingSnapshot site, IReadOnlyList<CharacterId> selection,
         Simulation.Production.MachineSnapshot machine, bool own)
@@ -1546,6 +1629,9 @@ sealed class BuildMode(PlayerInterface player)
             }));
         }
         else if (machine.Function == MachineData.ItemFurnaceFunction) verbs.Add(("Inventory", () => OpenStorage(site)));
+        // A research bench's Use (87) is followed by Inventory (26), as for every building with an inventory (FUN_1407a6bc0, Verified): the
+        // research cost is paid from the benches' inventories only (#1342).
+        else if (ProductionWindows.MachineScreen(machine) == "bench") verbs.Add(("Inventory", () => OpenStorage(site)));
 
         // A corpse machine (function 11) offers Corpse Disposal (136): with Shift the Corpse disposal job (137 and its finder 138), else order 136
         // for every selected character, its queue cleared (FUN_1407fa650 → FUN_1407f9e20).
@@ -1793,7 +1879,7 @@ sealed class BuildMode(PlayerInterface player)
 
         _sitePending = null;
         if (player.Session.CurrentSnapshot.Buildings.FirstOrDefault(s => s.Id == pending.Site.Id) is not { } site) return;
-        player.ContextMenuWindow.OpenMenu = player.ContextMenuWindow.Menu(SiteName(site), pending.At, SiteVerbs(site), OfferedJobs(site));
+        player.ContextMenuWindow.OpenMenu = player.ContextMenuWindow.Menu(ShownSiteName(site), pending.At, SiteVerbs(site), OfferedJobs(site));
     }
 
     /// <summary>
