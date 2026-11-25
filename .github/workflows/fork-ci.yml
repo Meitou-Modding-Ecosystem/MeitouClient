@@ -1,9 +1,19 @@
 name: Fork CI
-on:
+'on':
   pull_request:
-    branches: [fork, release]
+    branches:
+    - fork
+    - beta
+    - main
+    - release
   push:
-    branches: [fork, release]
+    branches:
+    - fork
+    - codex/development-ci-*
+    - beta
+    - main
+    - release
+  workflow_dispatch: {}
 permissions:
   contents: read
 concurrency:
@@ -15,3 +25,34 @@ jobs:
     with:
       runner: windows-latest
       test-filter: Category!=Slow&Category!=Bench
+  development-readiness:
+    name: Development readiness
+    if: always()
+    needs:
+    - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Require prerequisite checks
+      env:
+        RESULTS: ${{ toJSON(needs) }}
+        TARGET: ${{ github.base_ref || github.ref_name }}
+      run: "python - <<'PYCODE'\nimport json, os\nresults = json.loads(os.environ['RESULTS'])\nrequired = list(results)\n\
+        if not required or any(results[key]['result'] != 'success' for key in required):\n    raise SystemExit('A prerequisite\
+        \ failed, was cancelled, or was skipped')\nPYCODE\n"
+  release-readiness:
+    name: Release readiness
+    if: always()
+    needs:
+    - development-readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Require prerequisite checks
+      env:
+        RESULTS: ${{ toJSON(needs) }}
+        TARGET: ${{ github.base_ref || github.ref_name }}
+      run: "python - <<'PYCODE'\nimport json, os\nresults = json.loads(os.environ['RESULTS'])\ntarget = os.environ['TARGET']\n\
+        required = list(results) if target == 'release' else ['development-readiness']\nif not required or any(results[key]['result']\
+        \ != 'success' for key in required):\n    raise SystemExit('A prerequisite failed, was cancelled, or was skipped')\n\
+        PYCODE\n"
