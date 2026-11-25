@@ -229,11 +229,12 @@ setting reaches the launcher with its release; the launcher knows none of them. 
   saves Custom, so the game keeps that change. No saved preset shows High without saved graphics, else Custom.
 - Detect (when `presets.detect` names the game's option, `--recommend-preset <file>`) runs the played version's game, which makes a
   headless Vulkan device (the GPU it would pick), reads the memory and the cores, and writes `{ preset, summary, gpu, integrated,
-  videoMemoryMb, memoryMb, cores, problem }`; the launcher saves `preset` as above and shows `summary`. Without Vulkan (a Metal-only Mac)
-  the memory and cores decide alone. a GeForce by its model against the
-  classes the tiers are meant for (`GeForceTier`: RTX 3060 Medium, 3070 to 4070 High, 4070 Ti to 4080 Ultra, 4080 Super and 4090
-  Extreme, other series by their place among these, a laptop GPU a class lower); any other card by video memory (under 6 GB Medium,
-  under 12 GB High, under 24 GB Ultra, else Extreme); under 12 GB memory or 6 threads Medium at most. Observed: Intel Iris Xe (integrated) is Low, in 2.5 s.
+  videoMemoryMb, memoryMb, cores, problem }`; the launcher saves `preset` as above and shows `summary`. Without Vulkan (a Metal-only
+  Mac, a driver that fails `vkCreateInstance`) the memory and cores decide alone; off macOS the summary names the failure
+  (`no Vulkan device: <problem>`). A GeForce goes by its model against the classes the tiers are meant for (`GeForceTier`: RTX 3060
+  Medium, 3070 to 4070 High, 4070 Ti to 4080 Ultra, 4080 Super and 4090 Extreme, other series by their place among these, a laptop
+  GPU a class lower); any other card by video memory (under 6 GB Medium, under 12 GB High, under 24 GB Ultra, else Extreme); under
+  12 GB memory or 6 threads Medium at most. Observed: Intel Iris Xe (integrated) is Low, in 2.5 s.
 - The launcher detects once by itself (`PresetDetected` in `launcher.json`): when the version Play starts can detect and the game has no
   graphics settings or preset saved yet, so the first start (or first install) of a fresh setup gets a preset; saved settings are kept.
   A failed detection is tried again at the next start.
@@ -340,7 +341,7 @@ interpolated string, which no translation could match.
   `steamapps/workshop/appworkshop_233860.acf`, `WorkshopUpdates`), the row adds that it has updated since, with the date, and that some new
   features may be missing. A local copy has no date and gets no such note.
 - Any other RE_Kenshi plugin (not built in, no endorsed port) keeps the ignored-DLLs note and has a Request button opening the public wishlist
-  of RE_Kenshi mods (`CoveredMods.Wishlist`, the roadmap's compatibility sheet), where players ask for one to be covered.
+  of RE_Kenshi mods (`CoveredMods.Wishlist`), where players ask for one to be covered.
 - A mod folder with `meitou.json` is marked as a code mod ([modding](modding.md)); enabled, its code runs, with no question
   ([Trust](modding.md#trust)).
 - A code mod's row lists what it requires, loads after and conflicts with, and each refusal the game would make without its code

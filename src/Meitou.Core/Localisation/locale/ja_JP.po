@@ -5477,6 +5477,7 @@ msgstr "ベンチマークが停止しました。"
 #. machine-translated
 msgid "{1} squad(s) given their own squad AI options by a mod that is not loaded follow yours again."
 msgstr "読み込まれていないModが独自の分隊AIオプションを与えていた{1}個の分隊が、再びあなたのオプションに従います。"
+
 msgid "Unavailable menu rows"
 msgstr "使用できないメニュー項目"
 
@@ -5526,6 +5527,7 @@ msgstr "建物に独自の名前を付けます。パネル、インベントリ
 #. machine-translated
 msgid "Leave it empty for the building's own name."
 msgstr "空にすると建物本来の名前に戻ります。"
+
 msgid "Lockpick chance on the pointer"
 msgstr "ポインターの解錠確率"
 

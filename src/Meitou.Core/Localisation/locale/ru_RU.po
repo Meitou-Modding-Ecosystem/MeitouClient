@@ -5485,6 +5485,7 @@ msgstr "Бенчмарк остановлен."
 #. machine-translated
 msgid "{1} squad(s) given their own squad AI options by a mod that is not loaded follow yours again."
 msgstr "Отряды, которым незагруженный мод задал собственные настройки ИИ отряда, снова следуют вашим: {1}."
+
 msgid "Unavailable menu rows"
 msgstr "Недоступные пункты меню"
 
@@ -5534,6 +5535,7 @@ msgstr "Дайте зданию своё имя: оно видно на его �
 #. machine-translated
 msgid "Leave it empty for the building's own name."
 msgstr "Оставьте пустым, чтобы вернуть зданию исходное имя."
+
 msgid "Lockpick chance on the pointer"
 msgstr "Шанс взлома на указателе"
 

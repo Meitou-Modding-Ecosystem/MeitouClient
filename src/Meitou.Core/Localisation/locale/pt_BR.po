@@ -5908,6 +5908,7 @@ msgstr "O benchmark parou."
 #. machine-translated
 msgid "{1} squad(s) given their own squad AI options by a mod that is not loaded follow yours again."
 msgstr "{1} esquadrão(ões) que receberam opções de IA de esquadrão próprias de um mod não carregado voltam a seguir as suas."
+
 msgid "Unavailable menu rows"
 msgstr "Linhas de menu indisponíveis"
 
@@ -5957,6 +5958,7 @@ msgstr "Dê ao edifício um nome seu, mostrado no painel, no inventário e nas t
 #. machine-translated
 msgid "Leave it empty for the building's own name."
 msgstr "Deixe vazio para o nome original do edifício."
+
 msgid "Lockpick chance on the pointer"
 msgstr "Chance de arrombamento no ponteiro"
 

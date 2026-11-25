@@ -932,8 +932,9 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     /// The first pass of the watchers' finder (183, <c>FUN_1408cd630</c>, <b>Verified</b>: it walks the watcher's sensed list, masks 0x60 / 0x110):
     /// the nearest (engine choice; the original takes the first) live character within sight range that the watcher senses
     /// (<see cref="CharacterFacts.Perceives"/>: one it has not seen or heard, a sneaking one or one in another building, is none, #649), in slave
-    /// state 1 or 2, free (not carried, caged or held), no animal, not another job's, and <see cref="NeedsProcessing"/>. No distance
-    /// bound, no cage. -1: none.
+    /// state 1 or 2, not carried, free or caged (the list's prisoner bit 9 is not masked out, so a caged slave in sight is taken wherever its cage
+    /// stands; one in a bed is left out, engine choice), no animal, not another job's, and <see cref="NeedsProcessing"/>. No distance bound. -1:
+    /// none.
     /// </summary>
     internal int FreeSlaveToProcess(World world, int slot, CharacterCold me)
     {
@@ -943,7 +944,7 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         {
             var table = st.World.Characters;
             if (v == st.Self || !table.Next[v].Alive || table.Cold(v) is not { SlaveState: not 0, Medical: { Dead: false }, Race: not null } c
-                    || !c.CarriedBy.IsNone || c.InSomething != HeldState.None
+                    || !c.CarriedBy.IsNone || c.InSomething is not (HeldState.None or HeldState.Imprisoned)
                 || c.Fighter is { IsAnimal: true } || c.Appearance?.Animal is not null) return;
             var id = table.IdOf(v);
             if (st.System.Busy(id) || !st.System.NeedsProcessing(st.Me, c)) return;
@@ -1322,7 +1323,7 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
     /// (<see cref="ReachOf"/>) it has arrived, or when a walk ended within <see cref="CaptiveSettings.Slack"/>; a walk that ended farther counts
     /// against <see cref="CaptiveSettings.Walks"/>. Either way only on the cage's level: the rows these jobs plan reach a cage through
     /// <c>isAtLocation</c>, which for a building is <c>AI::isWithinChoppingRange</c> (<c>FUN_14059c6d0</c>, <b>Verified</b>: the flat distance
-    /// and the same floor, <see cref="FixtureRegistry.WorkHeight"/> here), so one standing under a cage on an upper storey is not at it, and 107
+    /// and the same floor, <see cref="FixtureRegistry.OnCageFloor"/> here), so one standing under a cage on an upper storey is not at it, and 107
     /// <c>Task_UseCage</c>'s start (<c>FUN_140358040</c>) puts it into the cage wherever it stands. Its own faction's shut doors on the way are
     /// unlocked first (the lock rounds' "keys", engine choice). False: give up.
     /// </summary>
@@ -1331,7 +1332,7 @@ public sealed partial class CaptiveSystem(PopulationData data, CombatSystem? com
         var table = world.Characters;
         ref var n = ref table.Next[w];
         float d = Vector2.Distance(new Vector2(n.Position.X, n.Position.Z), new Vector2(cage.Position.X, cage.Position.Z));
-        bool level = MathF.Abs(n.Position.Y - cage.Position.Y) < FixtureRegistry.WorkHeight;
+        bool level = world.Fixtures.OnCageFloor(cage, n.Position, world.Walkability);
         bool walking = WalksOwn(table, w, j);
         arrived = level && (d <= cage.UseRange + ReachOf(j) || !walking && j.Walks > 0 && d <= Settings.Slack);
         if (arrived || walking) return true;

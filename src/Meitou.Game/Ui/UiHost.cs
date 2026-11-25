@@ -675,8 +675,8 @@ public sealed partial class UiHost
         _buildingActions.RemoveAll(a => a.Owner == owner);
         _townLines.RemoveAll(l => l.Owner == owner);
         ItemTips.Remove(owner);
-        BuildingBars.Remove(owner);
         ShownText.Remove(this, owner);
+        BuildingBars.Remove(owner);
         CharacterPanel.Remove(owner);
         Screens.Remove(owner);
         ScreenOverrides.Remove(owner);
@@ -987,6 +987,13 @@ public sealed partial class UiHost
     public IReadOnlyList<UiItemTooltipLine> ItemTooltipLines(UiItemTooltipContext item) => ItemTips.For(item, Diagnostic);
 
     /// <summary>
+    /// The name the interface shows for an item of <paramref name="record"/> named <paramref name="name"/> with tag <paramref name="modTag"/>: the
+    /// extensions' text sources' (<see cref="ShownText.Record"/>, the item record's name), else <paramref name="name"/>.
+    /// </summary>
+    public string ItemName(string record, string name, string modTag = "") =>
+        ShownText.Record(record, name, ShownText.RecordName, modTag);
+
+    /// <summary>
     /// Whether any extension adds building panel bars (<see cref="BuildingRows"/>).
     /// </summary>
     public bool HasBuildingRows => BuildingBars.Any;
@@ -996,13 +1003,6 @@ public sealed partial class UiHost
     /// <see cref="Diagnostic"/> and dropped.
     /// </summary>
     public IReadOnlyList<UiBuildingRow> BuildingRows(UiBuildingContext context) => BuildingBars.For(context, Diagnostic);
-
-    /// <summary>
-    /// The name the interface shows for an item of <paramref name="record"/> named <paramref name="name"/> with tag <paramref name="modTag"/>: the
-    /// extensions' text sources' (<see cref="ShownText.Record"/>, the item record's name), else <paramref name="name"/>.
-    /// </summary>
-    public string ItemName(string record, string name, string modTag = "") =>
-        ShownText.Record(record, name, ShownText.RecordName, modTag);
 
     /// <summary>
     /// Whether any extension adds character panel lines (<see cref="CharacterPanelLines"/>).
@@ -1643,19 +1643,6 @@ public sealed class UiRegistration : IDisposable
     }
 
     /// <summary>
-    /// Adds bars under the Condition bar of a selected building, placed piece or piece of furniture (docs/modding.md "Building panel bars"):
-    /// <paramref name="rows"/> runs on the host's thread whenever the panel's bars are bound, which can be every frame, so it must be cheap, and
-    /// while a tick may be in flight, so it must not touch the world; it reads the context. Bars show state only; buttons go through
-    /// <see cref="AddBuildingActions"/>.
-    /// </summary>
-    public void AddBuildingRows(Func<UiBuildingContext, IEnumerable<UiBuildingRow>> rows)
-    {
-        Check();
-        ArgumentNullException.ThrowIfNull(rows);
-        _host.BuildingBars.Add(Id, rows);
-    }
-
-    /// <summary>
     /// Changes the text the game shows (docs/modding.md "Shown text"): the interface's and the notices' messages, items' names and dialogue lines.
     /// <paramref name="source"/> gets the kind of text, its key (a message's English source text, an item's record, a dialogue line's record), the
     /// text so far (the game's, or an earlier extension's) and a tag, and returns the text to show (null or blank: keep it). Display only: records,
@@ -1678,6 +1665,19 @@ public sealed class UiRegistration : IDisposable
     {
         Check();
         ShownText.Refresh();
+    }
+
+    /// <summary>
+    /// Adds bars under the Condition bar of a selected building, placed piece or piece of furniture (docs/modding.md "Building panel bars"):
+    /// <paramref name="rows"/> runs on the host's thread whenever the panel's bars are bound, which can be every frame, so it must be cheap, and
+    /// while a tick may be in flight, so it must not touch the world; it reads the context. Bars show state only; buttons go through
+    /// <see cref="AddBuildingActions"/>.
+    /// </summary>
+    public void AddBuildingRows(Func<UiBuildingContext, IEnumerable<UiBuildingRow>> rows)
+    {
+        Check();
+        ArgumentNullException.ThrowIfNull(rows);
+        _host.BuildingBars.Add(Id, rows);
     }
 
     /// <summary>

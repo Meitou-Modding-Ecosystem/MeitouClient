@@ -1352,7 +1352,7 @@ which an order's hold refuses. The chain's rows and states are in [AI tasks](gam
   the same way and runs to his squad's home under the order (127 Retreating fast), then the capture goes on. Both only with town data.
 - **Arrest**: attack until the target is down (combat ends the fight; nobody beats a downed target), lift
   (`CarrySystem.BeginPickUp`), `FindCage` from the guard over his town candidates (`CageCandidates`, as kidnapping and town duty; his squad's home building; his squad mates' cages reserved), walk,
-  and at the cage (`FixtureRegistry.AtCage`: within its `use range`, doubled standing, and under 15 above or below it) `LetGo` + `Imprison` (`prison time` CONSTANTS). The fight
+  and at the cage (`FixtureRegistry.AtCage`: within its `use range`, doubled standing, and under 15 from the floor under its nearest use node, `OnCageFloor`) `LetGo` + `Imprison` (`prison time` CONSTANTS). The fight
   stopping with the target up (it ran off, the guard lost it) starts it again at any distance: the order stays queued and is planned again each update,
   its need 7 planning the fight anew (the order step `FUN_140510920` pops it only on its desire or done test; a failed step pops the front only when it
   is the order's own row, `FUN_140506b10` comparing the task type, so the fight row ending pops nothing, **Verified**); only 113 / 95 above or a new order
@@ -1375,8 +1375,8 @@ which an order's hold refuses. The chain's rows and states are in [AI tasks](gam
 - **Cage walks** (arrest, town duty 112 / 281; engine): a walk onto the cage's floor (`TaskStart.Walk` with the cage's position, `MovementSystem.GoToFloor`), so a cage on
   an upper storey is reached by the stairs. A flat goal resolves on the walker's own storey and ends under the cage, out of `AtCage`'s height. **Observed** (#314 save, Sho-Battai
   Police Station Tower, `Outpost s-IV` `43.11:6-Newwworld-INGAME`): its 19 cages stand on the storey at y 1092, 43 above the ground floor where the guards lift raiders; the
-  guards carry all eight raiders up and cage them. Still flat (arrival by distance only, so they do not loop):
-  the captive jobs' cage walks and confiscation (212). The player's Put in Cage order (`StepTo`) is flat too but tests `AtCage`: an upper-storey cage still fails it.
+  guards carry all eight raiders up and cage them. The captive jobs' cage walks go onto the floor too (`CaptiveSystem.Walk`). Still flat (arrival
+  by distance only, so it does not loop): confiscation (212). The player's Put in Cage order (`StepTo`) is flat too but tests `AtCage`: an upper-storey cage still fails it.
 - **Release**: player and NPC prisoners alike are freed by the jailers' goal 211 below; Meitou has no other release of a served prisoner.
 - **Wardens' goals** (`WardenGoals`, [engine goals](#engine-goals); finders and states: [locks](game/locks.md#wardens-goals)): 211 police free prisoners
   (`[1, 110, 211]`), 155 Lock all the doors (`[163, 162, 155]`), 197 Lock all the doors - stay outside (`[199, 198, 197]`), 86 Opening up (`[82, 78, 72, 86]`)
@@ -1682,7 +1682,7 @@ gather jobs while walking home under 43, and a job that waited on that walk reac
   (limbs severed unless dismemberment is Never; `DeathCause.Eaten` and "{1} has been eaten alive." when nothing is left). Events 52 and 11 every 10 s (engine throttle).
 - A captive's death by either resets the town's timer to now + uniform[1, 15) h; the first ask sets it. Timers and jobs are not saved (engine); hashed once any exists.
   **Observed** (headless probe, real data): a cannibal village kills a caged player character within 16 s of work once its timer is due; a fishman lab eats one in about 160 s.
-- **Process** (260: an awake non-slave occupant anywhere in the town; 183: first the nearest free slave of state 1 or 2 in sight that needs processing, walked to with no cage (the characters within sight range that the watcher senses, `CharacterFacts.Perceives`, stand in for the sensed list: none before the watcher's first look, and a sneaker on its feet only once its look senses it; not caged ones; engine reading; **Observed** #759 save: a guard's first think after load took a sneaking escaped slave 480 away and followed her), else an occupant on the worker's floor and in its building within 180 in 3D, whose owner is an ally or none, and that needs processing: an escaped or ex-slave, or a slave not both shaven and looking like one): cages of the worker's faction or an ally,
+- **Process** (260: an awake non-slave occupant anywhere in the town; 183: first the nearest slave of state 1 or 2 in sight that needs processing, free (walked to with no cage) or caged (its cage, wherever it stands; **Observed**, #1392 save: a Sentinel 267 off in a house processed a player caged in the street in 17 s) (the characters within sight range that the watcher senses, `CharacterFacts.Perceives`, stand in for the sensed list: none before the watcher's first look, and a sneaker on its feet only once its look senses it; not one in a bed, engine choice; **Observed** #759 save: a guard's first think after load took a sneaking escaped slave 480 away and followed her), else an occupant on the worker's floor and in its building within 180 in 3D, whose owner is an ally or none, and that needs processing: an escaped or ex-slave, or a slave not both shaven and looking like one): cages of the worker's faction or an ally,
   not the player's. 3 s of `medic`, then a human captive without locked shackles is cuffed first (182 needs 134 `isChained`, which only 166 Restraining gives, [ai-tasks](game/ai-tasks.md) planner table;
   166's 7 `isTargetDown` holds for a caged captive, `CharacterFacts.TargetDown`; a loose slave standing unshackled plans nothing, only attack rows giving 7): it is chained (`CharacterAssembly.Chain`) and becomes a slave of the worker's faction and squad, as `setChainedMode` makes the cuffer the owner, so that squad's medics treat it in its cage. **Observed** (probe, #508 and #509 saves):
   a sold slave caged unshackled was stripped again and again, and Rebirth's caged player slaves that had taken their shackles off were neither re-shackled nor bandaged; now both are chained once and then bandaged. Then the captive's worn weapons and armour (not locked shackles, slave garments or the worker faction's `slave clothing`) go to the worker's inventory (else the ground; engine for the original's
@@ -1699,7 +1699,9 @@ gather jobs while walking home under 43, and a job that waited on that walk reac
   `FUN_14032e590`, **Verified**: no squad change), so it plans with the owner squad's Slave AI Goals (job 187, `AiSystem.ObeyedRoles`), mostly 171
   Follow slavemaster or 189 Worker. The cage is opened and the captive steps to its exit spot ([locks](game/locks.md#cages-and-beds)). 217's finder runs at
   the choice with the cage limit 0 (`FUN_1408cc600`, **Verified**): a cage a squad mate works is out, so its job's start asks the squad's claims again
-  (`CaptiveSystem.ExportClaimed`) and one squad's gatherers no longer race for one cage from picks looked at on earlier ticks. Player captives are gathered too: 173's finder excludes player-owned cages, not player occupants
+  (`CaptiveSystem.ExportClaimed`) and one squad's gatherers no longer race for one cage from picks looked at on earlier ticks. All three finders
+  skip a cage on the gatherer's give-up list (`FUN_1408db510` -> `FUN_1405b0290`, **Verified**), so one whose walk was lost waits out its 20 s
+  instead of being picked again next tick (#1383). Player captives are gathered too: 173's finder excludes player-owned cages, not player occupants
   (`FUN_1408db680` -> `FUN_1408db510`, **Observed**, 1.0.68 decompile); 217 still excludes player occupants (engine choice).
   **Observed** (KenshiOracle hold, Rebirth, 2026-11-09): the original's gathered slaves keep their squads all hour (Pao 40, Mu 44).
   **Observed** (probe): the Slave Farm's workmasters take the caged slaves out by day; at night their slaves' 172 puts them back.
@@ -1715,6 +1717,8 @@ gather jobs while walking home under 43, and a job that waited on that walk reac
   Every cage job (172, the gatherers, the fate goals, the liberators) walks onto the cage's floor and is at the cage only on its level: row 107's
   `isAtLocation` for a building is `AI::isWithinChoppingRange` (`FUN_14059c6d0`, **Verified**: flat distance and the same floor), and `Task_UseCage`'s
   start (`FUN_140358040`, **Verified**) teleports the character in wherever it stands, so a flat test put a slave under an upper-storey cage into it.
+  Meitou's level (`FixtureRegistry.OnCageFloor`, engine stand-in for the floor number, shared by every cage test) is within 15 of the floor under the cage's use node nearest the
+  worker (`FixtureRegistry.FloorMarker`), not of the cage's origin: rebirth's Storm House cages stand 17 to 19 over their floor (**Observed**, #1383).
   A cage a squad mate works on or the slave ignores is passed over; another squad's work does not count (172 and 245, `FUN_1408db510` with limit 0 on the squad's own
   blackboard, `FUN_1402690e0`, **Verified**).
 - **Packages** (`PackageClass` 8 to 11, rules in `AiSystem.Captives.cs` as the facts): cannibal retreat (1, 25; it ends when the effective leader's status town is of the squad's faction, so a wiped
@@ -2076,13 +2080,14 @@ crafting benches, generators and batteries. Facts: [production](game/buildings-p
 - **Hauling** (`ProductionSystem.Hauling.cs`, `ProductionSettings.AutoHaul`, default on; facts in
   [buildings-production](game/buildings-production.md#hauling)). An operator at its machine first puts carried items
   into empty input room. It takes a full output only when a storage will accept it (else the machine stays full) and
-  carries it to the nearest storage (function 2 or 13) of the worker's faction (the player's too for one of its side, `FUN_14059acd0`, `StoresFor`) that accepts it and has room; or it fetches an empty input's item from the nearest storage holding it, else the nearest machine of another record whose output holds it (a well's water for a farm). A
+  carries it to the nearest storage (function 2 or 13) that accepts it and has room, or machine of the finder's mask and another record whose input of it has room (its inputs get it), of the worker's faction (the player's too for one of its side, `FUN_14059acd0`, `StoresFor`, [storage pick](game/buildings-production.md#hauling)); or it fetches an empty input's item from the nearest storage holding it, else the nearest machine of another record whose output holds it (a well's water for a farm). A
   storage accepts an item when `itemtype limit` matches and `limit inventory` (a function 2 storage's only) is empty or lists it; `stackable bonus
   mult` scales its stacks. The player's drops into a storage follow the same rule ("does not take").
-  Excess fetched inputs stay with the operator. A fetch's source and a storage taking output are within squared distance 4.246733e7 (3D)
-  of the machine, the bound of the original's fill and per-item storage finders in the default ROAM_FAR mode (`FUN_14059d000`,
-  `FUN_14059acd0`, [material delivery](game/buildings-production.md#material-delivery); they measure from the character, who stands at the
-  machine) (#963, #965). An operator's fetch takes the item it went for, up to the room this machine's inputs have for it (engine choice: the original's operator fetches nothing, [hauling](game/buildings-production.md#hauling)); an automatic machine's hauler takes what the town wants, the NPC fetch's take (`FillDemand`, [NPC town machines](game/buildings-production.md#npc-town-machines)), not what this machine's inputs have room for. Engine choices: ties by site id; the trip is not saved. A crafting bench's output is its finished items: an operator
+  Excess fetched inputs stay with the operator. A fetch's source and a storage taking output are within squared distance 4.246733e7 (3D),
+  the bound of the original's fill and per-item storage finders in the default ROAM_FAR mode (`FUN_14059d000`,
+  `FUN_14059acd0`, [material delivery](game/buildings-production.md#material-delivery); they measure from the character): the source from the
+  machine, the output's target from where the operator stands (a large mine's work spot is some 180 from its origin), a job's look from afar
+  from the machine (#963, #965, #1406). An operator's fetch takes the item it went for, up to the room this machine's inputs have for it (engine choice: the original's operator fetches nothing, [hauling](game/buildings-production.md#hauling)); an automatic machine's hauler takes what the town wants, the NPC fetch's take (`FillDemand`, [NPC town machines](game/buildings-production.md#npc-town-machines)), not what this machine's inputs have room for. Engine choices: ties by site id; the trip is not saved. A crafting bench's output is its finished items: an operator
   takes those a storage accepts once the first craft's store is full, and a full bench whose items no storage takes is no work (the job passes
   on); a "Hauling to" job fetches finished items as it does a producer's output, the instances themselves (quality and model kept) (#762). Carried output
   goes only with a full output just taken, or while the output stays full: a stray unit sends no one on a trip (#388). A walker
