@@ -184,9 +184,6 @@ msgstr "Город далеко от ваших отрядов захватыв�
 msgid "A traced cache adds fine indirect light near the camera."
 msgstr "Трассированный кэш добавляет мелкий непрямой свет рядом с камерой."
 
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "Торговец или кто-то ещё, проверяющий ваш отряд на предмет, расу или переносимое тело, никогда не переводит разговор на ваших животных. В оригинальной игре вьючное животное с предметом перехватывает разговор, и торговля и другие ответы не работают."
-
 msgid "A turret's gunner turns with the gun, facing where it aims. In the game the gunner keeps facing the turret, so once the gun swings toward a target the gunner looks off to the side."
 msgstr "Стрелок турели поворачивается вместе с орудием, глядя туда, куда целится. В оригинальной игре стрелок смотрит на турель, и когда орудие поворачивается к цели, он смотрит в сторону."
 
@@ -301,9 +298,6 @@ msgstr "Животное в клетке или на столбе дышит, о
 
 msgid "Animals pick up items"
 msgstr "Животные подбирают предметы"
-
-msgid "Animals stay out of talks"
-msgstr "Животные не вмешиваются в разговоры"
 
 msgid "Animals, bandits and other wild squads keep their characters, wounds and places when the area around them unloads, and are there again when you come back. In the game they are removed and new ones are made."
 msgstr "Животные, бандиты и другие дикие отряды сохраняют своих персонажей, раны и места, когда область вокруг них выгружается, и оказываются там снова, когда вы возвращаетесь. В оригинальной игре они удаляются и создаются новые."
@@ -5075,29 +5069,11 @@ msgstr[2] "{1,num} человек"
 msgid "Exit Game"
 msgstr "Выйти из игры"
 
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "Читать поиск как регулярное выражение, без учёта регистра"
-
-msgid "Regex"
-msgstr "Regex"
-
-msgid "Invalid regular expression: {1}"
-msgstr "Неверное регулярное выражение: {1}"
-
 msgid "Character Stats"
 msgstr "Характеристики персонажа"
 
 msgid "-Backpack-"
 msgstr "-Рюкзак-"
-
-msgid "Pig Latin"
-msgstr "Поросячья латынь"
-
-msgid "Pirate"
-msgstr "Пиратский"
-
-msgid "Morse code"
-msgstr "Азбука Морзе"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "Щелчок по стопке берёт её целиком, Shift+щелчок — половину, Ctrl+щелчок — один предмет, а Shift+Ctrl+щелчок спрашивает количество ползунком. В игре щелчок берёт один предмет, а Shift или Ctrl — всю стопку."

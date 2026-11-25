@@ -3524,12 +3524,6 @@ msgstr "Bolsas no inventário"
 msgid "Guards searching for smuggled or stolen goods and bandits after food or loot also look inside bags carried in the inventory, and guards confiscating stolen goods inside the worn backpack. The game misses those bags, so goods hidden in them are never found."
 msgstr "Guardas procurando mercadorias contrabandeadas ou roubadas e bandidos atrás de comida ou saque também olham dentro de bolsas carregadas no inventário, e guardas que confiscam bens roubados olham dentro da mochila vestida. O jogo ignora essas bolsas, então bens escondidos nelas nunca são encontrados."
 
-msgid "Animals stay out of talks"
-msgstr "Animais fora das conversas"
-
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "Um comerciante ou qualquer outro que verifique se seu esquadrão tem um item, uma raça ou um corpo carregado nunca passa a conversa para um dos seus animais. No jogo um animal de carga com o item assume a conversa, e o comércio e as outras respostas não fazem nada."
-
 msgid "Guards spare their own"
 msgstr "Guardas poupam os seus"
 
@@ -5416,15 +5410,6 @@ msgstr "Sombreamento de terreno simples"
 msgid "Faster ground for weak graphics: one biome and two texture layers a pixel, no bump detail. Blends between biomes show harder edges."
 msgstr "Chão mais rápido para gráficos fracos: um bioma e duas camadas de textura por pixel, sem detalhe de relevo. As transições entre biomas mostram bordas mais marcadas."
 
-msgid "Regex"
-msgstr "Regex"
-
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "Ler a pesquisa como uma expressão regular, ignorando maiúsculas e minúsculas"
-
-msgid "Invalid regular expression: {1}"
-msgstr "Expressão regular inválida: {1}"
-
 msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
 msgstr "Ao ver dentro de uma construção com o telhado oculto, não cai chuva, poeira nem cinza sobre o cômodo aberto. O jogo omite só o que cai dentro dela, então com a câmera afastada a chuva da frente ainda risca o cômodo."
 
@@ -5524,15 +5509,6 @@ msgstr "Atributos do personagem"
 
 msgid "-Backpack-"
 msgstr "-Mochila-"
-
-msgid "Pig Latin"
-msgstr "Língua do P"
-
-msgid "Pirate"
-msgstr "Pirata"
-
-msgid "Morse code"
-msgstr "Código Morse"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "Um clique numa pilha pega tudo, Shift+clique metade, Ctrl+clique um item, e Shift+Ctrl+clique pergunta quantos com um controle deslizante. No jogo um clique pega um item e Shift ou Ctrl a pilha inteira."

@@ -184,9 +184,6 @@ msgstr "部隊から遠く離れた町は、ストーリーが求めるとすぐ
 msgid "A traced cache adds fine indirect light near the camera."
 msgstr "トレースしたキャッシュがカメラ付近に細かな間接光を加えます。"
 
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "アイテム、種族、運ばれている体について部隊を調べる商人などが、会話をあなたの動物に向けることはありません。ゲームではそのアイテムを運ぶ荷役動物が会話を引き継ぎ、取引や他の返答が何も起こしません。"
-
 msgid "A turret's gunner turns with the gun, facing where it aims. In the game the gunner keeps facing the turret, so once the gun swings toward a target the gunner looks off to the side."
 msgstr "砲塔の射手は銃と一緒に回転し、狙う方向を向きます。ゲームでは射手は砲塔の方を向いたままなので、銃が標的に向くと横を見てしまいます。"
 
@@ -301,9 +298,6 @@ msgstr "檻や柱の動物は呼吸し、周りを見回し、気絶すると横
 
 msgid "Animals pick up items"
 msgstr "動物がアイテムを拾う"
-
-msgid "Animals stay out of talks"
-msgstr "動物を会話に入れない"
 
 msgid "Animals, bandits and other wild squads keep their characters, wounds and places when the area around them unloads, and are there again when you come back. In the game they are removed and new ones are made."
 msgstr "動物、盗賊などの野生の部隊は、周囲のエリアがアンロードされてもキャラクター、傷、位置を保ち、戻ってきたときにまたそこにいます。ゲームでは削除され、新しいものが作られます。"
@@ -5067,29 +5061,11 @@ msgstr[0] "{1,num} 人"
 msgid "Exit Game"
 msgstr "ゲーム終了"
 
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "検索を正規表現として扱う（大文字小文字を区別しない）"
-
-msgid "Regex"
-msgstr "正規表現"
-
-msgid "Invalid regular expression: {1}"
-msgstr "無効な正規表現：{1}"
-
 msgid "Character Stats"
 msgstr "キャラクターステータス"
 
 msgid "-Backpack-"
 msgstr "-バックパック-"
-
-msgid "Pig Latin"
-msgstr "ピッグ・ラテン"
-
-msgid "Pirate"
-msgstr "海賊語"
-
-msgid "Morse code"
-msgstr "モールス信号"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "スタックをクリックすると全部、Shift+クリックで半分、Ctrl+クリックで 1 個を取り、Shift+Ctrl+クリックではスライダーで個数を尋ねます。ゲームではクリックで 1 個、Shift か Ctrl でスタック全体を取ります。"

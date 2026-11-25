@@ -276,11 +276,6 @@
           <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8" ItemSpacing="8" LineSpacing="6">
             <TextBox x:Name="ModSearch" Width="175" PlaceholderText="Search mods" TextChanged="ModSearch_TextChanged"
                      ToolTip.Tip="Show only the mods whose name or author holds this text" />
-            <!-- Regex reads the search as a regular expression (ModSearchTest) -->
-            <CheckBox x:Name="ModSearchRegex" Click="ModSearchRegex_Click" VerticalAlignment="Center"
-                      ToolTip.Tip="Read the search as a regular expression, ignoring case">
-              <TextBlock Text="Regex" />
-            </CheckBox>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock x:Name="ModSortLabel" Text="Sort by" VerticalAlignment="Center" />
               <ComboBox x:Name="ModSortBox" SelectedIndex="0" SelectionChanged="ModSortBox_SelectionChanged"

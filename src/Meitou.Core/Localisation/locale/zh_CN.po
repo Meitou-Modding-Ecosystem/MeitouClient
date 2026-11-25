@@ -4276,12 +4276,6 @@ msgstr "物品栏中的包"
 msgid "Guards searching for smuggled or stolen goods and bandits after food or loot also look inside bags carried in the inventory, and guards confiscating stolen goods inside the worn backpack. The game misses those bags, so goods hidden in them are never found."
 msgstr "搜查走私或赃物的守卫，以及搜刮食物或战利品的强盗，也会检查物品栏中携带的包；没收赃物的守卫也会检查身上背着的背包。游戏会漏掉这些包，所以藏在里面的物品永远不会被发现。"
 
-msgid "Animals stay out of talks"
-msgstr "动物不参与对话"
-
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "商人或其他人检查你的小队是否有某件物品、某个种族或被背着的身体时，不会把对话转到你的某只动物身上。在游戏中，携带该物品的驮兽会接管对话，导致交易和其他回答都无效。"
-
 msgid "Guards spare their own"
 msgstr "守卫放过自己人"
 
@@ -5820,15 +5814,6 @@ msgstr "简易地形着色"
 msgid "Faster ground for weak graphics: one biome and two texture layers a pixel, no bump detail. Blends between biomes show harder edges."
 msgstr "为性能较弱的显卡加快地面渲染：每个像素只用一个生物群系和两层纹理，没有凹凸细节。生物群系之间的过渡边缘会更硬。"
 
-msgid "Regex"
-msgstr "正则"
-
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "将搜索内容视为正则表达式（不区分大小写）"
-
-msgid "Invalid regular expression: {1}"
-msgstr "正则表达式无效：{1}"
-
 msgid "Seen into a building with its roof hidden, no rain, dust or ash falls over the open room. The game leaves out only what falls inside it, so with the camera pulled back the rain in front still streaks across the room."
 msgstr "看进隐藏了屋顶的建筑时，开放的房间上方不会落下雨、尘土或灰烬。游戏只去掉落在建筑内的部分，所以镜头拉远时前方的雨仍会划过房间。"
 
@@ -5926,15 +5911,6 @@ msgstr "角色属性"
 
 msgid "-Backpack-"
 msgstr "-背包-"
-
-msgid "Pig Latin"
-msgstr "猪拉丁语"
-
-msgid "Pirate"
-msgstr "海盗腔"
-
-msgid "Morse code"
-msgstr "摩尔斯电码"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "点击一堆物品会全部拿起，Shift+点击拿一半，Ctrl+点击拿一个，Shift+Ctrl+点击会用滑块询问数量。原版游戏中点击拿一个，Shift 或 Ctrl 拿整堆。"

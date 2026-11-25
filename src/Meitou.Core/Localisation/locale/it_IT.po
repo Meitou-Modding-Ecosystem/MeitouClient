@@ -184,9 +184,6 @@ msgstr "Una città lontana dalle tue squadre viene conquistata o distrutta appen
 msgid "A traced cache adds fine indirect light near the camera."
 msgstr "Una cache tracciata aggiunge luce indiretta fine vicino alla telecamera."
 
-msgid "A trader or anyone else checking your squad for an item, a race or a carried body never turns the conversation to one of your animals. In the game a pack animal carrying the item takes over the talk, so trade and the other answers do nothing."
-msgstr "Un mercante o chiunque controlli la tua squadra per un oggetto, una razza o un corpo trasportato non sposta mai la conversazione su uno dei tuoi animali. Nel gioco un animale da soma con l'oggetto prende la conversazione, e il commercio e le altre risposte non fanno nulla."
-
 msgid "A turret's gunner turns with the gun, facing where it aims. In the game the gunner keeps facing the turret, so once the gun swings toward a target the gunner looks off to the side."
 msgstr "L'artigliere di una torretta ruota con l'arma, guardando dove mira. Nel gioco l'artigliere continua a guardare la torretta, così quando l'arma ruota verso un bersaglio guarda di lato."
 
@@ -301,9 +298,6 @@ msgstr "Un animale in una gabbia o su un palo respira, si guarda intorno e si sd
 
 msgid "Animals pick up items"
 msgstr "Gli animali raccolgono oggetti"
-
-msgid "Animals stay out of talks"
-msgstr "Gli animali restano fuori dalle conversazioni"
 
 msgid "Animals, bandits and other wild squads keep their characters, wounds and places when the area around them unloads, and are there again when you come back. In the game they are removed and new ones are made."
 msgstr "Animali, banditi e altre squadre selvagge mantengono personaggi, ferite e posizioni quando l'area intorno a loro viene scaricata, e sono di nuovo lì quando torni. Nel gioco vengono rimossi e ne vengono creati di nuovi."
@@ -5071,29 +5065,11 @@ msgstr[1] "{1,num} membri"
 msgid "Exit Game"
 msgstr "Esci dal gioco"
 
-msgid "Read the search as a regular expression, ignoring case"
-msgstr "Leggi la ricerca come espressione regolare, ignorando maiuscole e minuscole"
-
-msgid "Regex"
-msgstr "Regex"
-
-msgid "Invalid regular expression: {1}"
-msgstr "Espressione regolare non valida: {1}"
-
 msgid "Character Stats"
 msgstr "Statistiche del personaggio"
 
 msgid "-Backpack-"
 msgstr "-Zaino-"
-
-msgid "Pig Latin"
-msgstr "Latino maiale"
-
-msgid "Pirate"
-msgstr "Piratesco"
-
-msgid "Morse code"
-msgstr "Codice Morse"
 
 msgid "A click on a stack picks up all of it, Shift+click half, Ctrl+click one item, and Shift+Ctrl+click asks how many with a slider. In the game a click picks up one item and Shift or Ctrl the whole stack."
 msgstr "Un clic su una pila la prende tutta, Maiusc+clic metà, Ctrl+clic un oggetto, e Maiusc+Ctrl+clic chiede quanti con un cursore. Nel gioco un clic prende un oggetto e Maiusc o Ctrl l'intera pila."
