@@ -5916,3 +5916,6 @@ msgstr "MOD：{1}"
 #. machine-translated
 msgid "Mods: {1}"
 msgstr "MOD：{1}"
+
+msgid "Take off Shackles"
+msgstr "枷を外す"

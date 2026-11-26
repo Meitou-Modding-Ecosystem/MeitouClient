@@ -6749,3 +6749,6 @@ msgstr "模组：{1}"
 #. machine-translated
 msgid "Mods: {1}"
 msgstr "模组：{1}"
+
+msgid "Take off Shackles"
+msgstr "取下镣铐"

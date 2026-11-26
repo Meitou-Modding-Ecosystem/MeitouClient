@@ -6348,3 +6348,6 @@ msgstr "Mod: {1}"
 #. machine-translated
 msgid "Mods: {1}"
 msgstr "Mods: {1}"
+
+msgid "Take off Shackles"
+msgstr "Tirar algemas"
