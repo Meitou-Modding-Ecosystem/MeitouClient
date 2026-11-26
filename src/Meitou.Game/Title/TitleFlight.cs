@@ -27,48 +27,49 @@ readonly record struct FlightClip(string Clip, float Rate, float Length)
 
 /// <summary>
 /// The skeleton animations of the wanderer's flight from the title's Beak Thing (<see cref="TitleFlight"/>): the start, the walk of the turn and the
-/// run, each in parts (legs and arms) or none.
+/// run, each in parts (legs and arms) or none, and the start clip's own travel across the ground (its <c>Bip01</c> track in model X and Z, Z forward
+/// and X to his left, by clip seconds; null: none).
 /// </summary>
-sealed record FlightClips(IReadOnlyList<FlightClip> Startle, IReadOnlyList<FlightClip> Walk, IReadOnlyList<FlightClip> Run)
+sealed record FlightClips(IReadOnlyList<FlightClip> Startle, IReadOnlyList<FlightClip> Walk, IReadOnlyList<FlightClip> Run,
+    Func<float, Vector2>? StartleTravel = null)
 {
     /// <summary>
     /// No clips: the wanderer keeps his idle and only moves.
     /// </summary>
     public static FlightClips None { get; } = new([], [], []);
+
+    /// <summary>
+    /// How long the startle lasts: the whole of the start clip; 0 without one.
+    /// </summary>
+    public float StartleSeconds => Startle.Count > 0 ? Startle.Max(c => c.Seconds) : 0;
 }
 
 /// <summary>
-/// The wanderer's flight from the title's Beak Thing (<see cref="TitleAmbush"/>), display only: a moment after it turns for the hill he staggers
-/// back a step, startled, still facing it, for the whole of the start clip; then turns round in a small walking circle, so his turn shows; then runs at the camera and out of the frame.
+/// The wanderer's flight from the title's Beak Thing (<see cref="TitleAmbush"/>), display only, from when it starts its walk at him: he staggers
+/// back, startled, still facing it, for the whole of the start clip and as far as the clip itself steps; a moment after it ends he turns round in a
+/// small walking circle, so his turn shows; then runs at the camera and out of the frame.
 /// </summary>
 /// <param name="Start">Where he stands.</param>
 /// <param name="Yaw">His facing as he watches (out over the valley; the characters' yaw: 0 faces +Z).</param>
-/// <param name="Eye">The camera's eye: he staggers towards it and runs under it.</param>
+/// <param name="Eye">The camera's eye: he runs under it.</param>
 /// <param name="Clips">His clips.</param>
 sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Clips)
 {
     /// <summary>
-    /// The moment he still watches after the Beak Thing turns for the hill, before he startles.
-    /// </summary>
-    public const float PauseSeconds = 1;
-
-    /// <summary>
-    /// The startled stagger: how long it lasts without a start clip, and how far back it carries him (world units; the camera is close behind
-    /// him, so a short step keeps him in the frame).
+    /// The startled stagger without a start clip: how long it lasts and how far back towards the camera it carries him (world units).
     /// </summary>
     public const float DefaultStaggerSeconds = 1.1f, StaggerDistance = 7;
 
     /// <summary>
-    /// How long the stagger lasts: the whole of the start clip, so he moves on only once it has played out.
+    /// The farthest the start clip's own step carries him (world units): the dodge back steps about 17, which brings him up against the camera
+    /// close behind him, so its step is scaled down to this, keeping its pace.
     /// </summary>
-    public float StaggerSeconds
-    {
-        get
-        {
-            float clip = Clips.Startle.Count > 0 ? Clips.Startle.Max(c => c.Seconds) : 0;
-            return clip > 0 ? clip : DefaultStaggerSeconds;
-        }
-    }
+    public const float StartleStepMax = 4;
+
+    /// <summary>
+    /// The moment he holds the stagger's last frame before he turns, so the clip is seen to finish.
+    /// </summary>
+    public const float HoldSeconds = 0.15f;
 
     /// <summary>
     /// The turn: how long the walking circle lasts and its radius (world units).
@@ -91,14 +92,32 @@ sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Cli
     static readonly CharacterPose Watching = new("idle_stand_confident", 0.5f, 1);
 
     /// <summary>
+    /// How long the stagger lasts: the whole of the start clip, so he moves on only once it has played out.
+    /// </summary>
+    public float StaggerSeconds => Clips.StartleSeconds > 0 ? Clips.StartleSeconds : DefaultStaggerSeconds;
+
+    /// <summary>
+    /// When he starts his turn: just after the stagger has played out.
+    /// </summary>
+    public float TurnStart => StaggerSeconds + HoldSeconds;
+
+    /// <summary>
     /// The way back from where he stands: towards the camera, across the ground.
     /// </summary>
     Vector2 Back => Vector2.Normalize(new Vector2(Eye.X - Start.X, Eye.Z - Start.Z) + new Vector2(1e-4f, 0));
 
     /// <summary>
-    /// The turn's whole angle: from his watching facing round to the way back (signed: positive turns to increasing yaw).
+    /// The turn's whole angle: from his watching facing round to the way back from where the stagger left him (signed: positive turns to
+    /// increasing yaw).
     /// </summary>
-    float TurnAngle => MathF.IEEERemainder(MathF.Atan2(Back.X, Back.Y) - Yaw, MathF.Tau);
+    float TurnAngle
+    {
+        get
+        {
+            var back = new Vector2(Eye.X - Staggered.X, Eye.Z - Staggered.Z);
+            return MathF.IEEERemainder(MathF.Atan2(back.X, back.Y) - Yaw, MathF.Tau);
+        }
+    }
 
     /// <summary>
     /// Where he is, his facing and his poses <paramref name="seconds"/> into the flight.
@@ -106,31 +125,46 @@ sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Cli
     public (Vector3 At, float Yaw, CharacterPose[] Poses) At(float seconds)
     {
         seconds = Math.Clamp(seconds, 0, LastSeconds);
-        if (seconds < PauseSeconds) return (Start, Yaw, [Watching]);
+        if (seconds < TurnStart) return Stagger(MathF.Min(seconds, StaggerSeconds));
+        if (seconds < TurnStart + TurnSeconds) return Turn(seconds - TurnStart);
 
-        seconds -= PauseSeconds;
-        if (seconds < StaggerSeconds) return Stagger(seconds);
-        if (seconds < StaggerSeconds + TurnSeconds) return Turn(seconds - StaggerSeconds);
-
-        return Run(seconds - StaggerSeconds - TurnSeconds);
+        return Run(seconds - TurnStart - TurnSeconds);
     }
 
     /// <summary>
-    /// The stagger <paramref name="seconds"/> in: still facing out, carried back fast then slowing, playing the start clip once.
+    /// The stagger <paramref name="seconds"/> in: still facing out, carried back as the start clip steps, playing it once and holding its last frame.
     /// </summary>
     (Vector3, float, CharacterPose[]) Stagger(float seconds)
     {
-        float u = seconds / StaggerSeconds;
-        float back = StaggerDistance * (1 - (1 - u) * (1 - u));
         var poses = Clips.Startle.Count > 0 ? Clips.Startle.Select(c => c.Once(seconds)).ToArray() : [Watching];
 
-        return (Start + new Vector3(Back.X, 0, Back.Y) * back, Yaw, poses);
+        return (Start + Travel(seconds), Yaw, poses);
+    }
+
+    /// <summary>
+    /// How far the stagger has carried him <paramref name="seconds"/> in: the start clip's own step turned by his facing (at most
+    /// <see cref="StartleStepMax"/>), else a step back towards the camera, fast then slowing.
+    /// </summary>
+    Vector3 Travel(float seconds)
+    {
+        if (Clips.StartleTravel is { } clip)
+        {
+            float whole = (clip(StaggerSeconds) - clip(0)).Length();
+            var model = (clip(seconds) - clip(0)) * (whole > StartleStepMax ? StartleStepMax / whole : 1);
+            var forward = new Vector2(MathF.Sin(Yaw), MathF.Cos(Yaw));
+            var left = new Vector2(MathF.Cos(Yaw), -MathF.Sin(Yaw));
+            var world = left * model.X + forward * model.Y;
+            return new Vector3(world.X, 0, world.Y);
+        }
+
+        float u = Math.Clamp(seconds / StaggerSeconds, 0, 1);
+        return new Vector3(Back.X, 0, Back.Y) * (StaggerDistance * (1 - (1 - u) * (1 - u)));
     }
 
     /// <summary>
     /// Where the stagger left him.
     /// </summary>
-    Vector3 Staggered => Start + new Vector3(Back.X, 0, Back.Y) * StaggerDistance;
+    Vector3 Staggered => Start + Travel(StaggerSeconds);
 
     /// <summary>
     /// The turn <paramref name="seconds"/> in: walking forward round a circle of <see cref="TurnRadius"/>, his facing along it, from his watching
@@ -147,7 +181,8 @@ sealed record TitleFlight(Vector3 Start, float Yaw, Vector3 Eye, FlightClips Cli
     }
 
     /// <summary>
-    /// The place and facing after turning <paramref name="turned"/> round the circle: moving along the facing <c>(sin yaw, cos yaw)</c> while it turns.
+    /// The place and facing after turning <paramref name="turned"/> round the circle: moving along the facing <c>(sin yaw, cos yaw)</c> while it
+    /// turns.
     /// </summary>
     (Vector3 At, float Yaw) OnCircle(float turned)
     {
