@@ -50,7 +50,7 @@ sealed class TitleComposition
     /// The Beak Thing easter egg's places on a 16:9 frame (<see cref="TitleAmbush"/>): it waits on the ground under the first, off the right edge, and
     /// throws the far pair onto the ground under the second.
     /// </summary>
-    static readonly Vector2 AmbushEntryOnScreen = new(1.25f, 0.84f), AmbushLandingOnScreen = new(0.16f, 0.8f);
+    static readonly Vector2 AmbushEntryOnScreen = new(1.1f, 0.84f), AmbushLandingOnScreen = new(0.16f, 0.8f);
 
     /// <summary>
     /// The foreground. The ridge: rocks drawn with the terrain texturing of the local cliff feature (<see cref="RidgeLook"/>), side by side from the
@@ -461,4 +461,9 @@ sealed class TitleComposition
     /// the camera.
     /// </summary>
     internal (Vector3 At, float Yaw, CharacterPose[] Poses) Flight(float seconds) => new TitleFlight(Wanderer, WandererYaw, _eye, FlightClips).At(seconds);
+
+    /// <summary>
+    /// How long the wanderer's startled stagger lasts (<see cref="TitleFlight.StaggerSeconds"/>): the Beak Thing walks at him for as long.
+    /// </summary>
+    internal float StaggerSeconds => new TitleFlight(Wanderer, WandererYaw, _eye, FlightClips).StaggerSeconds;
 }

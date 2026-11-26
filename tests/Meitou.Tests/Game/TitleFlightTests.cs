@@ -16,9 +16,9 @@ public class TitleFlightTests
     static readonly TitleFlight Flight = new(new Vector3(100, 50, 100), 0, new Vector3(130, 400, -200), FlightClips.None);
 
     /// <summary>
-    /// The seconds from the Beak Thing turning for the hill to the end of the stagger.
+    /// The seconds from the Beak Thing starting its walk at him to the start of his turn.
     /// </summary>
-    static float Lead => TitleFlight.PauseSeconds + Flight.StaggerSeconds;
+    static float Lead => Flight.TurnStart;
 
     /// <summary>
     /// The way back to the camera, across the ground.
@@ -26,28 +26,26 @@ public class TitleFlightTests
     static Vector2 Back => Vector2.Normalize(new Vector2(30, -300));
 
     /// <summary>
-    /// He keeps still, watching, for the pause before he startles.
+    /// The stagger lasts the whole start clip, steps as the clip itself does (turned by his facing, scaled down to its most), and holds its end
+    /// until just after it.
     /// </summary>
     [Fact]
-    public void Pauses_before_the_stagger()
+    public void Stagger_plays_its_whole_clip_and_its_step()
     {
-        var (at, yaw, _) = Flight.At(TitleFlight.PauseSeconds - 0.01f);
-        Assert.Equal(new Vector3(100, 50, 100), at);
-        Assert.Equal(0, yaw);
-    }
-
-    /// <summary>
-    /// The stagger lasts the whole start clip, so the turn waits for it to play out.
-    /// </summary>
-    [Fact]
-    public void Stagger_lasts_its_clip()
-    {
-        var clips = new FlightClips([new FlightClip("dodgeback", 1, 1.13f)], [], []);
+        var clips = new FlightClips([new FlightClip("dodgeback", 1, 1.13f)], [], [], t => new Vector2(0, -10 * t));
         var flight = Flight with { Clips = clips };
         Assert.Equal(1.13f, flight.StaggerSeconds, 3);
-        var (_, yaw, poses) = flight.At(TitleFlight.PauseSeconds + 1.12f);
+        Assert.InRange(flight.TurnStart, 1.13f, 1.4f);
+
+        // The clip steps 11.3 back, scaled to the most the stagger may carry him.
+        var (mid, _, _) = flight.At(0.5f);
+        Assert.Equal(100 - 5 * TitleFlight.StartleStepMax / 11.3f, mid.Z, 3);
+        Assert.Equal(100, mid.X, 3);
+
+        var (held, yaw, poses) = flight.At(flight.TurnStart - 0.01f);
         Assert.Equal(0, yaw);
         Assert.Equal("dodgeback", poses[0].Animation);
+        Assert.Equal(100 - TitleFlight.StartleStepMax, held.Z, 3);
     }
 
     /// <summary>
@@ -56,7 +54,7 @@ public class TitleFlightTests
     [Fact]
     public void Stagger_is_a_short_step_back_facing_out()
     {
-        var (at, yaw, _) = Flight.At(Lead - 0.001f);
+        var (at, yaw, _) = Flight.At(Flight.StaggerSeconds - 0.001f);
         var moved = new Vector2(at.X - 100, at.Z - 100);
         Assert.InRange(moved.Length(), TitleFlight.StaggerDistance * 0.95f, TitleFlight.StaggerDistance);
         Assert.True(Vector2.Dot(Vector2.Normalize(moved), Back) > 0.999f);

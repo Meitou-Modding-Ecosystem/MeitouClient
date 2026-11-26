@@ -9,9 +9,9 @@ using Meitou.Simulation.Movement;
 namespace Meitou.Game.Title;
 
 /// <summary>
-/// The title fight's second easter egg (Meitou's own): one title in <see cref="Odds"/>, <see cref="StartSeconds"/> in, a Beak Thing charges in from
+/// The title fight's second easter egg (Meitou's own): one title in <see cref="Odds"/>, as soon as the title shows, a Beak Thing charges in from
 /// the right, smashes the pair furthest from the camera across to the left of the frame, kills the other four one blow at a time while they close in
-/// on it, then runs at the wanderer on the hill and on past the camera. A little later two of the fallen, bloodied, get up and fight on for good.
+/// on it, then turns to the wanderer on the hill, walks at him while he staggers back and runs at him and on past the camera once he has. A little later two of the fallen, bloodied, get up and fight on for good.
 /// A system of the fight's own world (<see cref="TitleBattle"/>): it gives the orders, puts the struck down and moves the Beak Thing on its run; the
 /// fight's combat, animation and ragdolls do the rest. Fighters 2p and 2p + 1 are pair p, pair 0 the furthest.
 /// </summary>
@@ -52,7 +52,7 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     /// <summary>
     /// The seconds the fight runs before the Beak Thing charges.
     /// </summary>
-    public const float StartSeconds = 5;
+    public const float StartSeconds = 0;
 
     /// <summary>
     /// The longest the charge lasts before the smash comes anyway (a blow that never lands, a block), and the longest the Beak Thing fights one of
@@ -74,7 +74,7 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     /// The pause after the last of the four falls before the Beak Thing runs for the hill; after it is gone, the pause before two of the fallen get
     /// up, and the time they take to stand before they fight.
     /// </summary>
-    const float ChaseDelaySeconds = 1.5f, RiseDelaySeconds = 3, StandSeconds = 3;
+    const float ChaseDelaySeconds = 0.8f, RiseDelaySeconds = 3, StandSeconds = 3;
 
     /// <summary>
     /// The gap (world units) inside which the charging Beak Thing drops from its run into its fighting stance.
@@ -97,9 +97,20 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     const float StrikeThrow = 90, StrikeLift = 45;
 
     /// <summary>
-    /// The Beak Thing's speed (world units/s) on its run for the hill.
+    /// The Beak Thing's speed (world units/s) on its run for the hill, and on its slow walk at the wanderer before it.
     /// </summary>
-    const float ChaseSpeed = 95;
+    const float ChaseSpeed = 95, WalkSpeed = 20;
+
+    /// <summary>
+    /// How long the Beak Thing takes to turn in place to the wanderer once the last of the four is down.
+    /// </summary>
+    const float TurnSeconds = 1;
+
+    /// <summary>
+    /// How long the Beak Thing walks at the wanderer before it runs: as long as his startled stagger (<see cref="TitleFlight.StaggerSeconds"/>), so
+    /// it runs only once that has played out.
+    /// </summary>
+    public float WalkSeconds { get; set; } = TitleFlight.DefaultStaggerSeconds;
 
     /// <summary>
     /// How long a fighter that will get up again stays knocked out until then (character seconds; it is woken).
@@ -189,6 +200,11 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     Vector2 _hill, _past, _runFrom;
 
     /// <summary>
+    /// The Beak Thing's facing when its chase began, which it turns from (<see cref="Turn"/>).
+    /// </summary>
+    float _turnFrom;
+
+    /// <summary>
     /// Whether the risers were woken, and whether they were set on each other.
     /// </summary>
     bool _woken, _fighting;
@@ -220,9 +236,14 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     public TitleAmbush(TitleStage stage, CombatSystem? combat = null) => (Stage, _combat) = (stage, combat);
 
     /// <summary>
-    /// Seconds since the Beak Thing turned for the hill (the wanderer runs from then on); null before.
+    /// Seconds since the Beak Thing, turned to the wanderer, started its walk at him (he startles from then on); null before.
     /// </summary>
-    public float? ChaseSeconds => Now == Step.Chase ? _stepSeconds : Now == Step.Gone ? float.MaxValue : null;
+    public float? ChaseSeconds => Now switch
+    {
+        Step.Chase when _stepSeconds >= TurnSeconds => _stepSeconds - TurnSeconds,
+        Step.Gone => float.MaxValue,
+        _ => null,
+    };
 
     /// <summary>
     /// How far along its run to the wanderer the Beak Thing is, 0 to 1 (1 from the wanderer on), for its climb up the hill as drawn.
@@ -323,7 +344,8 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
     }
 
     /// <summary>
-    /// On the Beak Thing's run it heads for the wanderer, then on under the camera, at <see cref="ChaseSpeed"/>.
+    /// On the Beak Thing's chase it turns in place to the wanderer, walks at him for <see cref="WalkSeconds"/>, then runs at
+    /// <see cref="ChaseSpeed"/> for him and on under the camera.
     /// </summary>
     public void Move(World world, Partition part)
     {
@@ -336,11 +358,29 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
         var at = new Vector2(from.X, from.Z);
         var toward = Vector2.Distance(_runFrom, at) < Vector2.Distance(_runFrom, _hill) ? _hill : _past;
         var dir = Vector2.Normalize(toward - at + new Vector2(1e-4f, 0));
-        var step = dir * ChaseSpeed * world.TickSeconds;
+        if (_stepSeconds < TurnSeconds)
+        {
+            Turn(ref n, MathF.Atan2(dir.X, dir.Y));
+            return;
+        }
+
+        float speed = _stepSeconds < TurnSeconds + WalkSeconds ? WalkSpeed : ChaseSpeed;
+        var step = dir * speed * world.TickSeconds;
         float x = from.X + step.X, z = from.Z + step.Y;
         n.Position = new Vector3(x, world.Walkability.GroundHeight(x, z, from.Y), z);
-        n.Velocity = new Vector3(dir.X, 0, dir.Y) * ChaseSpeed;
+        n.Velocity = new Vector3(dir.X, 0, dir.Y) * speed;
         n.Yaw = MathF.Atan2(dir.X, dir.Y);
+    }
+
+    /// <summary>
+    /// The Beak Thing standing, turned <see cref="_stepSeconds"/> of <see cref="TurnSeconds"/> of the way from its facing when the chase began to
+    /// <paramref name="facing"/>.
+    /// </summary>
+    void Turn(ref CharacterHot n, float facing)
+    {
+        float share = Math.Clamp(_stepSeconds / TurnSeconds, 0, 1);
+        n.Velocity = Vector3.Zero;
+        n.Yaw = _turnFrom + MathF.IEEERemainder(facing - _turnFrom, MathF.Tau) * share;
     }
 
     /// <summary>
@@ -490,6 +530,7 @@ sealed class TitleAmbush : ICombatHitObserver, ICombatDefenceObserver, ICombatDe
         Next(Step.Chase);
         var at = world.Characters.Next[Beak.Slot].Position;
         _runFrom = new Vector2(at.X, at.Z);
+        _turnFrom = world.Characters.Next[Beak.Slot].Yaw;
         world.Commands.Enqueue(new StopCommand([Beak]) { Tick = world.Tick + 1 });
     }
 

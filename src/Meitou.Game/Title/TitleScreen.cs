@@ -121,6 +121,7 @@ sealed class TitleScreen(GameHost host)
             var ambush = TitleAmbush.Rolls(screenshot) ? _titleComposition.Stage(TitleBattle.DisplayScale) : (TitleStage?)null;
             TitleBattle = TitleBattle.Create(data, host.Scene.GroundAt, _titleComposition.Fights, lengths, library, ambush, host.CharacterRigs);
             if (TitleBattle is not null) TitleBattle.Tornado.Enabled = !screenshot;
+            if (TitleBattle?.Ambush is { } beak) beak.WalkSeconds = _titleComposition.StaggerSeconds;
         }
 
         if (host.ActiveCharacters is { } characters)
@@ -246,8 +247,8 @@ sealed class TitleScreen(GameHost host)
     }
 
     /// <summary>
-    /// The wanderer's clips for his flight from the title's Beak Thing that <paramref name="library"/> has: a dodge back for the start, and a person's
-    /// plain walk and run, legs and arms.
+    /// The wanderer's clips for his flight from the title's Beak Thing that <paramref name="library"/> has: a dodge back for the start (with its own
+    /// step back, the clip's root track), and a person's plain walk and run, legs and arms.
     /// </summary>
     static FlightClips WandererClips(Data.Gameplay.AnimationLibrary library, Data.Gameplay.AnimationLengths lengths)
     {
@@ -256,8 +257,12 @@ sealed class TitleScreen(GameHost host)
             .Select(i => library.Definitions[i])
             .Select(d => new FlightClip(d.Clip, d.PlaySpeed > 0 ? d.PlaySpeed : 1, lengths.Of(d.Clip)))];
 
-        return new(Of(library.IndexOfAny("Dodge back")), Of(library.IndexOf("walk lower"), library.IndexOf("walk upper")),
-            Of(library.IndexOf("run lower"), library.IndexOf("run upper")));
+        var startle = Of(library.IndexOfAny("Dodge back"));
+        var walk = Of(library.IndexOf("walk lower"), library.IndexOf("walk upper"));
+        var run = Of(library.IndexOf("run lower"), library.IndexOf("run upper"));
+        Func<float, System.Numerics.Vector2>? travel = startle.Length > 0 ? t => lengths.Root(startle[0].Clip, t * startle[0].Rate) : null;
+
+        return new(startle, walk, run, travel);
     }
 
     /// <summary>
