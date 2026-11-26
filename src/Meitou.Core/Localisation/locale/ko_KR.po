@@ -5916,3 +5916,6 @@ msgstr "모드: {1}"
 #. machine-translated
 msgid "Mods: {1}"
 msgstr "모드: {1}"
+
+msgid "Take off Shackles"
+msgstr "족쇄 벗기기"

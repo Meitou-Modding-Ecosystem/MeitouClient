@@ -5926,3 +5926,6 @@ msgstr "Мод: {1}"
 #. machine-translated
 msgid "Mods: {1}"
 msgstr "Моды: {1}"
+
+msgid "Take off Shackles"
+msgstr "Снять кандалы"

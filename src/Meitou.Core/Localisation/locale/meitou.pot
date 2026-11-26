@@ -5337,6 +5337,10 @@ msgstr ""
 msgid "Take"
 msgstr ""
 
+#: src/Meitou.Game/Ui/ContextMenuWindow.cs
+msgid "Take off Shackles"
+msgstr ""
+
 #: src/Meitou.Game/Host/Photo/PhotoPanel.cs
 msgid "Take picture"
 msgstr ""
