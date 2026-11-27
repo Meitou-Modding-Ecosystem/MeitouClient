@@ -5929,3 +5929,15 @@ msgstr "女性キャラクターが装備した男性専用防具メッシュを
 #. machine-translated
 msgid "I don't have any {1}."
 msgstr "{1}を持っていない。"
+
+#. machine-translated
+msgid "Search buildings"
+msgstr "建物を検索"
+
+#. machine-translated
+msgid "Categories"
+msgstr "カテゴリー"
+
+#. machine-translated
+msgid "Subtypes"
+msgstr "サブタイプ"

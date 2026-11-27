@@ -5935,3 +5935,15 @@ msgstr "Подгоняет только мужские модели брони �
 #. machine-translated
 msgid "I don't have any {1}."
 msgstr "У меня нет: {1}."
+
+#. machine-translated
+msgid "Search buildings"
+msgstr "Поиск построек"
+
+#. machine-translated
+msgid "Categories"
+msgstr "Категории"
+
+#. machine-translated
+msgid "Subtypes"
+msgstr "Подтипы"
