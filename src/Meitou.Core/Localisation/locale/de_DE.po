@@ -5944,3 +5944,11 @@ msgstr "Kategorien"
 #. machine-translated
 msgid "Subtypes"
 msgstr "Untertypen"
+
+#. machine-translated
+msgid "Shots into buildings"
+msgstr "Schüsse in Gebäude"
+
+#. machine-translated
+msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
+msgstr "Geschütztürme und Armbrustschützen schießen nicht auf jemanden in einem anderen Gebäude, den sie nicht sehen können; ein Armbrustschütze geht stattdessen näher heran. Im Spiel halten die Wände vieler Gebäude Schüsse nur in Bodennähe auf, sodass Geschütztürme draußen Personen drinnen weiterhin durch die Wände treffen."

@@ -5947,3 +5947,11 @@ msgstr "Категории"
 #. machine-translated
 msgid "Subtypes"
 msgstr "Подтипы"
+
+#. machine-translated
+msgid "Shots into buildings"
+msgstr "Стрельба в здания"
+
+#. machine-translated
+msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
+msgstr "Турели и арбалетчики не стреляют в того, кто находится в другом здании и кого они не видят; арбалетчик вместо этого подходит ближе. В игре стены многих зданий задерживают выстрелы только у самого пола, поэтому турели снаружи продолжают попадать сквозь стены в тех, кто внутри."
