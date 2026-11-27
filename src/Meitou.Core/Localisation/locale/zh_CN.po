@@ -6774,3 +6774,11 @@ msgstr "类别"
 #. machine-translated
 msgid "Subtypes"
 msgstr "子类型"
+
+#. machine-translated
+msgid "Shots into buildings"
+msgstr "射击建筑内目标"
+
+#. machine-translated
+msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
+msgstr "炮塔和弩手不会射击位于另一座建筑内且自己看不见的人；弩手会改为靠近。原版游戏中许多建筑的墙壁只在靠近地面处挡住射击，因此外面的炮塔会持续隔墙击中室内的人。"
