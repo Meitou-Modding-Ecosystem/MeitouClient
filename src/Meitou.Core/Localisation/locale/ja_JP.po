@@ -5949,3 +5949,22 @@ msgstr "建物内への射撃"
 #. machine-translated
 msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
 msgstr "タレットとクロスボウ兵は、見えていない別の建物内の相手を撃ちません。クロスボウ兵は代わりに近づきます。本来のゲームでは多くの建物の壁が床付近の射撃しか防がないため、外のタレットが壁越しに屋内の人に当て続けます。"
+
+msgid "Letterbox"
+msgstr "レターボックス"
+
+#. machine-translated
+msgid "Letterbox aspect"
+msgstr "レターボックスのアスペクト比"
+
+#. machine-translated
+msgid "black bars"
+msgstr "黒帯"
+
+#. machine-translated
+msgid "Frame the world between black bars at the chosen picture shape, as a cinema screen, in every camera."
+msgstr "すべてのカメラで、選んだ画面比率になるようワールドを映画のスクリーンのように黒帯で囲みます。"
+
+#. machine-translated
+msgid "the game's picture fills the screen; Meitou can frame the world between black bars at the Letterbox aspect (2.39 to 1, the cinema's widescreen, unless changed), under the interface, in every camera (docs/render-post.md \"Letterbox\")"
+msgstr "ゲームの画面は画面全体に表示されます。Meitou はレターボックスのアスペクト比（変更しない限り 2.39:1、映画のワイドスクリーン）でワールドを黒帯で囲めます。インターフェースの下に描かれ、すべてのカメラで有効です（docs/render-post.md \"Letterbox\"）"

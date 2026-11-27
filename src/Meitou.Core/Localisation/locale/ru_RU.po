@@ -5955,3 +5955,22 @@ msgstr "Стрельба в здания"
 #. machine-translated
 msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
 msgstr "Турели и арбалетчики не стреляют в того, кто находится в другом здании и кого они не видят; арбалетчик вместо этого подходит ближе. В игре стены многих зданий задерживают выстрелы только у самого пола, поэтому турели снаружи продолжают попадать сквозь стены в тех, кто внутри."
+
+msgid "Letterbox"
+msgstr "Чёрные полосы"
+
+#. machine-translated
+msgid "Letterbox aspect"
+msgstr "Формат кадра с полосами"
+
+#. machine-translated
+msgid "black bars"
+msgstr "чёрные полосы"
+
+#. machine-translated
+msgid "Frame the world between black bars at the chosen picture shape, as a cinema screen, in every camera."
+msgstr "Обрамлять мир чёрными полосами под выбранный формат кадра, как на киноэкране, во всех камерах."
+
+#. machine-translated
+msgid "the game's picture fills the screen; Meitou can frame the world between black bars at the Letterbox aspect (2.39 to 1, the cinema's widescreen, unless changed), under the interface, in every camera (docs/render-post.md \"Letterbox\")"
+msgstr "картинка игры занимает весь экран; Meitou может обрамлять мир чёрными полосами под «Формат кадра с полосами» (2,39:1, широкий экран кино, если не изменён), под интерфейсом, в любой камере (docs/render-post.md \"Letterbox\")"
