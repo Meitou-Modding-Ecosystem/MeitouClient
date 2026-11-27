@@ -2059,6 +2059,8 @@ type 1000 (VARIABLE) refuse a mod as taken by `BFrizz_Extra_Extensions` ([dialog
 Some shapes need no code: a race's anatomy of any length, extra or missing parts, and parts of a new type such as a tail are plain records
 ([bodies of other shapes](game/character-stats.md#bodies-of-other-shapes-meitou)). A WEAPON of the unarmed `skill category` fights as fists with
 martial arts and is worn on the body's skeleton ([worn unarmed weapons](characters.md#worn-unarmed-weapons)).
+A tail, braid or cables rigged as a chain of `Sway_…` bones swing with the `sway` switch
+([body chains](character-renderer.md#gear-sway-meitou-sway-switch-optional-off-by-default)).
 
 ## Fixed record ids
 

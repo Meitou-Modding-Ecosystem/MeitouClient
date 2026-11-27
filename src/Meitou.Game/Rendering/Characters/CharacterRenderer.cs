@@ -688,6 +688,14 @@ internal sealed unsafe partial class CharacterRenderer : IDisposable
         /// See <see cref="Sway"/>.
         /// </summary>
         public double SwayAt = double.NaN;
+        /// <summary>
+        /// The body's spring chains' swing per link of its asset (<see cref="BodyChains"/>).
+        /// </summary>
+        public BodyChains.State[] Chain = [];
+        /// <summary>
+        /// The motion clock <see cref="Chain"/> was last stepped at (NaN: never).
+        /// </summary>
+        public double ChainAt = double.NaN;
     }
 
     /// <summary>
@@ -1657,6 +1665,7 @@ internal sealed unsafe partial class CharacterRenderer : IDisposable
             if (part.AttachIndex >= 0) state.Attach[part.AttachIndex] = scratch.TagTransform(part.Bone, part.Offset);
         foreach (var lamp in asset.Lamps) state.Attach[lamp.AttachIndex] = lamp.Offset * scratch.BoneTransform(lamp.Bone);
         if (asset.Mouth is { } mouth) state.Attach[mouth.AttachIndex] = scratch.TagTransform(mouth.Bone, mouth.Offset);
+        SwingChains(in l, state);
         Sway(in l, state, scratch);
         rig.Return(scratch);
 
@@ -1667,6 +1676,32 @@ internal sealed unsafe partial class CharacterRenderer : IDisposable
         }
         state.Posed = _updateStamp;
         state.PosedRagdoll = l.Bones;
+    }
+
+    /// <summary>
+    /// The body's spring chains (<see cref="BodyChains"/>, the <c>sway</c> switch): stepped from the last pose to this one and written into the
+    /// palette's rig bones, before the hanging gear's copies are taken from them. Off as the gear is (animals, portraits, ragdolls, small on
+    /// screen): the chain is drawn as posed and starts at rest the next time.
+    /// </summary>
+    void SwingChains(in Live l, CharState state)
+    {
+        var asset = l.Asset;
+        if (asset.Chains.Length == 0) return;
+        if (!GearSway.Enabled || l.Bones is not null || l.Pixels < GearSway.MinPixels || l.PortraitOnly)
+        {
+            state.ChainAt = double.NaN;
+            return;
+        }
+        if (state.Chain.Length != asset.Chains.Length) state.Chain = new BodyChains.State[asset.Chains.Length];
+
+        // As the gear's: a first step, a snap or a clock gone back by more than a frame's jitter starts at rest.
+        float dt = double.IsNaN(state.ChainAt) || l.Snap ? -1 : (float)(_motionSeconds - state.ChainAt);
+        if (dt is < 0 and > -0.05f) dt = 0;
+        else state.ChainAt = _motionSeconds;
+
+        var skin = state.Bones.AsSpan(0, asset.Rig.BoneCount);
+        BodyChains.Update(asset.Chains, asset.ChainFollows, state.Chain, skin, asset.Rig.BindPosition, l.World, asset.SwayColliders, dt,
+            BodyChains.Default);
     }
 
     /// <summary>
