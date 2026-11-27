@@ -6782,3 +6782,22 @@ msgstr "射击建筑内目标"
 #. machine-translated
 msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
 msgstr "炮塔和弩手不会射击位于另一座建筑内且自己看不见的人；弩手会改为靠近。原版游戏中许多建筑的墙壁只在靠近地面处挡住射击，因此外面的炮塔会持续隔墙击中室内的人。"
+
+msgid "Letterbox"
+msgstr "黑边遮幅"
+
+#. machine-translated
+msgid "Letterbox aspect"
+msgstr "黑边画面比例"
+
+#. machine-translated
+msgid "black bars"
+msgstr "黑边"
+
+#. machine-translated
+msgid "Frame the world between black bars at the chosen picture shape, as a cinema screen, in every camera."
+msgstr "按所选画面比例用黑边框住世界画面，如同电影银幕，在所有镜头中。"
+
+#. machine-translated
+msgid "the game's picture fills the screen; Meitou can frame the world between black bars at the Letterbox aspect (2.39 to 1, the cinema's widescreen, unless changed), under the interface, in every camera (docs/render-post.md \"Letterbox\")"
+msgstr "原版游戏的画面铺满屏幕；Meitou 可以按黑边画面比例（默认 2.39:1，电影宽银幕）用黑边框住世界画面，绘制在界面之下，适用于所有相机（docs/render-post.md \"Letterbox\"）"

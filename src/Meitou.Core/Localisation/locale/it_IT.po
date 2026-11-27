@@ -5952,3 +5952,22 @@ msgstr "Colpi negli edifici"
 #. machine-translated
 msgid "Turrets and crossbowmen do not shoot at someone inside another building that they cannot see; a crossbowman walks closer instead. In the game many buildings' walls only stop shots near the floor, so turrets outside keep hitting people indoors through the walls."
 msgstr "Torrette e balestrieri non sparano a qualcuno all'interno di un altro edificio che non riescono a vedere; un balestriere invece si avvicina. Nel gioco i muri di molti edifici fermano i colpi solo vicino al pavimento, quindi le torrette all'esterno continuano a colpire attraverso i muri chi è all'interno."
+
+msgid "Letterbox"
+msgstr "Bande nere"
+
+#. machine-translated
+msgid "Letterbox aspect"
+msgstr "Formato delle bande nere"
+
+#. machine-translated
+msgid "black bars"
+msgstr "bande nere"
+
+#. machine-translated
+msgid "Frame the world between black bars at the chosen picture shape, as a cinema screen, in every camera."
+msgstr "Inquadra il mondo tra bande nere nel formato d'immagine scelto, come uno schermo cinematografico, in tutte le telecamere."
+
+#. machine-translated
+msgid "the game's picture fills the screen; Meitou can frame the world between black bars at the Letterbox aspect (2.39 to 1, the cinema's widescreen, unless changed), under the interface, in every camera (docs/render-post.md \"Letterbox\")"
+msgstr "l'immagine del gioco riempie lo schermo; Meitou può inquadrare il mondo tra bande nere nel Formato delle bande nere (2,39:1, il panoramico del cinema, se non modificato), sotto l'interfaccia, in ogni telecamera (docs/render-post.md \"Letterbox\")"
