@@ -236,6 +236,16 @@ lengths; off for animals, portraits, ragdolls and characters under 40 px tall.
   a lever under 1 unit, a rig over 128 bones or without the clavicle and neck bones, animals' bags. **Observed** (sandbox, Wooden Backpack, same method): the frame shifts a few
   pixels on a turn and a stop, whole; sway on and off at rest differ by no more than two captures of one frame do.
 
+- **Body chains** (`BodyChains`, a tail, a braid or cables; 1.8 Hz a link, damping ratio 0.35, 40° at most from the posed shape): bones named
+  `Sway_…` (any case) that hang from a body bone form chains, each bone a link to its first `Sway_` child; the chain's last bone is its tip and
+  follows the last link. They sit after the body's bones in a skeleton of the body mesh's own that links the body's clips (as the 45-bone finger
+  skeletons do, [Ogre skeleton](formats/ogre-skeleton.md#animation-links)), so no clip need move them. Each
+  link's tip is a damped spring toward where the pose and the swung link above hold it (damped against that place's speed), kept at its length,
+  within the angle and out of the pelvis, thigh and calf capsules of the gear (by 0.25 units; the limb the chain hangs from does not count), then
+  each link's bone and its tip are turned in the palette about the posed head onto the swung one, before the backpack's copies are taken. Same
+  clock, rest rules and exclusions as the gear. **Observed** (an offline step of a three-bone tail): it lags a sideways move and a turn, keeps
+  its lengths, settles to the posed place and stays out of a limb in its way; not yet seen in game.
+
 Not built: cloth, hair, shields on the back as separate groups.
 
 ## Animals and portraits

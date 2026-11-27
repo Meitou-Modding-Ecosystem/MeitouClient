@@ -428,6 +428,15 @@ internal sealed class CharacterAsset
     /// </summary>
     public SwayCollider[] SwayColliders = [];
     /// <summary>
+    /// The links of the body's spring chains (<see cref="BodyChains"/>, a tail or cables rigged as <see cref="BodyChains.Prefix"/> bones), parents
+    /// first; empty when its skeleton has none.
+    /// </summary>
+    public BodyChains.Link[] Chains = [];
+    /// <summary>
+    /// By bone handle: the link of <see cref="Chains"/> whose swing the bone follows (-1: none).
+    /// </summary>
+    public int[] ChainFollows = [];
+    /// <summary>
     /// How many matrices its bone palette holds (<see cref="SwayPalette"/>).
     /// </summary>
     public int PaletteCount => Rig.BoneCount * (SwayPalette ? 2 : 1);
@@ -1894,6 +1903,7 @@ internal sealed class CharacterContent : IDisposable
         AddNeckCap(asset, c, body, bodyPath, rig);
         AddItemParts(asset, c, rig, close);
         HangSways(asset, rig);
+        AddChains(asset, rig);
         AddSwayColliders(asset, rig);
         AddLights(asset, c, rig);
         AddMouth(asset, c, rig);
@@ -2171,6 +2181,16 @@ internal sealed class CharacterContent : IDisposable
     }
 
     /// <summary>
+    /// The body's spring chains (<see cref="BodyChains.Find"/>); none for an animal.
+    /// </summary>
+    static void AddChains(CharacterAsset asset, SkeletonRig rig)
+    {
+        if (asset.Animal) return;
+
+        (asset.Chains, asset.ChainFollows) = BodyChains.Find(rig);
+    }
+
+    /// <summary>
     /// The limbs hanging gear is kept out of (<see cref="CharacterAsset.SwayColliders"/>), from the body's own boxes (<see cref="PickBox"/>: its
     /// vertices by their main bone, in the binding pose): a thigh and a calf are capsules from their joint to the next, as thick as their box
     /// across; the pelvis is one across the hips, as thick as its box is deep. Then each bone-attached sway point's clearance in the binding pose
@@ -2178,7 +2198,8 @@ internal sealed class CharacterContent : IDisposable
     /// </summary>
     static void AddSwayColliders(CharacterAsset asset, SkeletonRig rig)
     {
-        if (asset.Animal || asset.Sways.All(s => s.Skinned) || asset.Parts.Find(p => p.IsBody) is not { } body) return;
+        bool hanging = asset.Sways.Any(s => !s.Skinned) || asset.Chains.Length > 0;
+        if (asset.Animal || !hanging || asset.Parts.Find(p => p.IsBody) is not { } body) return;
         var limbs = new List<SwayCollider>();
         Vector3? Size(int bone, out Vector3 centre)
         {
