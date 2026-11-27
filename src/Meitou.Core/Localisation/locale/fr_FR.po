@@ -5932,3 +5932,15 @@ msgstr "Adapte les maillages d'armure uniquement masculins portés par des perso
 #. machine-translated
 msgid "I don't have any {1}."
 msgstr "Je n'ai pas de {1}."
+
+#. machine-translated
+msgid "Search buildings"
+msgstr "Rechercher des bâtiments"
+
+#. machine-translated
+msgid "Categories"
+msgstr "Catégories"
+
+#. machine-translated
+msgid "Subtypes"
+msgstr "Sous-types"

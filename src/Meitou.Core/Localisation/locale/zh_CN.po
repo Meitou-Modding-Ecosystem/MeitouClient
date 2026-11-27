@@ -6762,3 +6762,15 @@ msgstr "调整女性角色穿戴的仅男性护甲网格以避免与身体穿模
 #. machine-translated
 msgid "I don't have any {1}."
 msgstr "我没有{1}。"
+
+#. machine-translated
+msgid "Search buildings"
+msgstr "搜索建筑"
+
+#. machine-translated
+msgid "Categories"
+msgstr "类别"
+
+#. machine-translated
+msgid "Subtypes"
+msgstr "子类型"

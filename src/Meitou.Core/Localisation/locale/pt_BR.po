@@ -6359,3 +6359,15 @@ msgstr "Ajusta malhas de armadura apenas masculinas usadas por personagens femin
 #. machine-translated
 msgid "I don't have any {1}."
 msgstr "Não tenho {1}."
+
+#. machine-translated
+msgid "Search buildings"
+msgstr "Buscar construções"
+
+#. machine-translated
+msgid "Categories"
+msgstr "Categorias"
+
+#. machine-translated
+msgid "Subtypes"
+msgstr "Subtipos"
